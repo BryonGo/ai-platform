@@ -22,6 +22,7 @@
   --amber-soft: #fbd36a;
   --line: rgb(255 255 255 / 0.1);
   --rail: 240px;
+  --topbar-h: 68px;
 }
 
 @property --edge-angle {
@@ -35,6 +36,7 @@
 }
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--topbar-h) + 12px);
   background: var(--deep);
 }
 body {
@@ -64,16 +66,40 @@ textarea:focus-visible {
 
 .app-shell {
   min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--canvas);
 }
+/* 通栏顶栏：整屏宽度，粘在视口顶部，位于侧栏之上 */
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(22px, 3.2vw, 52px);
+  border-bottom: 1px solid var(--line);
+  background: rgb(13 14 16 / 0.82);
+  backdrop-filter: blur(18px);
+}
+.shell-body {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100dvh - var(--topbar-h));
+}
 .side-rail {
-  position: fixed;
-  inset: 0 auto 0 0;
+  position: sticky;
+  top: var(--topbar-h);
   z-index: 50;
+  flex: 0 0 var(--rail);
   width: var(--rail);
+  height: calc(100dvh - var(--topbar-h));
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  overflow-y: auto;
   border-right: 1px solid var(--line);
   background: linear-gradient(180deg, #17181b, #0d0e10 70%);
   box-shadow: 18px 0 54px rgb(0 0 0 / 0.2);
@@ -231,21 +257,8 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 .main-column {
-  min-height: 100dvh;
-  margin-left: var(--rail);
-}
-.top-bar {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  height: 68px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 clamp(22px, 3.2vw, 52px);
-  border-bottom: 1px solid var(--line);
-  background: rgb(13 14 16 / 0.82);
-  backdrop-filter: blur(18px);
+  flex: 1;
+  min-width: 0;
 }
 .top-bar nav {
   align-self: stretch;
@@ -329,7 +342,7 @@ textarea:focus-visible {
 }
 
 .home-page {
-  min-height: calc(100dvh - 68px);
+  min-height: calc(100dvh - var(--topbar-h));
   overflow: hidden;
   padding-bottom: 72px;
   background: radial-gradient(circle at 68% 10%, rgb(139 72 25 / 0.1), transparent 27%), var(--canvas);
@@ -1269,6 +1282,7 @@ textarea:focus-visible {
 @media (max-width: 760px) {
   :root {
     --rail: 0px;
+    --topbar-h: 58px;
   }
   html {
     scroll-padding-top: 58px;
@@ -1276,12 +1290,16 @@ textarea:focus-visible {
   .side-rail {
     display: none;
   }
+  .shell-body {
+    min-height: calc(100dvh - var(--topbar-h));
+  }
   .main-column {
-    margin-left: 0;
+    flex: 1;
+    min-width: 0;
     padding-bottom: 66px;
   }
   .top-bar {
-    height: 58px;
+    height: var(--topbar-h);
     padding: 0 16px;
   }
   .top-bar::before {

@@ -25,100 +25,103 @@ const current = ref('总览')
 <template>
   <UApp>
     <div class="app-shell">
-      <aside class="side-rail">
-        <a
-          class="brand"
-          href="#create"
-          aria-label="后宫创作首页"
-          @click="current = '总览'"
-        >
-          <span
-            class="brand-emblem"
-            aria-hidden="true"
-          >后</span>
-          <strong>后宫</strong>
-        </a>
-
-        <nav
-          class="rail-navigation"
-          aria-label="主导航"
-        >
-          <a
-            v-for="item in nav"
-            :key="item.label"
-            :href="item.href"
-            :class="{ active: current === item.label }"
-            @click="current = item.label"
-          >
-            <BrandNavIcon :name="item.icon" />
-            <span class="nav-label">{{ item.label }}</span>
-          </a>
-        </nav>
-
-        <div class="rail-utilities">
+      <!-- 通栏顶栏：横跨整屏，置于侧栏之上 -->
+      <header class="top-bar">
+        <div class="top-context">
+          <strong>创作中心</strong>
+          <small>Image Studio</small>
+        </div>
+        <div class="account-area">
           <button
-            class="language-switch"
+            class="credits"
             type="button"
-            aria-label="切换语言，当前为简体中文"
+            aria-label="查看积分余额"
           >
-            <span
-              class="i-lucide-languages"
-              aria-hidden="true"
-            />
-            <span class="utility-label">简体中文</span>
+            <span aria-hidden="true" />
+            <strong>2,400</strong> 积分
           </button>
           <button
+            class="avatar"
             type="button"
-            aria-label="通知"
+            aria-label="打开账户菜单"
           >
-            <span
-              class="i-lucide-bell"
-              aria-hidden="true"
-            />
-            <span class="utility-label">通知</span>
-          </button>
-          <button
-            type="button"
-            aria-label="设置"
-          >
-            <span
-              class="i-lucide-settings-2"
-              aria-hidden="true"
-            />
-            <span class="utility-label">设置</span>
+            <img
+              src="/images/daji-three-tail-front-v1.webp"
+              alt=""
+            >
           </button>
         </div>
-      </aside>
+      </header>
 
-      <div class="main-column">
-        <header class="top-bar">
-          <div class="top-context">
-            <strong>创作中心</strong>
-            <small>Image Studio</small>
-          </div>
-          <div class="account-area">
-            <button
-              class="credits"
-              type="button"
-              aria-label="查看积分余额"
+      <div class="shell-body">
+        <aside class="side-rail">
+          <a
+            class="brand"
+            href="#create"
+            aria-label="后宫创作首页"
+            @click="current = '总览'"
+          >
+            <span
+              class="brand-emblem"
+              aria-hidden="true"
+            >后</span>
+            <strong>后宫</strong>
+          </a>
+
+          <nav
+            class="rail-navigation"
+            aria-label="主导航"
+          >
+            <a
+              v-for="item in nav"
+              :key="item.label"
+              :href="item.href"
+              :class="{ active: current === item.label }"
+              @click="current = item.label"
             >
-              <span aria-hidden="true" />
-              <strong>2,400</strong> 积分
+              <BrandNavIcon :name="item.icon" />
+              <span class="nav-label">{{ item.label }}</span>
+            </a>
+          </nav>
+
+          <div class="rail-utilities">
+            <button
+              class="language-switch"
+              type="button"
+              aria-label="切换语言，当前为简体中文"
+            >
+              <span
+                class="i-lucide-languages"
+                aria-hidden="true"
+              />
+              <span class="utility-label">简体中文</span>
             </button>
             <button
-              class="avatar"
               type="button"
-              aria-label="打开账户菜单"
+              aria-label="通知"
             >
-              <img
-                src="/images/daji-three-tail-front-v1.webp"
-                alt=""
-              >
+              <span
+                class="i-lucide-bell"
+                aria-hidden="true"
+              />
+              <span class="utility-label">通知</span>
+            </button>
+            <button
+              type="button"
+              aria-label="设置"
+            >
+              <span
+                class="i-lucide-settings-2"
+                aria-hidden="true"
+              />
+              <span class="utility-label">设置</span>
             </button>
           </div>
-        </header>
+        </aside>
 
-        <main><NuxtPage /></main>
+        <div class="main-column">
+          <main><NuxtPage /></main>
+        </div>
       </div>
 
       <nav
