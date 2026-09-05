@@ -1,0 +1,669 @@
+openapi: 3.1.0
+info:
+  title: 后宫（hougong）平台契约骨架
+  version: 0.1.0-draft
+  description: |
+    后宫 × GameLora 共用后端契约骨架（草案）。
+
+    约定（与 go-sdk 现有系统一致，不新造接口）：
+    - 统一前缀 /api/v1；请求必须携带 `X-Site-Code`（站群隔离，账号/积分/订单按站隔离）。
+    - 统一响应包装：`{ "code": 0, "message": "ok", "data": ... }`，code=0 为成功。
+    - 认证：`Authorization: Bearer <UserToken>`（前台 account 用户，不走 PMS Casbin）。
+    - 幂等：创建任务的请求携带 `clientKey`（全局唯一），重复提交返回原任务、只扣一次。
+    - 计费预扣：创建任务 = 创建任务 + RESERVE 预占积分 + 写账本 + 写 Outbox（同一事务）；
+      成功 CAPTURE 结算；失败/取消 RELEASE（未结算）或 REFUND（已结算）；账本只追加。
+    - 积分按站隔离（product=gamelora|hougong），充值走既有 /account/recharge 订单管线，由发货器按站点发放。
+    - 上传复用既有 /api/v1/upload 系列接口（单图/多图/分片/presigned）。
+
+    gamelora 段（/api/v1/gamelora/*）在 gamelora-web 迭代中补充，本文件暂只占位。
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: 本地开发（go-sdk）
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Account
+    description: 复用 go-sdk 既有账号接口（此处仅列引用，字段以 go-sdk api/v1/account 为准）
+  - name: Credit
+    description: 平台底座新增：积分钱包、账本、预扣/结算/退回、购买
+  - name: HougongTasks
+    description: 后宫域：生成任务（创建即预占积分）
+  - name: HougongCharacters
+    description: 后宫域：角色档案与造型
+  - name: HougongStories
+    description: 后宫域：故事项目与片段整理
+  - name: Events
+    description: SSE 实时事件
+
+paths:
+  # ---------- 平台段：账号（复用既有，不重定义） ----------
+  /account/auth/register:
+    $ref: '#/paths/~1account~1auth~1register'
+  /account/auth/code:
+    $ref: '#/paths/~1account~1auth~1register'
+  /account/auth/login:
+    $ref: '#/paths/~1account~1auth~1register'
+
+  # ---------- 平台段：积分 ----------
+  /account/credits:
+    get:
+      tags: [Credit]
+      summary: 当前站钱包概览
+      description: 可用积分 = balance - holds；holds 为进行中任务的预占合计。
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/CreditWallet'
+
+  /account/credit-ledger:
+    get:
+      tags: [Credit]
+      summary: 积分流水（只追加）
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: op
+          in: query
+          description: 按操作类型过滤：grant/purchase/reserve/capture/release/refund/expire/adjust
+          schema: { type: string }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CreditLedgerEntry'
+
+  /account/credit-packages:
+    get:
+      tags: [Credit]
+      summary: 本站积分包列表
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CreditPackage'
+
+  /account/credit-purchase:
+    post:
+      tags: [Credit]
+      summary: 购买积分包
+      description: 只提交 packageId + channel；价格/积分数/币种/SKU 由后端冻结为购买快照，回调核对后由发货器按站发放。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [packageId, channel]
+              properties:
+                packageId: { type: string }
+                channel: { type: string, description: 支付通道代码 }
+      responses:
+        '200':
+          description: 成功（返回订单与支付参数）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          orderId: { type: string }
+                          payUrl: { type: string }
+
+  # ---------- 后宫段：生成任务 ----------
+  /hougong/tasks:
+    post:
+      tags: [HougongTasks]
+      summary: 创建生成任务（幂等，创建即预占积分）
+      parameters:
+        - $ref: '#/components/parameters/ClientKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, characterId, prompt, ratio]
+              properties:
+                type:
+                  type: string
+                  enum: [i2v, t2i, extend]
+                  description: 图生视频 / 文生图 / 角色延展
+                characterId: { type: string }
+                prompt: { type: string, minLength: 1 }
+                ratio:
+                  type: string
+                  enum: ['9:16', '3:4', '1:1', '16:9']
+                count: { type: integer, minimum: 1, maximum: 4, default: 1 }
+                refAssetIds:
+                  type: array
+                  items: { type: string }
+                  description: 参考素材（上传接口返回的 asset id），沿用上一轮结果时后端回填快照
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Task'
+        '409':
+          $ref: '#/components/responses/ClientKeyConflict'
+
+  /hougong/tasks/{id}:
+    get:
+      tags: [HougongTasks]
+      summary: 任务详情
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Task'
+
+  /hougong/tasks/{id}/cancel:
+    post:
+      tags: [HougongTasks]
+      summary: 取消任务
+      description: 取消成功后 RELEASE 预占；已完成任务不可取消（与完成存在竞态时由状态机仲裁）。
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          $ref: '#/components/responses/ApiOk'
+
+  /hougong/tasks/{id}/retry:
+    post:
+      tags: [HougongTasks]
+      summary: 重试（新建任务并重新计费）
+      description: 不复活旧任务；新任务携带新 clientKey，按当前报价重新预占。
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Task'
+
+  # ---------- 后宫段：角色 ----------
+  /hougong/characters:
+    get:
+      tags: [HougongCharacters]
+      summary: 角色列表
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Character'
+    post:
+      tags: [HougongCharacters]
+      summary: 创建角色（成年角色档案）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CharacterInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Character'
+
+  /hougong/characters/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [HougongCharacters]
+      summary: 角色详情
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Character'
+    put:
+      tags: [HougongCharacters]
+      summary: 更新角色设定（保留历史版本）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CharacterInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/ApiOk'
+
+  /hougong/characters/{id}/works:
+    get:
+      tags: [HougongCharacters]
+      summary: 该角色的作品列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Work'
+
+  # ---------- 后宫段：故事项目 ----------
+  /hougong/stories:
+    get:
+      tags: [HougongStories]
+      summary: 故事项目列表
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Story'
+    post:
+      tags: [HougongStories]
+      summary: 创建故事项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Story'
+
+  /hougong/stories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [HougongStories]
+      summary: 故事详情
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Story'
+
+  /hougong/stories/{id}/clips:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      tags: [HougongStories]
+      summary: 整理片段（顺序/备注）
+      description: 只影响项目内排序与备注，不覆盖作品本体。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clips]
+              properties:
+                clips:
+                  type: array
+                  items:
+                    type: object
+                    required: [workId, order]
+                    properties:
+                      workId: { type: string }
+                      order: { type: integer, minimum: 1 }
+                      note: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/ApiOk'
+
+  # ---------- 事件 ----------
+  /hougong/events:
+    get:
+      tags: [Events]
+      summary: SSE 任务与积分事件
+      description: |
+        事件：task.created / task.queued / task.started / task.progress /
+        task.completed / task.failed / credits.changed。
+        支持 Last-Event-ID 断线续传；Event ID 全局单调。
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  # ---------- gamelora 段占位 ----------
+  /gamelora/tasks:
+    description: 占位：gamelora 域任务接口（项目/素材包/风格/候选/QA/导出）在 gamelora-web 迭代补充。
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: go-sdk account UserToken
+
+  parameters:
+    ClientKey:
+      name: clientKey
+      in: query
+      required: true
+      schema: { type: string, maxLength: 128 }
+      description: 幂等键，前端生成 UUID；重复提交返回原任务且只扣一次
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    ApiOk:
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - properties:
+                  data: { type: object, nullable: true }
+    ClientKeyConflict:
+      description: clientKey 已存在（返回原任务）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: 0=成功；业务错误码为正整数（如 1001 INSUFFICIENT_CREDITS、1002 TASK_NOT_FOUND）
+        message: { type: string }
+        data: { type: object, nullable: true }
+
+    CreditWallet:
+      type: object
+      required: [balance, holds, available]
+      properties:
+        balance: { type: integer, description: 积分余额（含预占） }
+        holds: { type: integer, description: 进行中任务的预占合计 }
+        available: { type: integer, description: 可用积分 = balance - holds }
+
+    CreditLedgerEntry:
+      type: object
+      required: [id, op, amount, balanceAfter, taskId, createdAt]
+      properties:
+        id: { type: string }
+        op:
+          type: string
+          enum: [grant, purchase, reserve, capture, release, refund, expire, adjust]
+        amount: { type: integer, description: 有符号积分变动 }
+        balanceAfter: { type: integer }
+        taskId: { type: string, nullable: true, description: reserve/capture/release/refund 必带 }
+        createdAt: { type: string, format: date-time }
+
+    CreditPackage:
+      type: object
+      required: [id, credits, priceCents, currency]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        credits: { type: integer }
+        priceCents: { type: integer }
+        currency: { type: string, example: CNY }
+
+    Task:
+      type: object
+      required: [id, clientKey, type, status, reservedCredits, createdAt]
+      properties:
+        id: { type: string }
+        clientKey: { type: string }
+        type: { type: string, enum: [i2v, t2i, extend] }
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        queuePosition: { type: integer, nullable: true }
+        reservedCredits: { type: integer, description: 创建时按报价快照预占的积分 }
+        billedCredits: { type: integer, nullable: true, description: 结算后实际扣减积分 }
+        snapshot:
+          type: object
+          description: 实际配置快照（角色设定版本/参数/参考素材），旧作品可追溯
+          additionalProperties: true
+        errorCode: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+
+    Character:
+      type: object
+      required: [id, name, ageVerified, traits, appearance, outfits, workCount]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        alias: { type: string }
+        age: { type: string, description: 成年角色年龄设定 }
+        ageVerified: { type: boolean, description: 成年标识（平台硬约束） }
+        tagline: { type: string }
+        traits:
+          type: array
+          items: { type: string }
+        appearance:
+          type: array
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string }
+              value: { type: string }
+        outfits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Outfit'
+        workCount: { type: integer }
+
+    CharacterInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        alias: { type: string }
+        age: { type: string }
+        tagline: { type: string }
+        traits:
+          type: array
+          items: { type: string }
+        appearance:
+          type: array
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string }
+              value: { type: string }
+        outfits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Outfit'
+
+    Outfit:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        note: { type: string }
+        swatch: { type: string, description: 主色值 }
+
+    Work:
+      type: object
+      required: [id, title, characterId, kind, imageAssetId, status]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        characterId: { type: string }
+        kind: { type: string, enum: [视频, 图集] }
+        duration: { type: string, nullable: true, description: 视频时长，格式待定 }
+        count: { type: integer, nullable: true, description: 图集张数 }
+        imageAssetId: { type: string, description: 封面素材 asset id（统一 WebP） }
+        status: { type: string, enum: [done, running] }
+
+    Story:
+      type: object
+      required: [id, title, characterIds, clips]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        synopsis: { type: string }
+        characterIds:
+          type: array
+          items: { type: string }
+        relation:
+          type: array
+          items:
+            type: object
+            required: [from, to, note]
+            properties:
+              from: { type: string }
+              to: { type: string }
+              note: { type: string }
+        settings:
+          type: array
+          items:
+            type: object
+            required: [name, note]
+            properties:
+              name: { type: string }
+              note: { type: string }
+        clips:
+          type: array
+          items:
+            type: object
+            required: [workId, order]
+            properties:
+              workId: { type: string }
+              order: { type: integer, minimum: 1 }
+              note: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    StoryInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        synopsis: { type: string }
+        characterIds:
+          type: array
+          items: { type: string }
+        settings:
+          type: array
+          items:
+            type: object
+            required: [name, note]
+            properties:
+              name: { type: string }
+              note: { type: string }
