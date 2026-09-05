@@ -12,25 +12,72 @@ useSeoMeta({
 })
 
 const nav = [
-  { href: '#create', label: '总览', icon: 'overview' as const },
-  { href: '#studio', label: '创作', icon: 'create' as const },
-  { href: '#characters', label: '角色', icon: 'characters' as const },
-  { href: '#stories', label: '故事', icon: 'stories' as const },
-  { href: '#works', label: '作品', icon: 'works' as const }
+  { to: '/', label: '总览', icon: 'overview' as const },
+  { to: '/create', label: '创作', icon: 'create' as const },
+  { to: '/characters', label: '角色', icon: 'characters' as const },
+  { to: '/stories', label: '故事', icon: 'stories' as const },
+  { to: '/works', label: '作品', icon: 'works' as const }
 ]
 
-const current = ref('总览')
+const route = useRoute()
+const railCollapsed = ref(false)
+
+function isActive(item: { to: string }) {
+  if (item.to === '/') {
+    return route.path === '/'
+  }
+  return route.path.startsWith(item.to)
+}
+
+function toggleRail() {
+  railCollapsed.value = !railCollapsed.value
+}
 </script>
 
 <template>
   <UApp>
-    <div class="app-shell">
-      <!-- 通栏顶栏：横跨整屏，置于侧栏之上 -->
+    <div
+      class="app-shell"
+      :class="{ 'rail-collapsed': railCollapsed }"
+    >
+      <!-- 通栏顶栏：横跨整屏；左侧组与主内容区起点对齐 -->
       <header class="top-bar">
-        <div class="top-context">
-          <strong>创作中心</strong>
-          <small>Image Studio</small>
+        <div class="topbar-left">
+          <button
+            class="rail-toggle"
+            type="button"
+            :aria-label="railCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            :aria-expanded="!railCollapsed"
+            @click="toggleRail"
+          >
+            <span
+              :class="railCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
+              aria-hidden="true"
+            />
+          </button>
+
+          <NuxtLink
+            class="home-link"
+            to="/"
+          >
+            <span
+              class="i-lucide-home"
+              aria-hidden="true"
+            />
+            首页
+          </NuxtLink>
+
+          <span
+            class="topbar-divider"
+            aria-hidden="true"
+          />
+
+          <div class="top-context">
+            <strong>创作中心</strong>
+            <small>Image Studio</small>
+          </div>
         </div>
+
         <div class="account-area">
           <button
             class="credits"
@@ -55,33 +102,31 @@ const current = ref('总览')
 
       <div class="shell-body">
         <aside class="side-rail">
-          <a
+          <NuxtLink
             class="brand"
-            href="#create"
-            aria-label="后宫创作首页"
-            @click="current = '总览'"
+            to="/"
+            aria-label="后宫首页"
           >
             <span
               class="brand-emblem"
               aria-hidden="true"
             >后</span>
             <strong>后宫</strong>
-          </a>
+          </NuxtLink>
 
           <nav
             class="rail-navigation"
             aria-label="主导航"
           >
-            <a
+            <NuxtLink
               v-for="item in nav"
               :key="item.label"
-              :href="item.href"
-              :class="{ active: current === item.label }"
-              @click="current = item.label"
+              :to="item.to"
+              :class="{ active: isActive(item) }"
             >
               <BrandNavIcon :name="item.icon" />
               <span class="nav-label">{{ item.label }}</span>
-            </a>
+            </NuxtLink>
           </nav>
 
           <div class="rail-utilities">
@@ -128,16 +173,15 @@ const current = ref('总览')
         class="mobile-navigation"
         aria-label="移动端导航"
       >
-        <a
+        <NuxtLink
           v-for="item in nav"
           :key="item.label"
-          :href="item.href"
-          :class="{ active: current === item.label }"
-          @click="current = item.label"
+          :to="item.to"
+          :class="{ active: isActive(item) }"
         >
           <BrandNavIcon :name="item.icon" />
           <span class="nav-label">{{ item.label }}</span>
-        </a>
+        </NuxtLink>
       </nav>
     </div>
   </UApp>

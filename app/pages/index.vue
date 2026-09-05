@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useComposerDraft } from '~/composables/useComposerDraft'
+
 type Mode = 'video' | 'image'
 
 const mode = ref<Mode>('image')
@@ -8,8 +10,11 @@ const duration = ref('5 秒')
 const notice = ref('')
 const uploadPreview = ref('')
 const uploadName = ref('')
+const uploadFile = ref<File | null>(null)
 
 const cost = computed(() => (mode.value === 'video' ? 24 : 8))
+
+const { setDraft } = useComposerDraft()
 
 const stories = [
   { title: '夜色来信', type: '视频', meta: '00:12', image: '/images/daji-three-tail-front-v1.webp', tone: 'cool', character: '妲己 · 狐影朱门', recommended: true },
@@ -23,10 +28,21 @@ function inspire() {
   prompt.value = '雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。'
 }
 
+// 首页是导航入口：带着输入跳转到创作页，由创作页弹出确认对话框
 function submit() {
-  notice.value = prompt.value.trim()
-    ? `已保存${mode.value === 'video' ? '视频' : '图片'}任务草稿，生成接口接入后即可提交。`
-    : '请先描述这一幕。'
+  if (!prompt.value.trim()) {
+    notice.value = '请先描述这一幕。'
+    return
+  }
+  setDraft({
+    prompt: prompt.value,
+    mode: mode.value,
+    ratio: ratio.value,
+    duration: duration.value,
+    uploadName: uploadName.value,
+    file: uploadFile.value
+  })
+  navigateTo('/create')
 }
 
 function handleUpload(event: Event) {
@@ -38,6 +54,7 @@ function handleUpload(event: Event) {
 
   uploadPreview.value = URL.createObjectURL(file)
   uploadName.value = file.name
+  uploadFile.value = file
 }
 
 onBeforeUnmount(() => {
