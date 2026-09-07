@@ -6,17 +6,21 @@ const remember = ref(true)
 const pending = ref(false)
 const error = ref('')
 
-function submit() {
+async function submit() {
   error.value = ''
   if (!email.value.trim() || !password.value) {
     error.value = '请输入邮箱与密码'
     return
   }
   pending.value = true
-  setTimeout(() => {
+  try {
+    await useHougongApi().login(email.value.trim(), password.value)
+    await navigateTo('/')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '登录失败，请检查账号与密码'
+  } finally {
     pending.value = false
-    navigateTo('/')
-  }, 600)
+  }
 }
 </script>
 

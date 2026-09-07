@@ -1,39 +1,17 @@
 <script setup lang="ts">
 // 注册原型：契约对齐 go-sdk /api/v1/account/auth/register + /auth/code。
 const email = ref('')
-const code = ref('')
+const username = ref('')
+const nickname = ref('')
 const password = ref('')
 const agreed = ref(false)
 const pending = ref(false)
-const sending = ref(false)
-const countdown = ref(0)
 const error = ref('')
 
-let timer: ReturnType<typeof setInterval> | undefined
-
-function sendCode() {
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-    error.value = '请先填写有效邮箱'
-    return
-  }
+async function submit() {
   error.value = ''
-  sending.value = true
-  countdown.value = 60
-  timer = setInterval(() => {
-    countdown.value -= 1
-    if (countdown.value <= 0) {
-      sending.value = false
-      if (timer) {
-        clearInterval(timer)
-      }
-    }
-  }, 1000)
-}
-
-function submit() {
-  error.value = ''
-  if (!email.value.trim() || !code.value.trim() || password.value.length < 8) {
-    error.value = '请填写邮箱、验证码，密码至少 8 位'
+  if (!email.value.trim() || !username.value.trim() || password.value.length < 6) {
+    error.value = '请填写邮箱、用户名与密码（6-18 位）'
     return
   }
   if (!agreed.value) {
@@ -41,17 +19,20 @@ function submit() {
     return
   }
   pending.value = true
-  setTimeout(() => {
+  try {
+    await useHougongApi().register({
+      username: username.value.trim(),
+      email: email.value.trim(),
+      nickname: nickname.value.trim() || username.value.trim(),
+      password: password.value
+    })
+    await navigateTo('/')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '注册失败'
+  } finally {
     pending.value = false
-    navigateTo('/')
-  }, 600)
-}
-
-onBeforeUnmount(() => {
-  if (timer) {
-    clearInterval(timer)
   }
-})
+}
 </script>
 
 <template>
@@ -85,26 +66,27 @@ onBeforeUnmount(() => {
         >
       </label>
 
-      <div class="field">
-        <span>邮箱验证码</span>
-        <div class="field-row">
-          <input
-            v-model="code"
-            class="grow"
-            inputmode="numeric"
-            maxlength="6"
-            placeholder="6 位验证码"
-          >
-          <button
-            type="button"
-            class="code-btn"
-            :disabled="sending"
-            @click="sendCode"
-          >
-            {{ sending ? `${countdown}s` : '获取验证码' }}
-          </button>
-        </div>
-      </div>
+      <label class="field">
+        <span>用户名</span>
+        <input
+          v-model="username"
+          type="text"
+          autocomplete="username"
+          minlength="4"
+          maxlength="32"
+          placeholder="4-32 位字母数字下划线"
+        >
+      </label>
+
+      <label class="field">
+        <span>昵称</span>
+        <input
+          v-model="nickname"
+          type="text"
+          maxlength="50"
+          placeholder="作品署名"
+        >
+      </label>
 
       <label class="field">
         <span>密码</span>
