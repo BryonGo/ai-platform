@@ -3192,3 +3192,22 @@ textarea:focus-visible {
     max-height: 72vh;
   }
 }
+
+/* 真实数据空态/错误提示 */
+.empty-tip {
+  margin: 2rem 0;
+  padding: 2.5rem 1.5rem;
+  border: 1px dashed var(--hg-line, #e2e4ea);
+  border-radius: 1.25rem;
+  background: #faf9f7;
+  color: var(--hg-muted, #777);
+  text-align: center;
+  line-height: 2;
+  display: grid;
+  justify-items: center;
+}
+.empty-tip a {
+  color: var(--hg-accent, #b08a4f);
+  font-weight: 700;
+  text-decoration: underline;
+}

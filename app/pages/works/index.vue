@@ -1,13 +1,35 @@
 <script setup lang="ts">
-import { works } from '~/composables/useHougong'
 import AppWorkCard from '~/components/AppWorkCard.vue'
 
+const api = useHougongApi()
+const session = useAuthSession()
+const works = ref<WorkItem[]>([])
+const loading = ref(false)
+const error = ref('')
 const filter = ref<'全部' | '视频' | '图集'>('全部')
 const filters = ['全部', '视频', '图集'] as const
 
-const filtered = computed(() =>
-  filter.value === '全部' ? works : works.filter(w => w.kind === filter.value)
-)
+const filtered = computed(() => {
+  if (filter.value === '全部') return works.value
+  const kind = filter.value === '视频' ? 'video' : 'image'
+  return works.value.filter(w => w.kind === kind)
+})
+
+onMounted(async () => {
+  session.load()
+  if (!session.token.value) {
+    await navigateTo('/auth/login')
+    return
+  }
+  loading.value = true
+  try {
+    works.value = await api.listWorks()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '加载失败'
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -44,6 +66,18 @@ const filtered = computed(() =>
       </button>
     </div>
 
+    <p
+      v-if="error"
+      class="empty-tip"
+    >
+      加载失败：{{ error }}<NuxtLink to="/auth/login">重新登录</NuxtLink>
+    </p>
+    <p
+      v-else-if="!loading && !filtered.length"
+      class="empty-tip"
+    >
+      还没有作品。从创作页开始生成图片或视频，作品会自动入库。
+    </p>
     <div class="story-grid">
       <AppWorkCard
         v-for="(w, i) in filtered"
