@@ -73,6 +73,6 @@
 
 - [x] 多页路由拆分（首页/创作/角色/故事/作品/登录注册）
 - [x] 顶栏通栏 + 首页入口 + 收起侧栏按钮（取消自适应）
-- [ ] 与后端契约 `docs/contracts/openapi-hougong.yaml` 对齐（当前数据为 composable mock，替换为契约请求层）
+- [ ] 与后端接口初稿 `D:/code/go-sdk/docs/contracts/platform-products.draft.yaml` 对齐；实现顺序以 `D:/code/go-sdk/docs/AI-PLATFORM-DEVELOPMENT.md` 为准（页面当前数据与接线状态需核对实际代码）。
 - [ ] 角色/故事的增删改（新建角色、新建故事表单）、作品上传真实预览
 - [ ] 空状态/错误态统一、移动端视觉回归
