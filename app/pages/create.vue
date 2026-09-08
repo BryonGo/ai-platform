@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { characters, works } from '~/composables/useHougong'
+import { characters } from '~/composables/useHougong'
 import { useComposerDraft } from '~/composables/useComposerDraft'
 
 type Mode = 'image' | 'video'
@@ -75,20 +75,19 @@ function activeArtifact() {
   return artifacts.value.find(a => a.runId === activeRunId.value) ?? artifacts.value.at(-1) ?? null
 }
 
-function posterFor(characterId: string, idx: number) {
-  const pool = works.filter(w => w.characterId === characterId).map(w => w.image)
-  const base = pool.length ? pool : works.map(w => w.image)
-  return base[idx % base.length] ?? base[0] ?? ''
-}
-
-let runTimers: ReturnType<typeof setInterval>[] = []
+const hgApi = useHougongApi()
+const session = useAuthSession()
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 function clearRunTimers() {
-  runTimers.forEach(t => clearInterval(t))
-  runTimers = []
+  // 真实轮询由 async send 管理，无定时器残留。
 }
 
-function send() {
+function msgText(kind: Mode, characterName: string, ratioNow: string, credits: number) {
+  return `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} 积分`
+}
+
+async function send() {
   if (!canSend.value) {
     if (!prompt.value.trim() && !uploadPreview.value) {
       notice.value = '请先描述这一幕。'
@@ -111,12 +110,11 @@ function send() {
   })
 
   const runId = ++runSeq
-  const characterId = selected.value
   const characterName = selectedCharacter.value?.name ?? ''
   const credits = cost.value
   const kind = mode.value
   const ratioNow = ratio.value
-  const poster = posterFor(characterId, runId - 1)
+  const characterId = selected.value
 
   messages.value.push({
     id: ++msgSeq,
@@ -124,59 +122,114 @@ function send() {
     runId,
     status: 'queued',
     progress: 0,
-    event: 'task.created · 任务已创建，预占积分中',
-    text: `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} 积分`,
+    event: 'task.created · 正在创建任务并预占积分',
+    text: msgText(kind, characterName, ratioNow, credits),
     time: now()
   })
-
-  setTimeout(() => {
-    const q = messages.value.find(m => m.runId === runId)
-    if (q) {
-      q.status = 'running'
-      q.event = 'task.started · 正在生成'
+  try {
+    if (kind === 'video') {
+      throw new Error('视频生成需要首帧上传，后端媒体上传即将上线；当前请使用图片模式')
     }
-    const started = Date.now()
-    const targetMs = kind === 'video' ? 2600 : 1400
-    const timer = setInterval(() => {
-      const msg = messages.value.find(m => m.runId === runId)
-      if (!msg || msg.status !== 'running') {
-        clearInterval(timer)
-        return
+    if (!session.token.value) {
+      throw new Error('请先登录')
+    }
+    const task = await hgApi.createTask({
+      clientKey: `hg-web-${Date.now()}-${runSeq}`,
+      type: 't2i',
+      prompt: text,
+      ratio: ratioNow,
+      characterId: characterId === 'daji' ? '' : characterId,
+      refAssetIds: []
+    })
+    const msg = () => messages.value.find(m => m.runId === runId)
+    const taskId = task.id
+    let status = task.status
+    // 轮询至终态
+    while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
+      await sleep(2500)
+      const t = await hgApi.getTask(taskId)
+      status = t.status
+      const cur = msg()
+      if (cur) {
+        cur.progress = t.progress || cur.progress
+        cur.event = `${t.status} · ${cur.progress}%`
       }
-      const elapsed = Date.now() - started
-      msg.progress = Math.min(96, Math.round((elapsed / targetMs) * 96))
-      msg.event = `task.progress · ${msg.progress}%`
-      if (elapsed >= targetMs) {
-        clearInterval(timer)
-        msg.progress = 100
-        msg.status = 'done'
-        msg.event = 'task.completed · 生成完成'
-        msg.text = `${characterName} · ${kind === 'video' ? '视频' : '图集'} · ${ratioNow} · 已结算 ${credits} 积分`
-        artifacts.value.push({
-          runId,
-          kind,
-          prompt: text,
-          character: characterName,
-          ratio: ratioNow,
-          credits,
-          poster,
-          createdAt: now()
-        })
+    }
+    const finalMsg = msg()
+    if (status === 'succeeded') {
+      // 取产物 asset → 自动入库作品 → 取封面
+      const detail = await hgApi.getTask(taskId)
+      const outAssets: string[] = detail.outputAssets || []
+      let imageUrl = ''
+      if (outAssets.length) {
+        try {
+          await hgApi.createWork({
+            taskId: String(taskId),
+            assetId: outAssets[0],
+            kind: 'image',
+            title: text.slice(0, 40),
+            characterId: 0
+          })
+          const latestWorks = await hgApi.listWorks()
+          const latest = latestWorks[0]
+          if (latest) {
+            imageUrl = latest.imageUrl || ''
+          }
+        } catch {
+          /* 入库失败仍显示任务完成 */
+        }
       }
-    }, 120)
-    runTimers.push(timer)
-  }, 320)
+      if (finalMsg) {
+        finalMsg.progress = 100
+        finalMsg.status = 'done'
+        finalMsg.event = 'task.completed · 已结算 ' + credits + ' 积分，作品已入库'
+        finalMsg.text = msgText(kind, characterName, ratioNow, credits)
+      }
+      artifacts.value.push({
+        runId,
+        kind,
+        prompt: text,
+        character: characterName,
+        ratio: ratioNow,
+        credits,
+        poster: imageUrl,
+        createdAt: now()
+      })
+    } else {
+      if (finalMsg) {
+        finalMsg.status = 'cancelled'
+        finalMsg.event = `task.${status} · 未产生结算`
+        finalMsg.text = `${msgText(kind, characterName, ratioNow, credits)} → ${status}（积分已退回）`
+      }
+      notice.value = status === 'failed' ? '生成失败，积分已退回，可在任务中心重试' : '任务已取消'
+    }
+  } catch (e: unknown) {
+    const cur = messages.value.find(m => m.runId === runId)
+    const reason = e instanceof Error ? e.message : '生成失败'
+    if (cur) {
+      cur.status = 'cancelled'
+      cur.progress = 0
+      cur.event = 'task.failed · ' + reason
+      cur.text = `${msgText(kind, characterName, ratioNow, credits)} → 失败（积分未扣）`
+    }
+    notice.value = reason
+  }
 }
 
-function cancelRun() {
+async function cancelRun() {
   const msg = messages.value.find(m => m.role === 'assistant' && m.status === 'running')
-  if (!msg) {
+  if (!msg || msg.runId === null) {
     return
   }
-  msg.status = 'cancelled'
-  msg.progress = 0
-  msg.event = 'task.cancelled · 预占积分已退回'
-  msg.text = `${msg.text} → 已取消，未产生扣费`
+  try {
+    await hgApi.cancelTask(msg.runId)
+    msg.status = 'cancelled'
+    msg.progress = 0
+    msg.event = 'task.cancelled · 预占积分已退回'
+    msg.text = `${msg.text} → 已取消，未产生扣费`
+  } catch (e: unknown) {
+    notice.value = e instanceof Error ? e.message : '取消失败'
+  }
 }
 
 function sample(kind: Mode, text: string) {

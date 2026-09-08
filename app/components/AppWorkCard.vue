@@ -33,11 +33,16 @@ defineProps<{
       <small>{{ work.kind }} · {{ work.meta }}</small>
       <h3>{{ work.title }}</h3>
       <div>
-        <img
-          :src="characterOf(work.characterId)?.image"
-          :alt="characterOf(work.characterId)?.name"
-        >
-        <span>{{ characterOf(work.characterId)?.name }}</span>
+        <template v-if="characterOf(work.characterId)">
+          <img
+            :src="characterOf(work.characterId)?.image"
+            :alt="characterOf(work.characterId)?.name"
+          >
+          <span>{{ characterOf(work.characterId)?.name }}</span>
+        </template><span
+          v-else
+          class="story-role-fallback"
+        >角色 {{ String(work.characterId).slice(-4) }}</span>
       </div>
     </div>
   </NuxtLink>

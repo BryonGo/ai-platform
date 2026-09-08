@@ -3,7 +3,7 @@ import AppWorkCard from '~/components/AppWorkCard.vue'
 
 const api = useHougongApi()
 const session = useAuthSession()
-const works = ref<WorkItem[]>([])
+const works = ref<(WorkItem & Record<string, unknown>)[]>([])
 const loading = ref(false)
 const error = ref('')
 const filter = ref<'全部' | '视频' | '图集'>('全部')
@@ -23,7 +23,9 @@ onMounted(async () => {
   }
   loading.value = true
   try {
-    works.value = await api.listWorks()
+    const list = await api.listWorks()
+    // 映射组件所需字段（image/meta/status/recommended）。
+    works.value = list.map(w => ({ ...w, image: w.imageUrl || '', meta: w.kind === 'video' ? '视频' : '图片', status: 'done', recommended: false }) as WorkItem & Record<string, unknown>)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {

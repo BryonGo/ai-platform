@@ -62,14 +62,26 @@ export async function apiRequest<T = unknown>(
     body = JSON.stringify(opts.body)
   }
   if (session.token.value) headers.Authorization = `Bearer ${session.token.value}`
-  const res = await $fetch<ApiEnvelope<T>>(apiBase() + path, {
-    method: opts.method || 'GET',
-    headers,
-    body,
-    timeout: 90000
-  })
+  // 原生 fetch + reviver：雪花 ID（>2^53）JSON.parse 会丢精度，一律转字符串。
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 90000)
+  let resp: Response
+  try {
+    resp = await fetch(apiBase() + path, { method: opts.method || 'GET', headers, body, signal: ctrl.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+  const res = JSON.parse(await resp.text(), bigIntReviver) as ApiEnvelope<T>
   if (res.code !== 0) {
     throw new Error(res.message || `API error ${res.code}`)
   }
   return res.data
+}
+
+// 大整数（雪花 ID）→ 字符串，避免 JSON.parse float64 精度丢失。
+function bigIntReviver(_key: string, value: unknown): unknown {
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+    return String(value)
+  }
+  return value
 }

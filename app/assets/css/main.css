@@ -3211,3 +3211,7 @@ textarea:focus-visible {
   font-weight: 700;
   text-decoration: underline;
 }
+.story-role-fallback {
+  font-size: 0.72rem;
+  color: var(--hg-muted, #777);
+}

@@ -59,9 +59,22 @@ export interface HougongTask {
   id: number
   type: string
   status: string
-  errorCode: string
-  billedCredits: number
-  createdAt: number
+  progress?: number
+  errorCode?: string
+  billedCredits?: number
+  snapshot?: Record<string, unknown>
+  outputAssets?: string[]
+  createdAt?: number
+  finishedAt?: number
+}
+
+export interface WorkCreateInput {
+  characterId?: number | string
+  sessionId?: number | string
+  taskId?: number | string
+  assetId?: number | string
+  kind?: string
+  title?: string
 }
 
 export function useHougongApi() {
@@ -122,6 +135,29 @@ export function useHougongApi() {
     return apiRequest('/account/credits')
   }
 
+  async function createTask(input: {
+    clientKey: string
+    type: string
+    prompt: string
+    ratio?: string
+    characterId?: string
+    refAssetIds?: number[]
+  }): Promise<HougongTask> {
+    return apiRequest<HougongTask>('/hougong/tasks', { method: 'POST', body: input })
+  }
+
+  async function getTask(id: number | string): Promise<HougongTask> {
+    return apiRequest<HougongTask>(`/hougong/tasks/${id}`)
+  }
+
+  async function cancelTask(id: number | string): Promise<{ status: string }> {
+    return apiRequest(`/hougong/tasks/${id}/cancel`, { method: 'POST' })
+  }
+
+  async function createWork(input: WorkCreateInput): Promise<WorkItem> {
+    return apiRequest<WorkItem>('/hougong/works', { method: 'POST', body: input })
+  }
+
   return {
     login,
     register,
@@ -131,6 +167,10 @@ export function useHougongApi() {
     listWorks,
     listStories,
     listTasks,
-    wallet
+    wallet,
+    createTask,
+    getTask,
+    cancelTask,
+    createWork
   }
 }
