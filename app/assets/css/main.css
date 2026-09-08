@@ -807,6 +807,27 @@ textarea:focus-visible {
   position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* TipTap 编辑器主体 */
+.prompt-copy .prompt-editor {
+  min-height: 70px;
+}
+.prompt-copy .prompt-editor .tiptap {
+  min-height: 70px;
+  padding: 4px 2px 28px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--ink);
+}
+.prompt-copy .prompt-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #65666c;
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 .prompt-area textarea {
   display: block;
@@ -826,20 +847,24 @@ textarea:focus-visible {
   outline: 0;
 }
 .inspire {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  display: flex;
+  align-self: flex-end;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 9px;
+  margin-top: 2px;
+  padding: 4px 9px;
   border: 0;
   background: transparent;
   color: #77787e;
   font-size: 11px;
+  cursor: pointer;
 }
 .inspire:hover {
   color: var(--amber);
+}
+.inspire:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .composer-footer {
   min-height: 66px;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { characters } from '~/composables/useHougong'
 import { useComposerDraft } from '~/composables/useComposerDraft'
+import PromptEditor from '~/components/prompt/promptEditor.vue'
+import { promptText, type Prompt } from '~/components/prompt/enhancement-mark'
 
 type Mode = 'image' | 'video'
 type RunStatus = 'queued' | 'running' | 'done' | 'cancelled'
@@ -30,6 +32,32 @@ interface ChatMessage {
 
 const mode = ref<Mode>('image')
 const prompt = ref('')
+// 结构化提示词（TipTap：@ 超级标签节点 + 润色增强），与纯文本 prompt 双向同步。
+const promptModel = ref<Prompt>({ parts: [] })
+// 防止同步回环的标记。
+let syncingPrompt = false
+
+// PromptEditor 结构化 → 纯文本（snippet 取英文 prompt），同步回 prompt。
+function syncFromModel() {
+  prompt.value = promptText(promptModel.value)
+}
+
+watch(promptModel, () => {
+  if (syncingPrompt) return
+  syncingPrompt = true
+  syncFromModel()
+  syncingPrompt = false
+}, { deep: true })
+
+watch(prompt, (v) => {
+  if (syncingPrompt) return
+  // 若结构化 model 展平后已等于 v，说明来自编辑器，跳过。
+  if (promptText(promptModel.value) === v) return
+  syncingPrompt = true
+  promptModel.value = { parts: v ? [{ kind: 'text', text: v }] : [] }
+  syncingPrompt = false
+})
+
 const negative = ref('')
 const ratio = ref('16:9')
 const duration = ref('5 秒')
@@ -163,22 +191,13 @@ function pickAsset(a: AssetItem) {
   if (mode.value !== 'video') mode.value = 'video'
 }
 
-function cycleModel() {
-  const models = catalog.value?.models || []
-  if (!models.length) return
-  const idx = Math.max(0, models.findIndex(m => m.id === modelId.value))
-  const next = models[(idx + 1) % models.length]
-  if (!next) return
-  pickModel(next)
-}
-
 const cost = computed(() => {
   if (useCloud.value) return activeCloudCharge.value
   return mode.value === 'video' ? 24 : 8
 })
 const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
 const running = computed(() => messages.value.some(m => m.role === 'assistant' && m.status === 'running'))
-const canSend = computed(() => !running.value && (prompt.value.trim().length > 0 || !!uploadPreview.value))
+const canSend = computed(() => !running.value && (promptText(promptModel.value).trim().length > 0 || !!uploadPreview.value))
 
 // ---- 会话与产物 ----
 const messages = ref<ChatMessage[]>([])
@@ -228,12 +247,12 @@ function msgText(kind: Mode, characterName: string, ratioNow: string, credits: n
 
 async function send() {
   if (!canSend.value) {
-    if (!prompt.value.trim() && !uploadPreview.value) {
+    if (!promptText(promptModel.value).trim() && !uploadPreview.value) {
       notice.value = '请先描述这一幕。'
     }
     return
   }
-  const text = prompt.value.trim() || '（仅参考图）根据附件生成'
+  const text = promptText(promptModel.value).trim() || '（仅参考图）根据附件生成'
   const attachment = uploadPreview.value ? { name: uploadName.value || '参考图', url: uploadPreview.value } : undefined
 
   messages.value.push({
@@ -490,7 +509,53 @@ onBeforeUnmount(() => {
 })
 
 function inspire() {
+  syncingPrompt = true
   prompt.value = '雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。'
+  promptModel.value = { parts: [{ kind: 'text', text: prompt.value }] }
+  syncingPrompt = false
+}
+
+// ── 润色 / 翻译（对齐 PeachArt composer toolbar） ──
+const optimizing = ref(false)
+const translating = ref(false)
+
+async function runOptimize() {
+  const text = promptText(promptModel.value).trim()
+  if (!text || optimizing.value || translating.value) return
+  optimizing.value = true
+  try {
+    const out = await hgApi.optimizePrompt(text, useCloud.value ? cloudModelId.value : (modelId.value || ''))
+    if (out) {
+      // 回填润色结果（作为新的结构化文本，暂不做增强 mark 高亮）。
+      syncingPrompt = true
+      promptModel.value = { parts: [{ kind: 'text', text: out }] }
+      prompt.value = out
+      syncingPrompt = false
+    }
+  } catch (e: unknown) {
+    notice.value = e instanceof Error ? e.message : '润色失败'
+  } finally {
+    optimizing.value = false
+  }
+}
+
+async function runTranslate() {
+  const text = promptText(promptModel.value).trim()
+  if (!text || optimizing.value || translating.value) return
+  translating.value = true
+  try {
+    const out = await hgApi.translatePrompt(text)
+    if (out) {
+      syncingPrompt = true
+      promptModel.value = { parts: [{ kind: 'text', text: out }] }
+      prompt.value = out
+      syncingPrompt = false
+    }
+  } catch (e: unknown) {
+    notice.value = e instanceof Error ? e.message : '翻译失败'
+  } finally {
+    translating.value = false
+  }
 }
 
 const rawFile = ref<File | null>(null)
@@ -699,11 +764,9 @@ function handleUpload(event: Event) {
             </label>
 
             <div class="prompt-copy">
-              <textarea
-                v-model="prompt"
-                rows="3"
-                aria-label="创作描述"
-                placeholder="描述你想创作的下一幕……"
+              <PromptEditor
+                v-model="promptModel"
+                placeholder="描述你想创作的下一幕，输入 @ 唤出角色、服装、画风…"
               />
               <button
                 type="button"
@@ -714,6 +777,30 @@ function handleUpload(event: Event) {
                   class="i-lucide-dices"
                   aria-hidden="true"
                 />给我灵感
+              </button>
+              <button
+                type="button"
+                class="inspire"
+                :disabled="optimizing || translating"
+                :aria-busy="translating"
+                @click="runTranslate"
+              >
+                <span
+                  class="i-lucide-languages"
+                  aria-hidden="true"
+                />{{ translating ? '翻译中…' : '翻译' }}
+              </button>
+              <button
+                type="button"
+                class="inspire"
+                :disabled="optimizing || translating"
+                :aria-busy="optimizing"
+                @click="runOptimize"
+              >
+                <span
+                  class="i-lucide-wand-sparkles"
+                  aria-hidden="true"
+                />{{ optimizing ? '润色中…' : '润色' }}
               </button>
             </div>
           </div>
@@ -761,7 +848,9 @@ function handleUpload(event: Event) {
                     :key="g.family"
                     class="model-group"
                   >
-                    <div class="model-group-title">{{ g.family }}</div>
+                    <div class="model-group-title">
+                      {{ g.family }}
+                    </div>
                     <div class="model-group-items">
                       <button
                         v-for="m in g.items"
@@ -770,7 +859,9 @@ function handleUpload(event: Event) {
                         class="model-option"
                         :class="{ active: m.id === modelId }"
                         @click="pickModel(m)"
-                      >{{ m.name }}</button>
+                      >
+                        {{ m.name }}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -828,7 +919,9 @@ function handleUpload(event: Event) {
                 class="lora-chip"
                 :class="{ active: selectedLoraIds.includes(l.id) }"
                 @click="toggleLora(l.id)"
-              >{{ l.name }}</button>
+              >
+                {{ l.name }}
+              </button>
             </div>
             <button
               type="button"
