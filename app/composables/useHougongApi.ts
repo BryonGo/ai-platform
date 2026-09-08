@@ -169,6 +169,16 @@ export function useHougongApi() {
     return apiRequest<Catalog>('/platform/catalog')
   }
 
+  async function optimizePrompt(prompt: string, modelId: string): Promise<string> {
+    const r = await apiRequest<{ prompt: string }>('/hougong/prompt/optimize', { method: 'POST', body: { prompt, modelId } })
+    return r.prompt
+  }
+
+  async function translatePrompt(prompt: string, target = 'en'): Promise<string> {
+    const r = await apiRequest<{ prompt: string }>('/hougong/prompt/translate', { method: 'POST', body: { prompt, target } })
+    return r.prompt
+  }
+
   async function uploadMedia(file: File): Promise<{ mediaAssetId: string, width: number, height: number, mime: string }> {
     const form = new FormData()
     form.append('file', file)
@@ -221,6 +231,8 @@ export function useHougongApi() {
     getTask,
     cancelTask,
     createWork,
-    getCatalog
+    getCatalog,
+    optimizePrompt,
+    translatePrompt
   }
 }

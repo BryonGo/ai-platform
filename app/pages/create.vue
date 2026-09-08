@@ -568,5 +568,10 @@ async function submit() {
 .muted { color: var(--hg-muted, #999); }
 .error-text { color: #dc2626; font-weight: 700; }
 .spin { display: flex; align-items: center; gap: 0.4rem; }
+.composer2-actions { display: flex; align-items: center; gap: 0.5rem; }
+.composer2-spacer { flex: 1; }
+.composer2-btn-sm { padding: 0.3rem 0.7rem; border-radius: 999px; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; font-size: 0.75rem; font-weight: 700; cursor: pointer; color: var(--hg-muted, #666); }
+.composer2-btn-sm:disabled { opacity: 0.5; cursor: default; }
+.composer2-btn-sm:not(:disabled):hover { border-color: var(--hg-accent, #b08a4f); color: var(--hg-accent, #b08a4f); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
