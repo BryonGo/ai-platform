@@ -10,8 +10,8 @@ const error = ref('')
 const models = ref<ModelListItem[]>([])
 const facets = ref<ModelFacets | null>(null)
 const famFilter = ref('')
-const typeFilter = ref('')
-const detail = ref<ModelListItem | null>(null)
+const typeFilter = ref('model')
+const detail = ref<ModelDetail | null>(null)
 
 // 我的模型
 const mine = ref<MineListItem[]>([])
@@ -80,7 +80,6 @@ function switchTab(t: 'market' | 'mine') {
 async function showDetail(id: string) {
   detail.value = await api.modelGet(id)
 }
-
 function openEditor(item?: MineListItem) {
   editorErr.value = ''
   if (item) {
@@ -200,6 +199,16 @@ onMounted(() => {
 
     <!-- 市场 -->
     <template v-if="tab === 'market'">
+      <div class="filters">
+        <button
+          v-for="t in ([{ key: 'model', label: '底模' }, { key: 'lora', label: 'LoRA' }, { key: '', label: '全部' }] as const)"
+          :key="t.key"
+          type="button"
+          class="filter-btn"
+          :class="{ active: typeFilter === t.key }"
+          @click="typeFilter = t.key; loadMarket()"
+        >{{ t.label }}</button>
+      </div>
       <div
         v-if="facets?.families.length"
         class="fam-row"
@@ -209,15 +218,15 @@ onMounted(() => {
           class="filter-btn"
           :class="{ active: famFilter === '' }"
           @click="famFilter = ''; loadMarket()"
-        >全部</button>
+        >全部底模族</button>
         <button
           v-for="f in facets.families"
-          :key="f.key"
+          :key="f"
           type="button"
           class="filter-btn"
-          :class="{ active: famFilter === f.key }"
-          @click="famFilter = f.key; loadMarket()"
-        >{{ f.label }}</button>
+          :class="{ active: famFilter === f }"
+          @click="famFilter = f; loadMarket()"
+        >{{ f }}</button>
       </div>
       <div class="model-grid">
         <button
@@ -261,6 +270,7 @@ onMounted(() => {
           >关闭</button>
         </div>
         <p class="muted">{{ detail.excerpt }}</p>
+        <p class="muted">{{ detail.description }}</p>
         <div class="detail-tags">
           <span
             v-for="t in detail.tags"
@@ -269,6 +279,22 @@ onMounted(() => {
           >{{ t }}</span>
         </div>
         <p><strong>可用：</strong>{{ detail.available ? '是' : '否' }} · <strong>可选：</strong>{{ detail.selectable ? '是' : '否' }}</p>
+        <!-- 该底模 family 下的 LoRA 分组 -->
+        <div
+          v-if="detail.compatible?.length"
+          class="lora-group"
+        >
+          <div class="lora-group-title">LoRA · {{ detail.family || detail.name }}（{{ detail.compatible.length }}）</div>
+          <div class="lora-grid">
+            <button
+              v-for="l in detail.compatible"
+              :key="l.id"
+              type="button"
+              class="lora-chip"
+              @click="showDetail(l.id)"
+            >{{ l.name }}</button>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -522,6 +548,36 @@ onMounted(() => {
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--amber-soft);
+}
+
+/* ── LoRA 分组 ── */
+.lora-group {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--hg-line, #e2e4ea);
+}
+.lora-group-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: 0.5rem;
+}
+.lora-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lora-chip {
+  border: 1px solid var(--hg-line, #e2e4ea);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.76rem;
+  cursor: pointer;
+  background: transparent;
+  color: var(--ink);
+}
+.lora-chip:hover {
+  border-color: var(--amber);
 }
 .mine-list {
   display: grid;

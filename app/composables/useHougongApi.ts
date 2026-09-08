@@ -350,9 +350,15 @@ export interface ModelListItem {
   engine: string
 }
 
+export interface ModelDetail extends ModelListItem {
+  description: string
+  compatible: ModelListItem[]
+  sampling: { steps: number, sampler: string, scheduler: string, cfg: number } | null
+}
+
 export interface ModelFacets {
-  families: { key: string, label: string, count: number }[]
-  loraCategories: { key: string, label: string, count: number }[]
+  families: string[]
+  loraCategories: string[]
 }
 
 export interface MineListItem {
@@ -662,8 +668,8 @@ export function useHougongApi() {
     if (input.limit) q.set('limit', String(input.limit))
     return apiRequest(`/platform/model/list?${q.toString()}`)
   }
-  async function modelGet(id: string): Promise<ModelListItem> {
-    return apiRequest<ModelListItem>(`/platform/model/get?id=${encodeURIComponent(id)}`)
+  async function modelGet(id: string): Promise<ModelDetail> {
+    return apiRequest<ModelDetail>(`/platform/model/get?id=${encodeURIComponent(id)}`)
   }
   async function modelFacets(): Promise<ModelFacets> {
     return apiRequest<ModelFacets>('/platform/model/facets')

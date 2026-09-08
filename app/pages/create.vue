@@ -46,6 +46,44 @@ const showNegative = ref(false)
 const assetOpen = ref(false)
 const assets = ref<AssetItem[]>([])
 const selectedAssetId = ref('')
+const modelPickerOpen = ref(false)
+// 已选 LoRA（按 catalog id，挂到当前底模 family 下）
+const selectedLoraIds = ref<string[]>([])
+
+// 底模按 family 分组（对齐 PeachArt：同一 family 的底模归一组）。
+const groupedModels = computed(() => {
+  const models = catalog.value?.models || []
+  const groups = new Map<string, CatalogItem[]>()
+  for (const m of models) {
+    const key = m.family || '其他'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(m)
+  }
+  return [...groups.entries()].map(([family, items]) => ({ family, items }))
+})
+
+const activeModel = computed(() => (catalog.value?.models || []).find(m => m.id === modelId.value) || null)
+// 当前底模 family 下可选的 LoRA。
+const familyLoras = computed(() => {
+  const fam = activeModel.value?.family
+  if (!fam) return []
+  return (catalog.value?.loras || []).filter(l => l.family === fam && l.selectable)
+})
+
+function toggleLora(id: string) {
+  const i = selectedLoraIds.value.indexOf(id)
+  if (i >= 0) selectedLoraIds.value.splice(i, 1)
+  else selectedLoraIds.value.push(id)
+}
+
+function pickModel(m: CatalogItem) {
+  modelId.value = m.id
+  selectedLoraIds.value = []
+  modelPickerOpen.value = false
+  if (m.sampling) {
+    sampling.value = { steps: m.sampling.steps, sampler: m.sampling.sampler, scheduler: m.sampling.scheduler, cfg: m.sampling.cfg }
+  }
+}
 
 // ── 云端模型（seedream/xiaoyi，balance 计费）选择 ──
 const cloudModels = computed(() => catalog.value?.cloudModels || [])
@@ -131,10 +169,7 @@ function cycleModel() {
   const idx = Math.max(0, models.findIndex(m => m.id === modelId.value))
   const next = models[(idx + 1) % models.length]
   if (!next) return
-  modelId.value = next.id
-  if (next.sampling) {
-    sampling.value = { steps: next.sampling.steps, sampler: next.sampling.sampler, scheduler: next.sampling.scheduler, cfg: next.sampling.cfg }
-  }
+  pickModel(next)
 }
 
 const cost = computed(() => {
@@ -245,6 +280,11 @@ async function send() {
         throw new Error('视频生成请先上传首帧图片或从素材库选择')
       }
     }
+    // 已选 LoRA：按当前底模 family 下勾选，传 comfy 文件名（lora_name）+ 默认权重。
+    const selectedLoras = (familyLoras.value || [])
+      .filter(l => selectedLoraIds.value.includes(l.id))
+      .map(l => ({ name: l.fileName || l.name, weight: l.weight?.default ?? 1.0 }))
+
     const task = await hgApi.createTask({
       clientKey: `hg-web-${Date.now()}-${runSeq}`,
       type: kind === 'video' ? 'i2v' : 't2i',
@@ -256,6 +296,7 @@ async function send() {
       quality: kind === 'video' ? undefined : (useCloud.value ? (cloudQuality.value || undefined) : undefined),
       engine: kind === 'video' ? undefined : (useCloud.value ? (activeCloudModel.value?.engine || undefined) : undefined),
       sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
+      loras: kind === 'video' || useCloud.value ? undefined : selectedLoras,
       characterId: characterId === 'daji' ? '' : characterId,
       refAssetIds: firstFrameId ? [firstFrameId] : []
     })
@@ -697,17 +738,43 @@ function handleUpload(event: Event) {
                   aria-hidden="true"
                 />素材库
               </button>
-              <button
+              <div
                 v-if="(catalog?.models || []).length"
-                type="button"
-                :class="{ active: !useCloud }"
-                @click="clearCloudModel"
+                class="model-selector"
               >
-                <span
-                  class="i-lucide-box"
-                  aria-hidden="true"
-                />{{ (catalog?.models || []).find(m => m.id === modelId)?.name || '底模' }}
-              </button>
+                <button
+                  type="button"
+                  :class="{ active: !useCloud }"
+                  @click="modelPickerOpen = !modelPickerOpen; if (!useCloud) clearCloudModel()"
+                >
+                  <span
+                    class="i-lucide-box"
+                    aria-hidden="true"
+                  />{{ activeModel?.name || '底模' }} <small class="fam">{{ activeModel?.family || '' }}</small>
+                </button>
+                <div
+                  v-if="modelPickerOpen"
+                  class="model-picker-panel"
+                >
+                  <div
+                    v-for="g in groupedModels"
+                    :key="g.family"
+                    class="model-group"
+                  >
+                    <div class="model-group-title">{{ g.family }}</div>
+                    <div class="model-group-items">
+                      <button
+                        v-for="m in g.items"
+                        :key="m.id"
+                        type="button"
+                        class="model-option"
+                        :class="{ active: m.id === modelId }"
+                        @click="pickModel(m)"
+                      >{{ m.name }}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <button
                 v-if="cloudModels.length && mode === 'image'"
                 type="button"
@@ -748,6 +815,20 @@ function handleUpload(event: Event) {
                   aria-hidden="true"
                 />{{ duration }}
               </button>
+            </div>
+            <div
+              v-if="familyLoras.length && !useCloud && mode === 'image'"
+              class="lora-strip"
+            >
+              <span class="lora-strip-label">LoRA · {{ activeModel?.family }}：</span>
+              <button
+                v-for="l in familyLoras"
+                :key="l.id"
+                type="button"
+                class="lora-chip"
+                :class="{ active: selectedLoraIds.includes(l.id) }"
+                @click="toggleLora(l.id)"
+              >{{ l.name }}</button>
             </div>
             <button
               type="button"
@@ -974,5 +1055,92 @@ function handleUpload(event: Event) {
 .asset-strip-empty {
   color: var(--faint);
   font-size: 12px;
+}
+
+/* ── 模型选择器（按 family 分组下拉） ── */
+.model-selector {
+  position: relative;
+}
+.model-selector .fam {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.model-picker-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
+  border-radius: 12px;
+  background: var(--bg-elev, rgb(20 20 24 / 0.98));
+  box-shadow: 0 10px 32px rgb(0 0 0 / 0.45);
+}
+.model-group + .model-group {
+  margin-top: 8px;
+}
+.model-group-title {
+  padding: 4px 6px;
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.model-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.model-option {
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--panel);
+  font-size: 12px;
+}
+.model-option:hover {
+  border-color: var(--hg-line, rgb(255 255 255 / 0.16));
+}
+.model-option.active {
+  border-color: var(--amber);
+  background: rgb(251 191 36 / 0.12);
+}
+
+/* ── LoRA 分组条 ── */
+.lora-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.1));
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.025);
+}
+.lora-strip-label {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.lora-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--panel);
+  font-size: 12px;
+}
+.lora-chip.active {
+  border-color: var(--amber);
+  background: rgb(251 191 36 / 0.16);
 }
 </style>
