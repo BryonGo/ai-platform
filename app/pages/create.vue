@@ -47,6 +47,46 @@ const assetOpen = ref(false)
 const assets = ref<AssetItem[]>([])
 const selectedAssetId = ref('')
 
+// ── 云端模型（seedream/xiaoyi，balance 计费）选择 ──
+const cloudModels = computed(() => catalog.value?.cloudModels || [])
+const cloudModelId = ref('')
+const cloudQuality = ref('')
+
+const activeCloudModel = computed(() => cloudModels.value.find(m => m.id === cloudModelId.value) || null)
+// 只选云端（balance）或本地 comfy；云端模型仅图片（t2i），视频仍走 comfy i2v。
+const useCloud = computed(() => mode.value === 'image' && !!activeCloudModel.value)
+
+function cycleCloudModel() {
+  if (!cloudModels.value.length) return
+  const idx = Math.max(0, cloudModels.value.findIndex(m => m.id === cloudModelId.value))
+  const next = cloudModels.value[(idx + 1) % cloudModels.value.length]
+  if (!next) return
+  cloudModelId.value = next.id
+  cloudQuality.value = next.capabilities.default.quality
+}
+
+function clearCloudModel() {
+  cloudModelId.value = ''
+  cloudQuality.value = ''
+}
+
+function cycleCloudQuality() {
+  const m = activeCloudModel.value
+  if (!m) return
+  const quals = m.capabilities.parameters.map(p => p.quality)
+  if (!quals.length) return
+  const idx = Math.max(0, quals.indexOf(cloudQuality.value))
+  cloudQuality.value = quals[(idx + 1) % quals.length] || quals[0] || ''
+}
+
+// 当前计费提示：云端按 balance 分显示（pricing.balance），本地按 credit 积分。
+const activeCloudCharge = computed(() => {
+  const m = activeCloudModel.value
+  if (!m) return 0
+  const q = m.pricing.qualities.find(x => x.quality === cloudQuality.value)
+  return q?.balance ?? 0
+})
+
 async function loadCatalog() {
   try {
     const cat = await hgApi.getCatalog()
@@ -97,7 +137,10 @@ function cycleModel() {
   }
 }
 
-const cost = computed(() => (mode.value === 'video' ? 24 : 8))
+const cost = computed(() => {
+  if (useCloud.value) return activeCloudCharge.value
+  return mode.value === 'video' ? 24 : 8
+})
 const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
 const running = computed(() => messages.value.some(m => m.role === 'assistant' && m.status === 'running'))
 const canSend = computed(() => !running.value && (prompt.value.trim().length > 0 || !!uploadPreview.value))
@@ -144,7 +187,8 @@ function clearRunTimers() {
 }
 
 function msgText(kind: Mode, characterName: string, ratioNow: string, credits: number) {
-  return `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} 积分`
+  const unit = useCloud.value ? '余额' : '积分'
+  return `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} ${unit}`
 }
 
 async function send() {
@@ -208,8 +252,10 @@ async function send() {
       negativePrompt: negative.value.trim() || undefined,
       ratio: ratioNow,
       // i2v 走 MiniMax H3 专用工作流，不传文生图模型/采样参数（否则用错模型卡死）
-      modelId: kind === 'video' ? undefined : (modelId.value || undefined),
-      sampling: kind === 'video' ? undefined : (sampling.value || undefined),
+      modelId: kind === 'video' ? undefined : (useCloud.value ? cloudModelId.value : (modelId.value || undefined)),
+      quality: kind === 'video' ? undefined : (useCloud.value ? (cloudQuality.value || undefined) : undefined),
+      engine: kind === 'video' ? undefined : (useCloud.value ? (activeCloudModel.value?.engine || undefined) : undefined),
+      sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
       characterId: characterId === 'daji' ? '' : characterId,
       refAssetIds: firstFrameId ? [firstFrameId] : []
     })
@@ -654,12 +700,34 @@ function handleUpload(event: Event) {
               <button
                 v-if="(catalog?.models || []).length"
                 type="button"
-                @click="cycleModel"
+                :class="{ active: !useCloud }"
+                @click="clearCloudModel"
               >
                 <span
                   class="i-lucide-box"
                   aria-hidden="true"
                 />{{ (catalog?.models || []).find(m => m.id === modelId)?.name || '底模' }}
+              </button>
+              <button
+                v-if="cloudModels.length && mode === 'image'"
+                type="button"
+                :class="{ active: useCloud }"
+                @click="cycleCloudModel"
+              >
+                <span
+                  class="i-lucide-cloud"
+                  aria-hidden="true"
+                />{{ activeCloudModel?.name || '云端' }}
+              </button>
+              <button
+                v-if="useCloud"
+                type="button"
+                @click="cycleCloudQuality"
+              >
+                <span
+                  class="i-lucide-sliders-horizontal"
+                  aria-hidden="true"
+                />{{ cloudQuality }}
               </button>
               <button
                 type="button"
@@ -692,7 +760,7 @@ function handleUpload(event: Event) {
                 aria-hidden="true"
               />
               生成{{ mode === 'video' ? '视频' : '图片' }}
-              <small>{{ cost }} 积分</small>
+              <small>{{ cost }} {{ useCloud ? '余额' : '积分' }}</small>
             </button>
           </div>
           <textarea

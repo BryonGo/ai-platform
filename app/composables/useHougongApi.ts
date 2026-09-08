@@ -78,11 +78,33 @@ export interface CatalogItem {
   sampling?: { steps: number, sampler: string, scheduler: string, cfg: number }
 }
 
+export interface CloudModel {
+  id: string
+  name: string
+  author: string
+  state: string
+  engine: 'seedream' | 'xiaoyi' | string
+  endpoint: string
+  capabilities: {
+    parameters: { quality: string, ratios: { ratio: string, size: string }[] }[]
+    default: { quality: string, ratio: string }
+    maxInputs: number
+    maxOutputs: number
+  }
+  pricing: {
+    includedInputs: number
+    extraInputBalance: number
+    qualities: { quality: string, balance: number }[]
+  }
+  output: { format: string }
+}
+
 export interface Catalog {
   version: number
   sampling: CatalogSampling
   models: CatalogItem[]
   loras: CatalogItem[]
+  cloudModels: CloudModel[]
 }
 
 export interface HougongTask {
@@ -467,6 +489,8 @@ export function useHougongApi() {
     sampling?: { steps: number, sampler: string, scheduler: string, cfg: number, denoise?: number }
     loras?: { name: string, weight: number }[]
     modelId?: string
+    quality?: string
+    engine?: string
     characterId?: string
     refAssetIds?: string[]
   }): Promise<HougongTask> {
