@@ -146,6 +146,11 @@ export interface AssetItem {
   hidden: boolean
 }
 
+export interface AssetChoice {
+  asset: AssetItem
+  generation: { taskId: string } | null
+}
+
 export interface PublicationWork {
   id: string
   title: string
@@ -196,27 +201,179 @@ export interface Invite {
   rewardCredits: number
 }
 
+export interface EconomyWallet {
+  credits: number
+  balanceCents: number
+  nextExpiry: string
+}
+
+export interface WalletLedgerItem {
+  id: string
+  asset: string // credit / balance
+  amount: number
+  kind: string // daily/invite/generation/refund/publish/member/topup/adjust
+  expiresAt: string
+  createdAt: string
+}
+
 export interface Membership {
   purchaseId: string
   tier: string
   choice: string
-  startedAt: number
-  expiresAt: number
+  startedAt: string
+  expiresAt: string
+}
+
+export interface Purchase {
+  id: string
+  kind: string
+  state: string
+  priceCents: number
+  credits: number
+  balanceCents: number
+  months: number | null
+  tier: string
+  choice: string
+  paymentUrl: string
+  paidAt: string
+  createdAt: string
 }
 
 export interface Transaction {
   id: string
   type: 'purchase' | 'ledger'
   category: string
-  createdAt: number
+  state?: string
+  priceCents?: number
+  credits?: number
+  balanceCents?: number
+  tier?: string
+  amount?: number
+  kind?: string
+  expiresAt?: string
+  createdAt: string
+}
+
+export interface CreatorWork {
+  id: string
+  title: string
+  imageUrl: string
+}
+
+export interface Creator {
+  state: string // '' | pending/approved/rejected/revoked
+  eligible: boolean
+  inviteCredits: number
+  requiredImages: number
+  publishedImages: number
+  reward: { images: number, limit: number, credits: number, perImageCredits: number, expiresAt: string }
+  direction: string
+  statement: string
+  agreedAt: string
+  submittedAt: string
+  reviewedAt: string
+  reason: string
+  works: CreatorWork[]
+  selectableWorks: CreatorWork[]
+}
+
+export interface ModelCreator {
+  state: string
+  platform: string
+  profileUrl: string
+  resourceUrls: string[]
+  agreedAt: string
+  submittedAt: string
+  reviewedAt: string
+  reason: string
 }
 
 export interface NotificationItem {
   id: string
   kind: string
   message: string
-  readAt: number | null
-  createdAt: number
+  readAt: string // '' = unread
+  createdAt: string
+  target: { kind: string, id: string }
+}
+
+// ── 模型（model）类型 ──
+export interface ModelWeight { default: number, min: number, max: number }
+export interface ModelStats { works: number, comments: number, heat: number }
+export interface ModelTag { key: string, labels: { chinese: string, english: string }, aliases: string[] }
+export interface ModelSampling { steps?: number, sampler?: string, scheduler?: string, cfg?: number }
+export interface ModelFile { name: string, bytes: number, available: boolean }
+export interface ModelRuntime { engine: string, fileName?: string }
+export interface ModelListItem {
+  id: string
+  type: string // model / lora
+  name: string
+  author: string
+  owner?: { id: string, name: string }
+  source?: string
+  family: string
+  category: string
+  tags: string[]
+  excerpt: string
+  cover: string | null
+  stats: ModelStats
+  available: boolean
+  selectable: boolean
+  unavailableReason: string | null
+  safety: string
+  triggers: string[]
+  weight: ModelWeight | null
+  state?: string
+  updatedAt: number
+  engine: string
+}
+
+export interface ModelFacets {
+  families: { key: string, label: string, count: number }[]
+  loraCategories: { key: string, label: string, count: number }[]
+}
+
+export interface MineListItem {
+  id: string
+  title: string
+  type: string
+  family: string
+  category: string
+  excerpt: string
+  safety: string
+  state: string
+  updatedAt: number
+  cover: string | null
+  viewer: { edit: boolean, submit: boolean, withdraw: boolean, hide: boolean, remove: boolean }
+}
+
+export interface MineModel extends MineListItem {
+  owner: { id: string, name: string }
+  source: string
+  sourceUrl: string | null
+  description: string
+  triggers: string[]
+  weight: ModelWeight | null
+  sampling: ModelSampling | null
+  images: { id: string, url: string, position: number }[]
+  runtime: ModelRuntime
+  file: ModelFile | null
+  reason: string | null
+}
+
+export interface ModelDraftInput {
+  source: 'original' | 'import'
+  sourceUrl?: string
+  title: string
+  type: 'model' | 'lora'
+  family: string
+  category: string
+  description?: string
+  triggers?: string[]
+  weight?: number
+  sampling?: { steps?: number, sampler?: string, scheduler?: string, cfg?: number }
+  imageIds?: string[]
+  safety: 'safe' | 'adult'
 }
 
 export function useHougongApi() {
@@ -367,12 +524,23 @@ export function useHougongApi() {
   }
 
   // ── 资产库（asset）──
-  async function listAssets(page = 1, pageSize = 20): Promise<AssetItem[]> {
-    const res = await apiRequest<{ items: AssetItem[] }>(`/platform/asset?page=${page}&pageSize=${pageSize}`)
+  async function listAssets(hidden = false, page = 1, pageSize = 100): Promise<AssetItem[]> {
+    const res = await apiRequest<{ items: AssetItem[] }>(`/platform/asset?hidden=${hidden ? 1 : 0}&page=${page}&pageSize=${pageSize}`)
     return res.items || []
   }
   async function removeAsset(id: string): Promise<void> {
     await apiRequest(`/platform/asset/${id}`, { method: 'DELETE' })
+  }
+  async function setAssetHidden(id: string, hidden: boolean): Promise<void> {
+    await apiRequest(`/platform/asset/${id}/hidden`, { method: 'POST', body: { hidden } })
+  }
+  async function assetSelect(page = 1, pageSize = 20): Promise<AssetChoice[]> {
+    const res = await apiRequest<{ items: AssetChoice[] }>(`/platform/asset/select?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function assetSelectByIds(ids: string[]): Promise<AssetChoice[]> {
+    const res = await apiRequest<{ items: AssetChoice[] }>('/platform/asset/selectByIds', { method: 'POST', body: { ids } })
+    return res.items || []
   }
 
   // ── 发布（work/post/comment/tag/report）──
@@ -405,21 +573,46 @@ export function useHougongApi() {
   }
 
   // ── 经济（wallet/invite/membership/checkout/transaction/creator）──
-  async function walletBalance(): Promise<{ credits: number, balanceCents: number, nextExpiry: string | null }> {
-    return apiRequest('/platform/wallet')
+  async function walletBalance(): Promise<EconomyWallet> {
+    return apiRequest<EconomyWallet>('/platform/economy/wallet')
   }
-  async function claimDaily(): Promise<void> {
-    await apiRequest('/platform/wallet/claim', { method: 'POST' })
+  async function claimDaily(): Promise<EconomyWallet> {
+    return apiRequest<EconomyWallet>('/platform/economy/wallet/claim', { method: 'POST' })
+  }
+  async function walletLedger(asset?: string, kind?: string, page = 1, pageSize = 20): Promise<WalletLedgerItem[]> {
+    const q = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+    if (asset) q.set('asset', asset)
+    if (kind) q.set('kind', kind)
+    const res = await apiRequest<{ items: WalletLedgerItem[] }>(`/platform/economy/wallet/ledger?${q.toString()}`)
+    return res.items || []
   }
   async function invite(): Promise<Invite> {
-    return apiRequest('/platform/invite')
+    return apiRequest<Invite>('/platform/economy/invite')
   }
-  async function membership(): Promise<Membership | null> {
-    return apiRequest('/platform/membership')
+  async function membership(): Promise<Membership> {
+    return apiRequest<Membership>('/platform/economy/membership')
+  }
+  async function creator(): Promise<Creator> {
+    return apiRequest<Creator>('/platform/economy/creator')
+  }
+  async function submitCreator(input: { direction: string, statement: string, workIds: string[], agreed: boolean }): Promise<Creator> {
+    return apiRequest<Creator>('/platform/economy/creator/submit', { method: 'POST', body: input })
+  }
+  async function modelCreator(): Promise<ModelCreator> {
+    return apiRequest<ModelCreator>('/platform/economy/model-creator')
+  }
+  async function submitModelCreator(input: { platform: string, profileUrl: string, resourceUrls: string[], agreed: boolean }): Promise<ModelCreator> {
+    return apiRequest<ModelCreator>('/platform/economy/model-creator/submit', { method: 'POST', body: input })
   }
   async function listTransactions(page = 1, pageSize = 20): Promise<Transaction[]> {
-    const res = await apiRequest<{ items: Transaction[] }>(`/platform/transaction?page=${page}&pageSize=${pageSize}`)
+    const res = await apiRequest<{ items: Transaction[] }>(`/platform/economy/transaction?page=${page}&pageSize=${pageSize}`)
     return res.items || []
+  }
+  async function checkoutCreate(purchase: { kind: string, yuan?: number, tier?: string, choice?: string }, clientKey = 'web-' + Date.now()): Promise<Purchase> {
+    return apiRequest<Purchase>('/platform/economy/checkout', { method: 'POST', body: { clientKey, purchase } })
+  }
+  async function checkoutGet(id: string): Promise<Purchase> {
+    return apiRequest<Purchase>(`/platform/economy/checkout/${id}`)
   }
 
   // ── 通知（notification）──
@@ -428,11 +621,55 @@ export function useHougongApi() {
     return r.unread || 0
   }
   async function listNotifications(page = 1, pageSize = 20): Promise<NotificationItem[]> {
-    const res = await apiRequest<{ items: NotificationItem[] }>(`/platform/notification?page=${page}&pageSize=${pageSize}`)
+    const res = await apiRequest<{ items: NotificationItem[] }>(`/platform/notification/list?page=${page}&pageSize=${pageSize}`)
     return res.items || []
   }
-  async function markNotificationsRead(ids?: string[]): Promise<void> {
-    await apiRequest('/platform/notification/read', { method: 'POST', body: { notificationIds: ids, all: !ids } })
+  async function markNotificationsRead(notificationIds?: string[], all = false): Promise<void> {
+    await apiRequest('/platform/notification/mark-read', { method: 'POST', body: { notificationIds, all } })
+  }
+
+  // ── 模型（model：目录 + 我的模型 + 发布）──
+  async function modelList(input: { type?: string, family?: string, category?: string, cursor?: string, limit?: number } = {}): Promise<{ items: ModelListItem[], nextCursor?: string }> {
+    const q = new URLSearchParams()
+    if (input.type) q.set('type', input.type)
+    if (input.family) q.set('family', input.family)
+    if (input.category) q.set('category', input.category)
+    if (input.cursor) q.set('cursor', input.cursor)
+    if (input.limit) q.set('limit', String(input.limit))
+    return apiRequest(`/platform/model/list?${q.toString()}`)
+  }
+  async function modelGet(id: string): Promise<ModelListItem> {
+    return apiRequest<ModelListItem>(`/platform/model/get?id=${encodeURIComponent(id)}`)
+  }
+  async function modelFacets(): Promise<ModelFacets> {
+    return apiRequest<ModelFacets>('/platform/model/facets')
+  }
+  async function mineModels(state?: string, cursor?: string, limit = 50): Promise<{ items: MineListItem[], nextCursor?: string }> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (state) q.set('state', state)
+    if (cursor) q.set('cursor', cursor)
+    return apiRequest(`/platform/model/mine/list?${q.toString()}`)
+  }
+  async function mineModel(id: string): Promise<MineModel> {
+    return apiRequest<MineModel>(`/platform/model/mine/get?id=${encodeURIComponent(id)}`)
+  }
+  async function createModel(): Promise<MineModel> {
+    return apiRequest<MineModel>('/platform/model/create', { method: 'POST' })
+  }
+  async function saveModel(id: string, draft: ModelDraftInput): Promise<MineModel> {
+    return apiRequest<MineModel>('/platform/model/save', { method: 'POST', body: { id, draft } })
+  }
+  async function submitModel(id: string): Promise<MineModel> {
+    return apiRequest<MineModel>('/platform/model/submit', { method: 'POST', body: { id, agreed: true } })
+  }
+  async function withdrawModel(id: string): Promise<MineModel> {
+    return apiRequest<MineModel>('/platform/model/withdraw', { method: 'POST', body: { id } })
+  }
+  async function setModelHidden(id: string, hidden: boolean): Promise<MineModel> {
+    return apiRequest<MineModel>('/platform/model/setHidden', { method: 'POST', body: { id, hidden } })
+  }
+  async function removeModel(id: string): Promise<void> {
+    await apiRequest(`/platform/model/remove?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   return {
@@ -463,6 +700,9 @@ export function useHougongApi() {
     snippetList,
     listAssets,
     removeAsset,
+    setAssetHidden,
+    assetSelect,
+    assetSelectByIds,
     listWorksFeed,
     getWork,
     listPosts,
@@ -473,11 +713,29 @@ export function useHougongApi() {
     report,
     walletBalance,
     claimDaily,
+    walletLedger,
     invite,
     membership,
+    creator,
+    submitCreator,
+    modelCreator,
+    submitModelCreator,
     listTransactions,
+    checkoutCreate,
+    checkoutGet,
     unreadNotifications,
     listNotifications,
-    markNotificationsRead
+    markNotificationsRead,
+    modelList,
+    modelGet,
+    modelFacets,
+    mineModels,
+    mineModel,
+    createModel,
+    saveModel,
+    submitModel,
+    withdrawModel,
+    setModelHidden,
+    removeModel
   }
 }

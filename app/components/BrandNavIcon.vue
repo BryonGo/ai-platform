@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  name: 'overview' | 'create' | 'characters' | 'stories' | 'works'
+  name: 'overview' | 'create' | 'characters' | 'stories' | 'works' | 'assets' | 'models' | 'wallet'
 }>()
 </script>
 
@@ -51,6 +51,66 @@ defineProps<{
         cx="15.93"
         cy="11.28"
         r=".72"
+        class="icon-gem"
+      />
+    </g>
+
+    <g v-else-if="name === 'works'">
+      <path d="M4.15 6.15c0-.88.72-1.6 1.6-1.6h12.5c.88 0 1.6.72 1.6 1.6v11.7c0 .88-.72 1.6-1.6 1.6H5.75c-.88 0-1.6-.72-1.6-1.6V6.15Z" />
+      <path d="m10.15 8.65 5.1 3.35-5.1 3.35v-6.7Z" />
+      <path d="M4.15 7.55h15.7M7.35 4.55l1.55 3M12.25 4.55l1.55 3M17.15 4.55l1.55 3" />
+      <path d="m18.2 2.7.23.6.6.23-.6.23-.23.6-.23-.6-.6-.23.6-.23.23-.6Z" />
+    </g>
+
+    <g v-else-if="name === 'assets'">
+      <rect
+        x="3.4"
+        y="3.4"
+        width="7.2"
+        height="7.2"
+        rx="1.6"
+      />
+      <rect
+        x="13.4"
+        y="3.4"
+        width="7.2"
+        height="7.2"
+        rx="1.6"
+      />
+      <rect
+        x="3.4"
+        y="13.4"
+        width="7.2"
+        height="7.2"
+        rx="1.6"
+      />
+      <circle
+        cx="17"
+        cy="17"
+        r="3.4"
+      />
+    </g>
+
+    <g v-else-if="name === 'models'">
+      <path d="M12 3.2 20 7.6v8.8L12 20.8l-8-4.4V7.6l8-4.4Z" />
+      <path d="m4.4 7.9 7.6 4.2 7.6-4.2M12 12.1V20.5" />
+    </g>
+
+    <g v-else-if="name === 'wallet'">
+      <rect
+        x="3.2"
+        y="5.6"
+        width="17.6"
+        height="12.8"
+        rx="2.2"
+      />
+      <path d="M3.4 9.2h17.2" />
+      <rect
+        x="15"
+        y="11.6"
+        width="4.4"
+        height="3"
+        rx="1.2"
         class="icon-gem"
       />
     </g>

@@ -16,11 +16,32 @@ const nav = [
   { to: '/create', label: '创作', icon: 'create' as const },
   { to: '/characters', label: '角色', icon: 'characters' as const },
   { to: '/stories', label: '故事', icon: 'stories' as const },
-  { to: '/works', label: '作品', icon: 'works' as const }
+  { to: '/works', label: '作品', icon: 'works' as const },
+  { to: '/assets', label: '素材库', icon: 'assets' as const },
+  { to: '/models', label: '模型', icon: 'models' as const },
+  { to: '/wallet', label: '钱包', icon: 'wallet' as const }
 ]
 
 const route = useRoute()
 const railCollapsed = ref(false)
+
+// 顶栏：积分余额 + 未读通知角标（登录态下加载）
+const topCredits = ref(0)
+const unreadCount = ref(0)
+onMounted(async () => {
+  const session = useAuthSession()
+  session.load()
+  if (!session.token.value) return
+  const api = useHougongApi()
+  try {
+    const [w, u] = await Promise.all([
+      api.walletBalance().catch(() => null),
+      api.unreadNotifications().catch(() => 0)
+    ])
+    if (w) topCredits.value = w.credits
+    unreadCount.value = u || 0
+  } catch { /* 忽略（未登录/接口暂不可用） */ }
+})
 
 function isActive(item: { to: string }) {
   if (item.to === '/') {
@@ -79,14 +100,28 @@ function toggleRail() {
         </div>
 
         <div class="account-area">
-          <button
+          <NuxtLink
             class="credits"
-            type="button"
+            to="/wallet"
             aria-label="查看积分余额"
           >
             <span aria-hidden="true" />
-            <strong>2,400</strong> 积分
-          </button>
+            <strong>{{ topCredits.toLocaleString() }}</strong> 积分
+          </NuxtLink>
+          <NuxtLink
+            class="notification-bell"
+            to="/notifications"
+            aria-label="通知"
+          >
+            <span
+              class="i-lucide-bell"
+              aria-hidden="true"
+            />
+            <span
+              v-if="unreadCount > 0"
+              class="bell-badge"
+            >{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+          </NuxtLink>
           <button
             class="avatar"
             type="button"
@@ -141,8 +176,9 @@ function toggleRail() {
               />
               <span class="utility-label">简体中文</span>
             </button>
-            <button
-              type="button"
+            <NuxtLink
+              class="utility-link"
+              to="/notifications"
               aria-label="通知"
             >
               <span
@@ -150,7 +186,7 @@ function toggleRail() {
                 aria-hidden="true"
               />
               <span class="utility-label">通知</span>
-            </button>
+            </NuxtLink>
             <button
               type="button"
               aria-label="设置"
@@ -186,3 +222,44 @@ function toggleRail() {
     </div>
   </UApp>
 </template>
+
+<style scoped>
+.notification-bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--hg-muted, #666);
+  border-radius: 999px;
+  text-decoration: none;
+}
+.notification-bell:hover {
+  background: var(--hg-amber, #f3e3c0);
+  color: #333;
+}
+.bell-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+.utility-link {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: inherit;
+  text-decoration: none;
+  width: 100%;
+}
+</style>
