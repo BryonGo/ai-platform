@@ -127,19 +127,24 @@ async function send() {
     time: now()
   })
   try {
-    if (kind === 'video') {
-      throw new Error('视频生成需要首帧上传，后端媒体上传即将上线；当前请使用图片模式')
-    }
     if (!session.token.value) {
       throw new Error('请先登录')
     }
+    let firstFrameId = ''
+    if (kind === 'video') {
+      if (!rawFile.value) {
+        throw new Error('视频生成请先上传首帧图片（参考素材）')
+      }
+      const up = await hgApi.uploadMedia(rawFile.value)
+      firstFrameId = up.mediaAssetId
+    }
     const task = await hgApi.createTask({
       clientKey: `hg-web-${Date.now()}-${runSeq}`,
-      type: 't2i',
+      type: kind === 'video' ? 'i2v' : 't2i',
       prompt: text,
       ratio: ratioNow,
       characterId: characterId === 'daji' ? '' : characterId,
-      refAssetIds: []
+      refAssetIds: firstFrameId ? [firstFrameId] : []
     })
     const msg = () => messages.value.find(m => m.runId === runId)
     const taskId = task.id
@@ -166,7 +171,7 @@ async function send() {
           await hgApi.createWork({
             taskId: String(taskId),
             assetId: outAssets[0],
-            kind: 'image',
+            kind: kind === 'video' ? 'video' : 'image',
             title: text.slice(0, 40),
             characterId: 0
           })
@@ -333,6 +338,8 @@ function inspire() {
   prompt.value = '雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。'
 }
 
+const rawFile = ref<File | null>(null)
+
 function handleUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -346,6 +353,7 @@ function handleUpload(event: Event) {
 
   uploadPreview.value = URL.createObjectURL(file)
   uploadName.value = file.name
+  rawFile.value = file
 }
 </script>
 

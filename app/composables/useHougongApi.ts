@@ -135,6 +135,12 @@ export function useHougongApi() {
     return apiRequest('/account/credits')
   }
 
+  async function uploadMedia(file: File): Promise<{ mediaAssetId: string, width: number, height: number, mime: string }> {
+    const form = new FormData()
+    form.append('file', file)
+    return apiRequest('/hougong/media', { method: 'POST', form })
+  }
+
   async function createTask(input: {
     clientKey: string
     type: string
@@ -168,6 +174,7 @@ export function useHougongApi() {
     listStories,
     listTasks,
     wallet,
+    uploadMedia,
     createTask,
     getTask,
     cancelTask,
