@@ -62,8 +62,8 @@ defineProps<{
   place-items: center;
   width: 100%;
   aspect-ratio: 3 / 4;
-  background: linear-gradient(160deg, #f3e3c0, #e9d5b0);
-  color: #8a6a35;
+  background: linear-gradient(160deg, #26272c, #17181b);
+  color: var(--amber-soft);
   font-size: clamp(40px, 6vw, 72px);
   font-weight: 800;
 }

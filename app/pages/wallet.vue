@@ -463,7 +463,7 @@ onMounted(() => {
   padding: 1.1rem 1.25rem;
   display: grid;
   gap: 0.2rem;
-  background: #fff;
+  background: var(--hg-card);
 }
 .wallet-card strong {
   font-size: clamp(1.5rem, 2.4vw, 2rem);
@@ -501,7 +501,7 @@ onMounted(() => {
   padding: 1.1rem 1.25rem;
   display: grid;
   gap: 0.7rem;
-  background: #fff;
+  background: var(--hg-card);
 }
 .section-title {
   margin: 0;
@@ -605,7 +605,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   font-size: 0.86rem;
   outline: none;
-  background: #faf9f7;
+  background: var(--hg-input);
   resize: vertical;
 }
 .composer2-btn-sm {

@@ -459,7 +459,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   border-radius: 1rem;
   overflow: hidden;
-  background: #fff;
+  background: var(--hg-card);
   cursor: pointer;
   padding: 0;
   text-align: left;
@@ -478,8 +478,8 @@ onMounted(() => {
 .model-cover-placeholder {
   display: grid;
   place-items: center;
-  background: linear-gradient(160deg, #f3e3c0, #e9d5b0);
-  color: #8a6a35;
+  background: linear-gradient(160deg, #26272c, #17181b);
+  color: var(--amber-soft);
   font-size: 2.4rem;
   font-weight: 800;
 }
@@ -502,7 +502,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   border-radius: 1rem;
   padding: 1rem;
-  background: #fff;
+  background: var(--hg-card);
 }
 .detail-head {
   display: flex;
@@ -521,7 +521,7 @@ onMounted(() => {
   padding: 0.15rem 0.55rem;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #8a6a35;
+  color: var(--amber-soft);
 }
 .mine-list {
   display: grid;
@@ -535,7 +535,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   border-radius: 1rem;
   padding: 0.8rem 1rem;
-  background: #fff;
+  background: var(--hg-card);
   flex-wrap: wrap;
 }
 .mine-row > div:first-child {
@@ -600,7 +600,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   font-size: 0.85rem;
   outline: none;
-  background: #faf9f7;
+  background: var(--hg-input);
   resize: vertical;
 }
 .composer2-btn-sm {

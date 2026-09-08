@@ -142,7 +142,7 @@ onMounted(() => {
   border: 1px solid var(--hg-line, #e2e4ea);
   border-radius: 1rem;
   overflow: hidden;
-  background: #fff;
+  background: var(--hg-card);
   display: grid;
   gap: 0;
 }
@@ -160,7 +160,7 @@ onMounted(() => {
   gap: 0.1rem;
   padding: 0.5rem 0.6rem 0.2rem;
   font-size: 0.76rem;
-  color: #333;
+  color: var(--ink);
   font-weight: 600;
 }
 .asset-cell-meta small {

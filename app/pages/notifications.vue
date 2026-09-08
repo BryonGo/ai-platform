@@ -137,7 +137,7 @@ onMounted(() => {
 .notify-panel {
   border: 1px solid var(--hg-line, #e2e4ea);
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--hg-card);
   overflow: hidden;
 }
 .notify-row {
@@ -150,10 +150,10 @@ onMounted(() => {
   transition: background 0.15s;
 }
 .notify-row:hover {
-  background: #faf9f7;
+  background: var(--hg-input);
 }
 .notify-row.unread {
-  background: #fdf9f0;
+  background: var(--hg-amber);
 }
 .notify-icon {
   flex-shrink: 0;
@@ -180,7 +180,7 @@ onMounted(() => {
 .notify-body p {
   margin: 0;
   font-size: 0.86rem;
-  color: #333;
+  color: var(--ink);
   word-break: break-word;
 }
 .notify-body small {
