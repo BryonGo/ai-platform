@@ -1,8 +1,9 @@
 <script setup lang="ts">
 const hgApi = useHougongApi()
 const session = useAuthSession()
-const localePath = useLocalePath()
-const appStore = useAppStore()
+const router = useRouter()
+// 积分余额（顶部栏与本地展示共用，避免依赖未实现的 useAppStore）
+const appCredits = useState<number>('hg:credits', () => 0)
 
 type Mode = 'image' | 'video'
 
@@ -40,6 +41,99 @@ const resultCredits = ref(0)
 const balance = ref(0)
 const charge = computed(() => (mode.value === 'video' ? 24 : 8))
 
+// ── 快捷词（snippet）@ 提及 + 选择器 ──
+const snippetCats = ref<SnippetCategory[]>([])
+const snippetOpen = ref(false)
+const snippetActiveCat = ref('character')
+const snippetQuery = ref('')
+const snippetItems = ref<SnippetItem[]>([])
+const snippetEnabled = ref(false)
+const mentionAnchor = ref(-1)
+let snippetDebounce: ReturnType<typeof setTimeout> | undefined
+
+async function loadSnippetCats() {
+  if (snippetCats.value.length === 0) {
+    try { snippetCats.value = await hgApi.snippetCategories() } catch { /* 忽略 */ }
+  }
+}
+function openSnippet() {
+  snippetOpen.value = true
+  snippetActiveCat.value = 'character'
+  snippetQuery.value = ''
+  loadSnippetCats().then(fetchSnippets)
+}
+function closeSnippet() { snippetOpen.value = false }
+async function fetchSnippets() {
+  try {
+    const r = await hgApi.snippetList({ category: snippetActiveCat.value, query: snippetQuery.value || undefined, limit: 12 })
+    snippetItems.value = r.items
+  } catch { snippetItems.value = [] }
+}
+function pickSnippet(it: SnippetItem) {
+  // 插入英文 prompt（喂给生成器），中文展示在标题。
+  appendToPrompt(it.prompt.english || it.labels.english)
+  snippetOpen.value = false
+}
+function appendToPrompt(text: string) {
+  const cur = positive.value
+  positive.value = cur ? cur + ', ' + text : text
+}
+// @ 提及检测：输入 @ 后弹出 snippet 选择器。
+function onPromptInput() {
+  const m = positive.value.match(/@([^\s@]*)$/)
+  if (m) {
+    if (!snippetOpen.value) openSnippet()
+    snippetQuery.value = m[1] || ''
+    if (snippetDebounce) clearTimeout(snippetDebounce)
+    snippetDebounce = setTimeout(fetchSnippets, 150)
+  } else if (!snippetOpen.value) {
+    /* 未触发，不自动关（用户可能手工打开） */
+  }
+}
+
+// ── 生成会话（workspace）侧栏 ──
+const sessions = ref<SessionItem[]>([])
+const activeSessionId = ref('')
+const sessionOpen = ref(false)
+
+async function loadSessions() {
+  try { sessions.value = await hgApi.listSessions() } catch { sessions.value = [] }
+}
+function toggleSessionPanel() { sessionOpen.value = !sessionOpen.value; if (sessionOpen.value) loadSessions() }
+async function newSession() {
+  try { await hgApi.createSession(); await loadSessions() } catch (e) { notice.value = e instanceof Error ? e.message : '创建会话失败' }
+}
+async function renameSession(id: string) {
+  const cur = sessions.value.find(s => s.id === id)
+  const title = window.prompt('会话标题', cur?.title || '')
+  if (!title) return
+  try { await hgApi.renameSession(id, title); await loadSessions() } catch (e) { notice.value = e instanceof Error ? e.message : '重命名失败' }
+}
+async function archiveSession(id: string) {
+  try { await hgApi.archiveSession(id); await loadSessions() } catch (e) { notice.value = e instanceof Error ? e.message : '归档失败' }
+}
+
+// ── 资产库选择器（参考图）──
+const assetOpen = ref(false)
+const assetItems = ref<AssetItem[]>([])
+const assetBusy = ref(false)
+
+async function openAssetPicker() {
+  assetOpen.value = true
+  assetBusy.value = true
+  try { assetItems.value = await hgApi.listAssets() } catch { assetItems.value = [] } finally { assetBusy.value = false }
+}
+function closeAssetPicker() { assetOpen.value = false }
+function pickAsset(it: AssetItem) {
+  referencePreview.value = it.url
+  referenceName.value = it.id
+  rawFile.value = null // 用已上传资产，无需再传文件
+  if (mode.value !== 'video') mode.value = 'video'
+  selectedAssetId.value = it.id
+  assetOpen.value = false
+}
+const selectedAssetId = ref('')
+
 const ratioPresets = [
   { ratio: '1:1', label: '方形' },
   { ratio: '3:4', label: '竖图' },
@@ -54,7 +148,7 @@ const canSubmit = computed(() => positive.value.trim().length > 0 && !submitting
 onMounted(async () => {
   session.load()
   if (!session.token.value) {
-    await navigateTo(localePath('/auth/login'))
+    await navigateTo('/auth/login')
     return
   }
   try {
@@ -64,7 +158,7 @@ onMounted(async () => {
     ])
     catalog.value = cat
     balance.value = wallet.balance
-    appStore.credits = wallet.balance
+    appCredits.value = wallet.balance
     const model = cat.models.find(m => m.selectable)
     if (model) {
       modelId.value = model.id
@@ -140,9 +234,14 @@ async function submit() {
   try {
     let firstFrameId = ''
     if (mode.value === 'video') {
-      if (!rawFile.value) throw new Error('请先上传首帧参考图')
-      const up = await hgApi.uploadMedia(rawFile.value)
-      firstFrameId = up.mediaAssetId
+      if (selectedAssetId.value) {
+        firstFrameId = selectedAssetId.value
+      } else if (rawFile.value) {
+        const up = await hgApi.uploadMedia(rawFile.value)
+        firstFrameId = up.mediaAssetId
+      } else {
+        throw new Error('请先上传首帧参考图')
+      }
     }
     const task = await hgApi.createTask({
       clientKey: 'hg-web-' + Date.now(),
@@ -183,7 +282,7 @@ async function submit() {
       }
       try {
         const w = await hgApi.wallet()
-        appStore.credits = w.balance
+        appCredits.value = w.balance
         balance.value = w.balance
       } catch { /* ignore */ }
     } else {
@@ -221,6 +320,38 @@ async function submit() {
     </div>
 
     <div class="composer2">
+      <!-- 会话侧栏 -->
+      <aside
+        v-if="sessionOpen"
+        class="composer2-sessions"
+      >
+        <div class="session-head">
+          <span class="composer2-section-title">创作会话</span>
+          <button
+            type="button"
+            class="composer2-btn-sm"
+            @click="newSession"
+          >+ 新建</button>
+        </div>
+        <div class="session-list">
+          <button
+            v-for="s in sessions"
+            :key="s.id"
+            type="button"
+            class="session-item"
+            :class="{ active: s.current }"
+            @click="activeSessionId = s.id"
+          >
+            <span class="session-title">{{ s.title || '未命名创作' }}</span>
+            <span class="session-meta">{{ s.state === 'active' ? '进行中' : '已归档' }}</span>
+          </button>
+          <p
+            v-if="!sessions.length"
+            class="muted"
+          >暂无会话</p>
+        </div>
+      </aside>
+
       <section class="composer2-card">
         <div class="composer2-toolbar">
           <div class="composer2-modes">
@@ -241,18 +372,80 @@ async function submit() {
               视频
             </button>
           </div>
-          <span class="composer2-charge">{{ charge }} 积分</span>
+          <div class="composer2-actions">
+            <button
+              type="button"
+              class="composer2-btn-sm"
+              @click="toggleSessionPanel"
+            >会话</button>
+            <span class="composer2-charge">{{ charge }} 积分</span>
+          </div>
         </div>
 
         <label class="composer2-field">
-          <span class="composer2-label">描述你想画的内容</span>
+          <div class="composer2-label-row">
+            <span class="composer2-label">描述你想画的内容</span>
+            <button
+              type="button"
+              class="composer2-link"
+              @click="openSnippet"
+            >快捷词</button>
+          </div>
           <textarea
             v-model="positive"
             rows="4"
             class="composer2-input"
-            placeholder="例如：雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。"
+            placeholder="例如：雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。输入 @ 可唤起快捷词。"
+            @input="onPromptInput"
           />
         </label>
+
+        <!-- 快捷词选择器 -->
+        <div
+          v-if="snippetOpen"
+          class="snippet-popover"
+        >
+          <div class="snippet-head">
+            <div class="snippet-cats">
+              <button
+                v-for="c in snippetCats"
+                :key="c.key"
+                type="button"
+                class="snippet-cat"
+                :class="{ active: snippetActiveCat === c.key }"
+                @click="snippetActiveCat = c.key; fetchSnippets()"
+              >{{ c.labels.chinese }}</button>
+            </div>
+            <input
+              v-model="snippetQuery"
+              type="text"
+              class="composer2-num snippet-search"
+              placeholder="搜索…"
+              @input="(e: Event) => { snippetQuery = (e.target as HTMLInputElement).value; fetchSnippets() }"
+            >
+            <button
+              type="button"
+              class="composer2-btn-sm"
+              @click="closeSnippet"
+            >×</button>
+          </div>
+          <div class="snippet-list">
+            <button
+              v-for="it in snippetItems"
+              :key="it.id"
+              type="button"
+              class="snippet-item"
+              @click="pickSnippet(it)"
+            >
+              <span class="snippet-name">{{ it.labels.chinese }}</span>
+              <span class="snippet-en">{{ it.labels.english }}</span>
+            </button>
+            <p
+              v-if="!snippetItems.length"
+              class="muted"
+            >无匹配快捷词</p>
+          </div>
+        </div>
 
         <button
           type="button"
@@ -451,6 +644,46 @@ async function submit() {
             for="ref-input"
             class="composer2-upload"
           >上传图片</label>
+          <button
+            type="button"
+            class="composer2-btn-sm"
+            @click="openAssetPicker"
+          >从素材库选择</button>
+          <div
+            v-if="assetOpen"
+            class="asset-popover"
+          >
+            <div class="asset-head">
+              <span class="composer2-section-title">素材库</span>
+              <button
+                type="button"
+                class="composer2-btn-sm"
+                @click="closeAssetPicker"
+              >×</button>
+            </div>
+            <div
+              v-if="assetBusy"
+              class="muted"
+            >加载中…</div>
+            <div class="asset-grid">
+              <button
+                v-for="a in assetItems"
+                :key="a.id"
+                type="button"
+                class="asset-thumb"
+                @click="pickAsset(a)"
+              >
+                <img
+                  :src="a.url"
+                  :alt="a.id"
+                >
+              </button>
+            </div>
+            <p
+              v-if="!assetItems.length && !assetBusy"
+              class="muted"
+            >暂无素材</p>
+          </div>
           <div
             v-if="referencePreview"
             class="composer2-ref"
@@ -529,7 +762,8 @@ async function submit() {
 
 <style scoped>
 .composer2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 1.25rem; align-items: start; }
-@media (max-width: 900px) { .composer2 { grid-template-columns: 1fr; } }
+.composer2:has(.composer2-sessions) { grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(280px, 420px); }
+@media (max-width: 900px) { .composer2, .composer2:has(.composer2-sessions) { grid-template-columns: 1fr; } }
 .composer2-card { border: 1px solid var(--hg-line, #e2e4ea); border-radius: 1.25rem; background: #fff; padding: 1.25rem; display: grid; gap: 0.85rem; }
 .composer2-toolbar { display: flex; align-items: center; justify-content: space-between; }
 .composer2-modes { display: flex; gap: 0.4rem; }
@@ -569,6 +803,30 @@ async function submit() {
 .error-text { color: #dc2626; font-weight: 700; }
 .spin { display: flex; align-items: center; gap: 0.4rem; }
 .composer2-actions { display: flex; align-items: center; gap: 0.5rem; }
+.composer2-label-row { display: flex; align-items: center; justify-content: space-between; }
+.composer2-sessions { border: 1px solid var(--hg-line, #e2e4ea); border-radius: 1.25rem; background: #fff; padding: 1rem; min-width: 200px; display: grid; gap: 0.6rem; align-content: start; }
+.session-head { display: flex; align-items: center; justify-content: space-between; }
+.session-list { display: grid; gap: 0.4rem; max-height: 60vh; overflow: auto; }
+.session-item { text-align: left; padding: 0.55rem 0.7rem; border-radius: 0.6rem; border: 1px solid var(--hg-line, #eee); background: transparent; cursor: pointer; display: grid; gap: 0.15rem; }
+.session-item.active { border-color: var(--hg-accent, #b08a4f); background: var(--hg-amber, #f3e3c0); }
+.session-title { font-size: 0.82rem; font-weight: 700; color: #333; }
+.session-meta { font-size: 0.72rem; color: var(--hg-muted, #999); }
+.snippet-popover { position: relative; z-index: 10; border: 1px solid var(--hg-line, #e2e4ea); border-radius: 0.8rem; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.1); display: grid; gap: 0.5rem; padding: 0.7rem; }
+.snippet-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.snippet-cats { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.snippet-cat { padding: 0.25rem 0.6rem; border-radius: 999px; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; font-size: 0.74rem; font-weight: 700; cursor: pointer; color: var(--hg-muted, #666); }
+.snippet-cat.active { background: var(--hg-ink, #1a1a1a); color: #fff; border-color: var(--hg-ink, #1a1a1a); }
+.snippet-search { flex: 1; min-width: 100px; }
+.snippet-list { display: grid; gap: 0.3rem; max-height: 260px; overflow: auto; }
+.snippet-item { text-align: left; padding: 0.45rem 0.6rem; border-radius: 0.5rem; border: 1px solid transparent; background: transparent; cursor: pointer; display: grid; gap: 0.1rem; }
+.snippet-item:hover { background: #faf9f7; border-color: var(--hg-line, #eee); }
+.snippet-name { font-size: 0.82rem; font-weight: 700; color: #333; }
+.snippet-en { font-size: 0.72rem; color: var(--hg-muted, #999); }
+.asset-popover { border: 1px solid var(--hg-line, #e2e4ea); border-radius: 0.8rem; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.1); padding: 0.7rem; display: grid; gap: 0.5rem; }
+.asset-head { display: flex; align-items: center; justify-content: space-between; }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 0.4rem; max-height: 220px; overflow: auto; }
+.asset-thumb { padding: 0; border: 1px solid var(--hg-line, #eee); border-radius: 0.4rem; overflow: hidden; cursor: pointer; background: none; }
+.asset-thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 .composer2-spacer { flex: 1; }
 .composer2-btn-sm { padding: 0.3rem 0.7rem; border-radius: 999px; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; font-size: 0.75rem; font-weight: 700; cursor: pointer; color: var(--hg-muted, #666); }
 .composer2-btn-sm:disabled { opacity: 0.5; cursor: default; }

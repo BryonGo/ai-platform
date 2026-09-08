@@ -107,6 +107,45 @@ export interface WorkCreateInput {
   title?: string
 }
 
+export interface SessionItem {
+  id: string
+  title: string
+  state: string
+  current: boolean
+  latestTask: { id: string, status: string, assets: string[], works: unknown[], updatedAt: number } | null
+  createdAt: number
+  lastActivityAt: number
+}
+
+export interface SnippetCategory {
+  key: string
+  labels: { chinese: string, english: string }
+  position: number
+  subcategories: { key: string, labels: { chinese: string, english: string }, position: number }[]
+}
+
+export interface SnippetItem {
+  id: string
+  category: string
+  subcategory: string
+  labels: { chinese: string, english: string }
+  prompt: { chinese: string, english: string }
+  preview: string | null
+}
+
+export interface AssetItem {
+  id: string
+  origin: string
+  status: string
+  mimeType: string
+  bytes: number
+  width: number
+  height: number
+  url: string
+  createdAt: number
+  hidden: boolean
+}
+
 export function useHougongApi() {
   const session = useAuthSession()
 
@@ -216,6 +255,53 @@ export function useHougongApi() {
     return apiRequest<WorkItem>('/hougong/works', { method: 'POST', body: input })
   }
 
+  // ── 生成会话（workspace）──
+  async function listSessions(page = 1, pageSize = 20): Promise<SessionItem[]> {
+    const res = await apiRequest<{ items: SessionItem[] }>(`/platform/session?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function createSession(title?: string): Promise<SessionItem> {
+    const body = title ? { title } : {}
+    return apiRequest<SessionItem>('/platform/session', { method: 'POST', body })
+  }
+  async function getSession(id: string): Promise<SessionItem> {
+    return apiRequest<SessionItem>(`/platform/session/${id}`)
+  }
+  async function renameSession(id: string, title: string): Promise<SessionItem> {
+    return apiRequest<SessionItem>(`/platform/session/${id}/rename`, { method: 'POST', body: { title } })
+  }
+  async function archiveSession(id: string): Promise<SessionItem> {
+    return apiRequest<SessionItem>(`/platform/session/${id}/archive`, { method: 'POST' })
+  }
+  async function listSessionTasks(id: string, page = 1, pageSize = 20): Promise<HougongTask[]> {
+    const res = await apiRequest<{ items: HougongTask[] }>(`/platform/session/${id}/tasks?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+
+  // ── 快捷词（snippet）──
+  async function snippetCategories(): Promise<SnippetCategory[]> {
+    const res = await apiRequest<{ categories: SnippetCategory[] }>('/platform/snippet/categories')
+    return res.categories || []
+  }
+  async function snippetList(input: { category: string, subcategory?: string, query?: string, cursor?: string, limit?: number }): Promise<{ items: SnippetItem[], nextCursor?: string }> {
+    const q = new URLSearchParams()
+    q.set('category', input.category)
+    if (input.subcategory) q.set('subcategory', input.subcategory)
+    if (input.query) q.set('query', input.query)
+    if (input.cursor) q.set('cursor', input.cursor)
+    if (input.limit) q.set('limit', String(input.limit))
+    return apiRequest(`/platform/snippet?${q.toString()}`)
+  }
+
+  // ── 资产库（asset）──
+  async function listAssets(page = 1, pageSize = 20): Promise<AssetItem[]> {
+    const res = await apiRequest<{ items: AssetItem[] }>(`/platform/asset?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function removeAsset(id: string): Promise<void> {
+    await apiRequest(`/platform/asset/${id}`, { method: 'DELETE' })
+  }
+
   return {
     login,
     register,
@@ -233,6 +319,16 @@ export function useHougongApi() {
     createWork,
     getCatalog,
     optimizePrompt,
-    translatePrompt
+    translatePrompt,
+    listSessions,
+    createSession,
+    getSession,
+    renameSession,
+    archiveSession,
+    listSessionTasks,
+    snippetCategories,
+    snippetList,
+    listAssets,
+    removeAsset
   }
 }
