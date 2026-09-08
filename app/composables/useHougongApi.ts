@@ -146,6 +146,79 @@ export interface AssetItem {
   hidden: boolean
 }
 
+export interface PublicationWork {
+  id: string
+  title: string
+  state: string
+  contentRating: string
+  coverUrl: string | null
+  tags: PlatformTag[]
+  stats: { likes: number, favorites: number, comments: number, remixes: number }
+  publishedAt: number
+}
+
+export interface PublicationPost {
+  id: string
+  title: string
+  state: string
+  content: string
+  assets: AssetItem[]
+  tags: PlatformTag[]
+  stats: { likes: number, favorites: number, comments: number }
+  publishedAt: number
+}
+
+export interface PublicationComment {
+  id: string
+  targetKind: string
+  targetId: string
+  content: string
+  likes: number
+  createdAt: number
+}
+
+export interface PlatformTag {
+  id: string
+  key: string
+  name: string
+  aliases: string[]
+  active: boolean
+  priority: number
+}
+
+export interface Invite {
+  code: string
+  invited: number
+  completed: number
+  pending: number
+  earnedCredits: number
+  friendCredits: number
+  rewardCredits: number
+}
+
+export interface Membership {
+  purchaseId: string
+  tier: string
+  choice: string
+  startedAt: number
+  expiresAt: number
+}
+
+export interface Transaction {
+  id: string
+  type: 'purchase' | 'ledger'
+  category: string
+  createdAt: number
+}
+
+export interface NotificationItem {
+  id: string
+  kind: string
+  message: string
+  readAt: number | null
+  createdAt: number
+}
+
 export function useHougongApi() {
   const session = useAuthSession()
 
@@ -302,6 +375,66 @@ export function useHougongApi() {
     await apiRequest(`/platform/asset/${id}`, { method: 'DELETE' })
   }
 
+  // ── 发布（work/post/comment/tag/report）──
+  async function listWorksFeed(page = 1, pageSize = 20): Promise<PublicationWork[]> {
+    const res = await apiRequest<{ items: PublicationWork[] }>(`/platform/work?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function getWork(id: string): Promise<PublicationWork> {
+    return apiRequest(`/platform/work/${id}`)
+  }
+  async function listPosts(page = 1, pageSize = 20): Promise<PublicationPost[]> {
+    const res = await apiRequest<{ items: PublicationPost[] }>(`/platform/post?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function listComments(targetKind: string, targetId: string): Promise<PublicationComment[]> {
+    const res = await apiRequest<{ items: PublicationComment[] }>(`/platform/comment?targetKind=${targetKind}&targetId=${targetId}`)
+    return res.items || []
+  }
+  async function createComment(input: { targetKind: string, targetId: string, content: string, parentId?: string }): Promise<PublicationComment> {
+    return apiRequest('/platform/comment', { method: 'POST', body: input })
+  }
+  async function react(input: { targetKind: string, targetId: string, kind: string }): Promise<void> {
+    await apiRequest('/platform/interaction/reaction', { method: 'POST', body: input })
+  }
+  async function searchTags(query: string): Promise<PlatformTag[]> {
+    return apiRequest(`/platform/tag/search?query=${encodeURIComponent(query)}`)
+  }
+  async function report(input: { targetKind: string, targetId: string, reason: string, detail?: string }): Promise<void> {
+    await apiRequest('/platform/report', { method: 'POST', body: input })
+  }
+
+  // ── 经济（wallet/invite/membership/checkout/transaction/creator）──
+  async function walletBalance(): Promise<{ credits: number, balanceCents: number, nextExpiry: string | null }> {
+    return apiRequest('/platform/wallet')
+  }
+  async function claimDaily(): Promise<void> {
+    await apiRequest('/platform/wallet/claim', { method: 'POST' })
+  }
+  async function invite(): Promise<Invite> {
+    return apiRequest('/platform/invite')
+  }
+  async function membership(): Promise<Membership | null> {
+    return apiRequest('/platform/membership')
+  }
+  async function listTransactions(page = 1, pageSize = 20): Promise<Transaction[]> {
+    const res = await apiRequest<{ items: Transaction[] }>(`/platform/transaction?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+
+  // ── 通知（notification）──
+  async function unreadNotifications(): Promise<number> {
+    const r = await apiRequest<{ unread: number }>('/platform/notification/unread')
+    return r.unread || 0
+  }
+  async function listNotifications(page = 1, pageSize = 20): Promise<NotificationItem[]> {
+    const res = await apiRequest<{ items: NotificationItem[] }>(`/platform/notification?page=${page}&pageSize=${pageSize}`)
+    return res.items || []
+  }
+  async function markNotificationsRead(ids?: string[]): Promise<void> {
+    await apiRequest('/platform/notification/read', { method: 'POST', body: { notificationIds: ids, all: !ids } })
+  }
+
   return {
     login,
     register,
@@ -329,6 +462,22 @@ export function useHougongApi() {
     snippetCategories,
     snippetList,
     listAssets,
-    removeAsset
+    removeAsset,
+    listWorksFeed,
+    getWork,
+    listPosts,
+    listComments,
+    createComment,
+    react,
+    searchTags,
+    report,
+    walletBalance,
+    claimDaily,
+    invite,
+    membership,
+    listTransactions,
+    unreadNotifications,
+    listNotifications,
+    markNotificationsRead
   }
 }
