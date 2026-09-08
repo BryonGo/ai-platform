@@ -72,6 +72,7 @@ export interface CatalogItem {
   name: string
   family: string
   fileName?: string
+  cover?: string
   available: boolean
   selectable: boolean
   weight?: { default: number, min: number, max: number }

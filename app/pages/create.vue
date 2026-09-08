@@ -3,6 +3,8 @@ import { characters } from '~/composables/useHougong'
 import { useComposerDraft } from '~/composables/useComposerDraft'
 import PromptEditor from '~/components/prompt/promptEditor.vue'
 import { promptText, type Prompt } from '~/components/prompt/enhancement-mark'
+import ModelPicker from '~/components/selection/modelPicker.vue'
+import LoraPicker, { type LoraSelection } from '~/components/selection/loraPicker.vue'
 
 type Mode = 'image' | 'video'
 type RunStatus = 'queued' | 'running' | 'done' | 'cancelled'
@@ -75,20 +77,9 @@ const assetOpen = ref(false)
 const assets = ref<AssetItem[]>([])
 const selectedAssetId = ref('')
 const modelPickerOpen = ref(false)
-// 已选 LoRA（按 catalog id，挂到当前底模 family 下）
-const selectedLoraIds = ref<string[]>([])
-
-// 底模按 family 分组（对齐 PeachArt：同一 family 的底模归一组）。
-const groupedModels = computed(() => {
-  const models = catalog.value?.models || []
-  const groups = new Map<string, CatalogItem[]>()
-  for (const m of models) {
-    const key = m.family || '其他'
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(m)
-  }
-  return [...groups.entries()].map(([family, items]) => ({ family, items }))
-})
+const loraPickerOpen = ref(false)
+// 已选 LoRA（带权重），挂到当前底模 family 下。
+const selectedLoras = ref<LoraSelection[]>([])
 
 const activeModel = computed(() => (catalog.value?.models || []).find(m => m.id === modelId.value) || null)
 // 当前底模 family 下可选的 LoRA。
@@ -98,17 +89,12 @@ const familyLoras = computed(() => {
   return (catalog.value?.loras || []).filter(l => l.family === fam && l.selectable)
 })
 
-function toggleLora(id: string) {
-  const i = selectedLoraIds.value.indexOf(id)
-  if (i >= 0) selectedLoraIds.value.splice(i, 1)
-  else selectedLoraIds.value.push(id)
-}
-
-function pickModel(m: CatalogItem) {
-  modelId.value = m.id
-  selectedLoraIds.value = []
+function pickModel(id: string) {
+  modelId.value = id
+  selectedLoras.value = []
   modelPickerOpen.value = false
-  if (m.sampling) {
+  const m = (catalog.value?.models || []).find(x => x.id === id)
+  if (m?.sampling) {
     sampling.value = { steps: m.sampling.steps, sampler: m.sampling.sampler, scheduler: m.sampling.scheduler, cfg: m.sampling.cfg }
   }
 }
@@ -299,10 +285,13 @@ async function send() {
         throw new Error('视频生成请先上传首帧图片或从素材库选择')
       }
     }
-    // 已选 LoRA：按当前底模 family 下勾选，传 comfy 文件名（lora_name）+ 默认权重。
-    const selectedLoras = (familyLoras.value || [])
-      .filter(l => selectedLoraIds.value.includes(l.id))
-      .map(l => ({ name: l.fileName || l.name, weight: l.weight?.default ?? 1.0 }))
+    // 已选 LoRA：传 comfy 文件名（lora_name）+ 权重。
+    const selectedLoraItems = selectedLoras.value
+      .map((s) => {
+        const l = (catalog.value?.loras || []).find(x => x.id === s.id)
+        return l ? { name: l.fileName || l.name, weight: s.weight } : null
+      })
+      .filter((x): x is { name: string, weight: number } => x !== null)
 
     const task = await hgApi.createTask({
       clientKey: `hg-web-${Date.now()}-${runSeq}`,
@@ -315,7 +304,7 @@ async function send() {
       quality: kind === 'video' ? undefined : (useCloud.value ? (cloudQuality.value || undefined) : undefined),
       engine: kind === 'video' ? undefined : (useCloud.value ? (activeCloudModel.value?.engine || undefined) : undefined),
       sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
-      loras: kind === 'video' || useCloud.value ? undefined : selectedLoras,
+      loras: kind === 'video' || useCloud.value ? undefined : (selectedLoraItems.length ? selectedLoraItems : undefined),
       characterId: characterId === 'daji' ? '' : characterId,
       refAssetIds: firstFrameId ? [firstFrameId] : []
     })
@@ -832,40 +821,24 @@ function handleUpload(event: Event) {
                 <button
                   type="button"
                   :class="{ active: !useCloud }"
-                  @click="modelPickerOpen = !modelPickerOpen; if (!useCloud) clearCloudModel()"
+                  @click="clearCloudModel(); modelPickerOpen = true"
                 >
                   <span
                     class="i-lucide-box"
                     aria-hidden="true"
                   />{{ activeModel?.name || '底模' }} <small class="fam">{{ activeModel?.family || '' }}</small>
                 </button>
-                <div
-                  v-if="modelPickerOpen"
-                  class="model-picker-panel"
-                >
-                  <div
-                    v-for="g in groupedModels"
-                    :key="g.family"
-                    class="model-group"
-                  >
-                    <div class="model-group-title">
-                      {{ g.family }}
-                    </div>
-                    <div class="model-group-items">
-                      <button
-                        v-for="m in g.items"
-                        :key="m.id"
-                        type="button"
-                        class="model-option"
-                        :class="{ active: m.id === modelId }"
-                        @click="pickModel(m)"
-                      >
-                        {{ m.name }}
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
+              <button
+                v-if="familyLoras.length && !useCloud && mode === 'image'"
+                type="button"
+                @click="loraPickerOpen = true"
+              >
+                <span
+                  class="i-lucide-layers-3"
+                  aria-hidden="true"
+                />效果包 {{ selectedLoras.length }}/8
+              </button>
               <button
                 v-if="cloudModels.length && mode === 'image'"
                 type="button"
@@ -908,19 +881,18 @@ function handleUpload(event: Event) {
               </button>
             </div>
             <div
-              v-if="familyLoras.length && !useCloud && mode === 'image'"
+              v-if="selectedLoras.length && !useCloud && mode === 'image'"
               class="lora-strip"
             >
-              <span class="lora-strip-label">LoRA · {{ activeModel?.family }}：</span>
+              <span class="lora-strip-label">已选效果包：</span>
               <button
-                v-for="l in familyLoras"
-                :key="l.id"
+                v-for="s in selectedLoras"
+                :key="s.id"
                 type="button"
                 class="lora-chip"
-                :class="{ active: selectedLoraIds.includes(l.id) }"
-                @click="toggleLora(l.id)"
+                @click="loraPickerOpen = true"
               >
-                {{ l.name }}
+                {{ (catalog?.loras || []).find(l => l.id === s.id)?.name || s.id }} · {{ s.weight }}
               </button>
             </div>
             <button
@@ -1089,6 +1061,21 @@ function handleUpload(event: Event) {
         </div>
       </div>
     </aside>
+
+    <ModelPicker
+      :open="modelPickerOpen"
+      :models="catalog?.models || []"
+      :model-id="modelId"
+      @close="modelPickerOpen = false"
+      @select="pickModel"
+    />
+    <LoraPicker
+      :open="loraPickerOpen"
+      :loras="familyLoras"
+      :selected="selectedLoras"
+      @close="loraPickerOpen = false"
+      @update="selectedLoras = $event"
+    />
   </div>
 </template>
 
@@ -1150,7 +1137,7 @@ function handleUpload(event: Event) {
   font-size: 12px;
 }
 
-/* ── 模型选择器（按 family 分组下拉） ── */
+/* ── 模型选择按钮 ── */
 .model-selector {
   position: relative;
 }
@@ -1159,53 +1146,8 @@ function handleUpload(event: Event) {
   font-weight: 400;
   margin-left: 4px;
 }
-.model-picker-panel {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 280px;
-  max-height: 360px;
-  overflow-y: auto;
-  padding: 8px;
-  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
-  border-radius: 12px;
-  background: var(--bg-elev, rgb(20 20 24 / 0.98));
-  box-shadow: 0 10px 32px rgb(0 0 0 / 0.45);
-}
-.model-group + .model-group {
-  margin-top: 8px;
-}
-.model-group-title {
-  padding: 4px 6px;
-  color: var(--amber);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-.model-group-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.model-option {
-  padding: 5px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--ink);
-  background: var(--panel);
-  font-size: 12px;
-}
-.model-option:hover {
-  border-color: var(--hg-line, rgb(255 255 255 / 0.16));
-}
-.model-option.active {
-  border-color: var(--amber);
-  background: rgb(251 191 36 / 0.12);
-}
 
-/* ── LoRA 分组条 ── */
+/* ── 已选 LoRA 徽标条 ── */
 .lora-strip {
   display: flex;
   align-items: center;
