@@ -207,8 +207,9 @@ async function send() {
       prompt: text,
       negativePrompt: negative.value.trim() || undefined,
       ratio: ratioNow,
-      modelId: modelId.value || undefined,
-      sampling: sampling.value || undefined,
+      // i2v 走 MiniMax H3 专用工作流，不传文生图模型/采样参数（否则用错模型卡死）
+      modelId: kind === 'video' ? undefined : (modelId.value || undefined),
+      sampling: kind === 'video' ? undefined : (sampling.value || undefined),
       characterId: characterId === 'daji' ? '' : characterId,
       refAssetIds: firstFrameId ? [firstFrameId] : []
     })

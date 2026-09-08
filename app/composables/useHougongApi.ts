@@ -86,7 +86,7 @@ export interface Catalog {
 }
 
 export interface HougongTask {
-  id: number
+  id: number | string
   type: string
   status: string
   progress?: number

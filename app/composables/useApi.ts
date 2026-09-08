@@ -71,17 +71,20 @@ export async function apiRequest<T = unknown>(
   } finally {
     clearTimeout(timer)
   }
-  const res = JSON.parse(await resp.text(), bigIntReviver) as ApiEnvelope<T>
+  const res = parseWithBigInt(await resp.text()) as ApiEnvelope<T>
   if (res.code !== 0) {
     throw new Error(res.message || `API error ${res.code}`)
   }
   return res.data
 }
 
-// 大整数（雪花 ID）→ 字符串，避免 JSON.parse float64 精度丢失。
-function bigIntReviver(_key: string, value: unknown): unknown {
-  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
-    return String(value)
-  }
-  return value
+// 大整数（雪花 ID > 2^53）→ 字符串。
+// 注意：必须在 JSON.parse 之前处理——parse 阶段 Number 就已丢失精度，
+// 任何 reviver 都救不回已舍入的数值。这里用正则把 16 位以上整数整体加引号。
+function parseWithBigInt(text: string): unknown {
+  const guarded = text.replace(
+    /([:{}\[\],])\s*(-?\d{16,})(?=\s*[,}\]])/g,
+    (_m, prefix: string, digits: string) => `${prefix}"${digits}"`
+  )
+  return JSON.parse(guarded)
 }
