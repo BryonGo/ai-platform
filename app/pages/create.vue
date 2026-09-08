@@ -1,741 +1,572 @@
 <script setup lang="ts">
-import { characters } from '~/composables/useHougong'
-import { useComposerDraft } from '~/composables/useComposerDraft'
-
-type Mode = 'image' | 'video'
-type RunStatus = 'queued' | 'running' | 'done' | 'cancelled'
-
-interface Artifact {
-  runId: number
-  kind: Mode
-  prompt: string
-  character: string
-  ratio: string
-  credits: number
-  poster: string
-  createdAt: string
-}
-
-interface ChatMessage {
-  id: number
-  role: 'user' | 'assistant'
-  runId: number | null
-  status: RunStatus | null
-  progress: number
-  event: string
-  text: string
-  attachment?: { name: string, url: string }
-  time: string
-}
-
-const mode = ref<Mode>('image')
-const prompt = ref('')
-const ratio = ref('16:9')
-const duration = ref('5 秒')
-const notice = ref('')
-const uploadPreview = ref('')
-const uploadName = ref('')
-const selected = ref('daji')
-
-const cost = computed(() => (mode.value === 'video' ? 24 : 8))
-const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
-const running = computed(() => messages.value.some(m => m.role === 'assistant' && m.status === 'running'))
-const canSend = computed(() => !running.value && (prompt.value.trim().length > 0 || !!uploadPreview.value))
-
-// ---- 会话与产物 ----
-const messages = ref<ChatMessage[]>([])
-const artifacts = ref<Artifact[]>([])
-const activeRunId = ref<number | null>(null)
-
-let msgSeq = 0
-let runSeq = 0
-
-function now() {
-  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-function welcomeMessage(): ChatMessage {
-  return {
-    id: ++msgSeq,
-    role: 'assistant',
-    runId: null,
-    status: null,
-    progress: 0,
-    event: '',
-    text: '我是你的创作台。告诉我下一幕，或点下面的示例；图片任务 8 积分、视频任务 24 积分，失败或取消自动退回。',
-    time: now()
-  }
-}
-
-function assistText(text: string): ChatMessage {
-  return { id: ++msgSeq, role: 'assistant', runId: null, status: null, progress: 0, event: '', text, time: now() }
-}
-
-function activeArtifact() {
-  return artifacts.value.find(a => a.runId === activeRunId.value) ?? artifacts.value.at(-1) ?? null
-}
-
 const hgApi = useHougongApi()
 const session = useAuthSession()
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+const localePath = useLocalePath()
+const appStore = useAppStore()
 
-function clearRunTimers() {
-  // 真实轮询由 async send 管理，无定时器残留。
-}
+type Mode = 'image' | 'video'
 
-function msgText(kind: Mode, characterName: string, ratioNow: string, credits: number) {
-  return `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} 积分`
-}
-
-async function send() {
-  if (!canSend.value) {
-    if (!prompt.value.trim() && !uploadPreview.value) {
-      notice.value = '请先描述这一幕。'
-    }
-    return
-  }
-  const text = prompt.value.trim() || '（仅参考图）根据附件生成'
-  const attachment = uploadPreview.value ? { name: uploadName.value || '参考图', url: uploadPreview.value } : undefined
-
-  messages.value.push({
-    id: ++msgSeq,
-    role: 'user',
-    runId: null,
-    status: null,
-    progress: 0,
-    event: '',
-    text,
-    attachment,
-    time: now()
-  })
-
-  const runId = ++runSeq
-  const characterName = selectedCharacter.value?.name ?? ''
-  const credits = cost.value
-  const kind = mode.value
-  const ratioNow = ratio.value
-  const characterId = selected.value
-
-  messages.value.push({
-    id: ++msgSeq,
-    role: 'assistant',
-    runId,
-    status: 'queued',
-    progress: 0,
-    event: 'task.created · 正在创建任务并预占积分',
-    text: msgText(kind, characterName, ratioNow, credits),
-    time: now()
-  })
-  try {
-    if (!session.token.value) {
-      throw new Error('请先登录')
-    }
-    let firstFrameId = ''
-    if (kind === 'video') {
-      if (!rawFile.value) {
-        throw new Error('视频生成请先上传首帧图片（参考素材）')
-      }
-      const up = await hgApi.uploadMedia(rawFile.value)
-      firstFrameId = up.mediaAssetId
-    }
-    const task = await hgApi.createTask({
-      clientKey: `hg-web-${Date.now()}-${runSeq}`,
-      type: kind === 'video' ? 'i2v' : 't2i',
-      prompt: text,
-      ratio: ratioNow,
-      characterId: characterId === 'daji' ? '' : characterId,
-      refAssetIds: firstFrameId ? [firstFrameId] : []
-    })
-    const msg = () => messages.value.find(m => m.runId === runId)
-    const taskId = task.id
-    let status = task.status
-    // 轮询至终态
-    while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
-      await sleep(2500)
-      const t = await hgApi.getTask(taskId)
-      status = t.status
-      const cur = msg()
-      if (cur) {
-        cur.progress = t.progress || cur.progress
-        cur.event = `${t.status} · ${cur.progress}%`
-      }
-    }
-    const finalMsg = msg()
-    if (status === 'succeeded') {
-      // 取产物 asset → 自动入库作品 → 取封面
-      const detail = await hgApi.getTask(taskId)
-      const outAssets: string[] = detail.outputAssets || []
-      let imageUrl = ''
-      if (outAssets.length) {
-        try {
-          await hgApi.createWork({
-            taskId: String(taskId),
-            assetId: outAssets[0],
-            kind: kind === 'video' ? 'video' : 'image',
-            title: text.slice(0, 40),
-            characterId: 0
-          })
-          const latestWorks = await hgApi.listWorks()
-          const latest = latestWorks[0]
-          if (latest) {
-            imageUrl = latest.imageUrl || ''
-          }
-        } catch {
-          /* 入库失败仍显示任务完成 */
-        }
-      }
-      if (finalMsg) {
-        finalMsg.progress = 100
-        finalMsg.status = 'done'
-        finalMsg.event = 'task.completed · 已结算 ' + credits + ' 积分，作品已入库'
-        finalMsg.text = msgText(kind, characterName, ratioNow, credits)
-      }
-      artifacts.value.push({
-        runId,
-        kind,
-        prompt: text,
-        character: characterName,
-        ratio: ratioNow,
-        credits,
-        poster: imageUrl,
-        createdAt: now()
-      })
-    } else {
-      if (finalMsg) {
-        finalMsg.status = 'cancelled'
-        finalMsg.event = `task.${status} · 未产生结算`
-        finalMsg.text = `${msgText(kind, characterName, ratioNow, credits)} → ${status}（积分已退回）`
-      }
-      notice.value = status === 'failed' ? '生成失败，积分已退回，可在任务中心重试' : '任务已取消'
-    }
-  } catch (e: unknown) {
-    const cur = messages.value.find(m => m.runId === runId)
-    const reason = e instanceof Error ? e.message : '生成失败'
-    if (cur) {
-      cur.status = 'cancelled'
-      cur.progress = 0
-      cur.event = 'task.failed · ' + reason
-      cur.text = `${msgText(kind, characterName, ratioNow, credits)} → 失败（积分未扣）`
-    }
-    notice.value = reason
-  }
-}
-
-async function cancelRun() {
-  const msg = messages.value.find(m => m.role === 'assistant' && m.status === 'running')
-  if (!msg || msg.runId === null) {
-    return
-  }
-  try {
-    await hgApi.cancelTask(msg.runId)
-    msg.status = 'cancelled'
-    msg.progress = 0
-    msg.event = 'task.cancelled · 预占积分已退回'
-    msg.text = `${msg.text} → 已取消，未产生扣费`
-  } catch (e: unknown) {
-    notice.value = e instanceof Error ? e.message : '取消失败'
-  }
-}
-
-function sample(kind: Mode, text: string) {
-  mode.value = kind
-  prompt.value = text
-}
-
-// ---- 播放器 mock：接入真实视频源前用海报演示播放器形态 ----
-const playing = ref(false)
-const playSeconds = ref(0)
-let playTimer: ReturnType<typeof setInterval> | undefined
-const MOCK_VIDEO_SECONDS = 8
-
-function togglePlay() {
-  if (!playing.value) {
-    playing.value = true
-    playSeconds.value = 0
-    playTimer = setInterval(() => {
-      playSeconds.value += 0.1
-      if (playSeconds.value >= MOCK_VIDEO_SECONDS) {
-        stopPlay()
-      }
-    }, 100)
-  } else {
-    stopPlay()
-  }
-}
-
-function stopPlay() {
-  playing.value = false
-  if (playTimer) {
-    clearInterval(playTimer)
-    playTimer = undefined
-  }
-}
-
-function formatSeconds(s: number) {
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-}
-
-function pickArtifact(runId: number) {
-  activeRunId.value = runId
-}
-
-function hint(text: string) {
-  messages.value.push(assistText(text))
-}
-
-// ---- 带入 ----
-const { takeDraft } = useComposerDraft()
-
-onMounted(() => {
-  messages.value.push(welcomeMessage())
-
-  const draft = takeDraft()
-  if (draft) {
-    mode.value = draft.mode
-    ratio.value = draft.ratio
-    duration.value = draft.duration || '5 秒'
-    prompt.value = draft.prompt
-    if (draft.file) {
-      if (uploadPreview.value) {
-        URL.revokeObjectURL(uploadPreview.value)
-      }
-      uploadPreview.value = URL.createObjectURL(draft.file)
-      uploadName.value = draft.uploadName
-    }
-    messages.value.push(assistText('已从首页带入草稿：描述、模式与参考图已填好，点击生成开始。'))
-    return
-  }
-
-  const route = useRoute()
-  const characterId = typeof route.query.character === 'string' ? route.query.character : ''
-  if (characterId && characters.some(c => c.id === characterId)) {
-    selected.value = characterId
-  }
-})
-
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    stopPlay()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-  clearRunTimers()
-  stopPlay()
-  document.removeEventListener('keydown', onKeydown)
-  if (uploadPreview.value) {
-    URL.revokeObjectURL(uploadPreview.value)
-  }
-})
-
-function inspire() {
-  prompt.value = '雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。'
-}
-
+const mode = ref<Mode>('image')
+const positive = ref('')
+const negative = ref('')
+const showNegative = ref(false)
+const referencePreview = ref('')
+const referenceName = ref('')
 const rawFile = ref<File | null>(null)
+
+const catalog = ref<Catalog | null>(null)
+const modelId = ref('')
+const loras = ref<{ name: string, weight: number }[]>([])
+const selectedLoraIds = ref<string[]>([])
+
+const ratio = ref('1:1')
+const customWidth = ref(0)
+const customHeight = ref(0)
+const count = ref(1)
+const seed = ref<number | null>(null)
+const steps = ref(12)
+const sampler = ref('dpmpp_2m')
+const scheduler = ref('karras')
+const cfg = ref(1)
+
+const parametersOpen = ref(false)
+const submitting = ref(false)
+const notice = ref('')
+const genError = ref('')
+const resultUrl = ref('')
+const resultStatus = ref<'idle' | 'working' | 'done' | 'failed'>('idle')
+const resultProgress = ref(0)
+const resultCredits = ref(0)
+const balance = ref(0)
+const charge = computed(() => (mode.value === 'video' ? 24 : 8))
+
+const ratioPresets = [
+  { ratio: '1:1', label: '方形' },
+  { ratio: '3:4', label: '竖图' },
+  { ratio: '4:3', label: '横图' },
+  { ratio: '9:16', label: '手机' },
+  { ratio: '16:9', label: '桌面' }
+]
+
+const currentLoraWeight = (name: string) => loras.value.find(l => l.name === name)?.weight ?? 0
+const canSubmit = computed(() => positive.value.trim().length > 0 && !submitting.value)
+
+onMounted(async () => {
+  session.load()
+  if (!session.token.value) {
+    await navigateTo(localePath('/auth/login'))
+    return
+  }
+  try {
+    const [cat, wallet] = await Promise.all([
+      hgApi.getCatalog(),
+      hgApi.wallet().catch(() => ({ balance: 0, holds: 0 }))
+    ])
+    catalog.value = cat
+    balance.value = wallet.balance
+    appStore.credits = wallet.balance
+    const model = cat.models.find(m => m.selectable)
+    if (model) {
+      modelId.value = model.id
+      if (model.sampling) {
+        steps.value = model.sampling.steps
+        sampler.value = model.sampling.sampler
+        scheduler.value = model.sampling.scheduler
+        cfg.value = model.sampling.cfg
+      }
+    }
+  } catch (e: unknown) {
+    notice.value = e instanceof Error ? e.message : '能力目录加载失败'
+  }
+})
+
+function toggleLora(id: string) {
+  const idx = selectedLoraIds.value.indexOf(id)
+  if (idx >= 0) {
+    selectedLoraIds.value.splice(idx, 1)
+    loras.value = loras.value.filter(l => l.name !== id)
+    return
+  }
+  const item = catalog.value?.loras.find(l => l.id === id)
+  if (!item) return
+  selectedLoraIds.value.push(id)
+  loras.value.push({ name: item.fileName || id, weight: item.weight?.default ?? 1 })
+}
+
+function onLoraWeight(id: string, event: Event) {
+  const item = catalog.value?.loras.find(l => l.id === id)
+  const name = item?.fileName || id
+  const target = event.target as HTMLInputElement
+  setLoraWeight(name, Number(target.value))
+}
+
+function setLoraWeight(name: string, weight: number) {
+  const idx = loras.value.findIndex(l => l.name === name)
+  if (idx >= 0) loras.value[idx] = { name, weight }
+}
+
+function selectRatio(r: { ratio: string }) {
+  ratio.value = r.ratio
+  customWidth.value = 0
+  customHeight.value = 0
+}
 
 function handleUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-
-  if (!file) {
-    return
-  }
-  if (uploadPreview.value) {
-    URL.revokeObjectURL(uploadPreview.value)
-  }
-
-  uploadPreview.value = URL.createObjectURL(file)
-  uploadName.value = file.name
+  if (!file) return
+  if (referencePreview.value) URL.revokeObjectURL(referencePreview.value)
+  referencePreview.value = URL.createObjectURL(file)
+  referenceName.value = file.name
   rawFile.value = file
+  if (mode.value !== 'video') mode.value = 'video'
+}
+
+function clearReference() {
+  if (referencePreview.value) URL.revokeObjectURL(referencePreview.value)
+  referencePreview.value = ''
+  referenceName.value = ''
+  rawFile.value = null
+}
+
+async function submit() {
+  if (!canSubmit.value) return
+  submitting.value = true
+  notice.value = ''
+  genError.value = ''
+  resultUrl.value = ''
+  resultStatus.value = 'working'
+  resultProgress.value = 0
+  try {
+    let firstFrameId = ''
+    if (mode.value === 'video') {
+      if (!rawFile.value) throw new Error('请先上传首帧参考图')
+      const up = await hgApi.uploadMedia(rawFile.value)
+      firstFrameId = up.mediaAssetId
+    }
+    const task = await hgApi.createTask({
+      clientKey: 'hg-web-' + Date.now(),
+      type: mode.value === 'video' ? 'i2v' : 't2i',
+      prompt: positive.value.trim(),
+      negativePrompt: negative.value.trim() || undefined,
+      ratio: ratio.value,
+      width: customWidth.value || undefined,
+      height: customHeight.value || undefined,
+      count: count.value,
+      seed: seed.value ?? undefined,
+      sampling: { steps: steps.value, sampler: sampler.value, scheduler: scheduler.value, cfg: cfg.value },
+      loras: loras.value.length ? loras.value : undefined,
+      modelId: modelId.value || undefined,
+      refAssetIds: firstFrameId ? [firstFrameId] : []
+    })
+    const taskId = task.id
+    let status = task.status
+    while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
+      await new Promise(r => setTimeout(r, 2500))
+      const t = await hgApi.getTask(taskId)
+      status = t.status
+      resultProgress.value = t.progress || resultProgress.value
+    }
+    if (status === 'succeeded') {
+      const detail = await hgApi.getTask(taskId)
+      const assets = detail.outputAssets || []
+      resultStatus.value = 'done'
+      resultCredits.value = detail.billedCredits || charge.value
+      if (assets.length) {
+        try {
+          await hgApi.createWork({ taskId: String(taskId), assetId: assets[0], kind: mode.value === 'video' ? 'video' : 'image', title: positive.value.trim().slice(0, 40), characterId: 0 })
+          const works = await hgApi.listWorks()
+          resultUrl.value = works[0]?.imageUrl || ''
+        } catch {
+          /* 入库失败仍显示完成 */
+        }
+      }
+      try {
+        const w = await hgApi.wallet()
+        appStore.credits = w.balance
+        balance.value = w.balance
+      } catch { /* ignore */ }
+    } else {
+      resultStatus.value = status === 'failed' ? 'failed' : 'idle'
+      genError.value = status === 'failed' ? '生成失败（积分已退回）' : '任务已取消'
+      notice.value = genError.value
+    }
+  } catch (e: unknown) {
+    resultStatus.value = 'failed'
+    genError.value = e instanceof Error ? e.message : '生成失败'
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
 <template>
-  <div
-    class="chat-page"
-    :class="{ 'has-artifact': !!activeArtifact() }"
-  >
-    <!-- 对话主列 -->
-    <section
-      class="chat-panel"
-      aria-label="创作对话"
-    >
-      <div class="chat-head">
-        <span
-          class="chat-dot"
-          aria-hidden="true"
-        />
-        <strong>创作台 · SSE 会话</strong>
-        <small>{{ running ? '有任务进行中' : '空闲' }}</small>
+  <div class="page-body">
+    <div class="page-head">
+      <div>
+        <p class="detail-kicker">
+          创作台 · 01
+        </p>
+        <h1>把这一幕，交给影像宇宙</h1>
+        <p>选择底模与效果包，描绘画幅、采样与参考图；生成后作品自动入库。</p>
       </div>
+      <button
+        type="button"
+        class="btn-primary"
+        :disabled="submitting"
+        @click="submit"
+      >
+        {{ submitting ? '生成中…' : '开始创作' }}
+      </button>
+    </div>
 
-      <div class="chat-scroll">
-        <div
-          v-for="m in messages"
-          :key="m.id"
-          class="chat-msg"
-          :class="m.role"
-        >
-          <!-- 用户消息 -->
-          <template v-if="m.role === 'user'">
-            <div class="user-bubble">
-              <p>{{ m.text }}</p>
-              <div
-                v-if="m.attachment"
-                class="bubble-attachments"
-              >
-                <img
-                  :src="m.attachment.url"
-                  :alt="m.attachment.name"
-                  :title="m.attachment.name"
-                >
-              </div>
-              <small>{{ m.time }}</small>
-            </div>
-          </template>
-
-          <!-- 助手：欢迎/提示 -->
-          <template v-else-if="!m.runId">
-            <div class="assistant-bubble static">
-              <p>{{ m.text }}</p>
-              <div class="assistant-samples">
-                <button
-                  type="button"
-                  class="btn-ghost small"
-                  @click="sample('image', '月下回廊，她转身回眸，朱红裙摆在夜风中扬起')"
-                >
-                  文生图示例
-                </button>
-                <button
-                  type="button"
-                  class="btn-ghost small"
-                  @click="sample('video', '三尾在烛光中缓慢舒展，她缓缓走向镜头')"
-                >
-                  图生视频示例
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <!-- 助手：任务事件 -->
-          <template v-else>
-            <div
-              class="assistant-bubble"
-              :class="m.status"
-            >
-              <div class="run-line">
-                <span
-                  class="run-dot"
-                  :class="m.status"
-                  aria-hidden="true"
-                />
-                <code>{{ m.event }}</code>
-                <small>{{ m.time }}</small>
-              </div>
-              <p>{{ m.text }}</p>
-
-              <div
-                v-if="m.status === 'running'"
-                class="modal-progress"
-              >
-                <div
-                  class="modal-progress-bar"
-                  :style="{ width: `${m.progress}%` }"
-                />
-              </div>
-
-              <div
-                v-if="m.status === 'running'"
-                class="run-actions"
-              >
-                <button
-                  type="button"
-                  class="btn-ghost small"
-                  @click="cancelRun"
-                >
-                  取消任务
-                </button>
-                <span class="refund-hint inline">取消后预占积分自动退回</span>
-              </div>
-
-              <button
-                v-if="m.status === 'done' && m.runId"
-                type="button"
-                class="view-artifact"
-                @click="pickArtifact(m.runId!)"
-              >
-                查看产物 →
-              </button>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!-- 输入区：严格对照首页输入框（composer） -->
-      <div class="chat-composer">
-        <div class="composer">
-          <div
-            class="mode-tabs"
-            role="tablist"
-            aria-label="选择创作类型"
-          >
+    <div class="composer2">
+      <section class="composer2-card">
+        <div class="composer2-toolbar">
+          <div class="composer2-modes">
             <button
               type="button"
-              role="tab"
-              :aria-selected="mode === 'image'"
+              class="mode-chip"
               :class="{ active: mode === 'image' }"
-              @click="mode = 'image'"
+              @click="mode = 'image'; clearReference()"
             >
-              <span
-                class="i-lucide-image"
-                aria-hidden="true"
-              />图片创作
+              图片
             </button>
             <button
               type="button"
-              role="tab"
-              :aria-selected="mode === 'video'"
+              class="mode-chip"
               :class="{ active: mode === 'video' }"
               @click="mode = 'video'"
             >
-              <span
-                class="i-lucide-video"
-                aria-hidden="true"
-              />视频创作
+              视频
             </button>
           </div>
-
-          <div class="prompt-area">
-            <label class="upload-box">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                aria-label="上传参考图片"
-                @change="handleUpload"
-              >
-              <img
-                v-if="uploadPreview"
-                :src="uploadPreview"
-                :alt="uploadName"
-              >
-              <span
-                v-else
-                class="upload-placeholder"
-              >
-                <i
-                  class="i-lucide-plus"
-                  aria-hidden="true"
-                />
-                <strong>上传图片</strong>
-                <small>用于画面对比</small>
-              </span>
-              <span
-                v-if="uploadPreview"
-                class="upload-replace"
-              >更换图片</span>
-            </label>
-
-            <div class="prompt-copy">
-              <textarea
-                v-model="prompt"
-                rows="3"
-                aria-label="创作描述"
-                placeholder="描述你想创作的下一幕……"
-              />
-              <button
-                type="button"
-                class="inspire"
-                @click="inspire"
-              >
-                <span
-                  class="i-lucide-dices"
-                  aria-hidden="true"
-                />给我灵感
-              </button>
-            </div>
-          </div>
-
-          <div class="composer-footer">
-            <div class="parameters">
-              <button type="button">
-                <span
-                  class="i-lucide-user-round"
-                  aria-hidden="true"
-                />{{ selectedCharacter?.name }}
-              </button>
-              <button type="button">
-                <span
-                  class="i-lucide-image-plus"
-                  aria-hidden="true"
-                />参考素材
-              </button>
-              <button type="button">
-                <span
-                  class="i-lucide-box"
-                  aria-hidden="true"
-                />智能匹配
-              </button>
-              <button
-                type="button"
-                @click="ratio = ratio === '16:9' ? '9:16' : '16:9'"
-              >
-                <span
-                  class="i-lucide-monitor"
-                  aria-hidden="true"
-                />{{ ratio }}
-              </button>
-              <button
-                v-if="mode === 'video'"
-                type="button"
-                @click="duration = duration === '5 秒' ? '10 秒' : '5 秒'"
-              >
-                <span
-                  class="i-lucide-clock-3"
-                  aria-hidden="true"
-                />{{ duration }}
-              </button>
-            </div>
-            <button
-              type="button"
-              class="generate"
-              :disabled="!canSend"
-              @click="send"
-            >
-              <span
-                class="i-lucide-sparkles"
-                aria-hidden="true"
-              />
-              生成{{ mode === 'video' ? '视频' : '图片' }}
-              <small>{{ cost }} 积分</small>
-            </button>
-          </div>
-          <p
-            v-if="notice"
-            class="composer-notice"
-            role="status"
-          >
-            {{ notice }}
-          </p>
+          <span class="composer2-charge">{{ charge }} 积分</span>
         </div>
-      </div>
-    </section>
 
-    <!-- 右侧产物单卡：点击消息里的「查看产物」后才出现 -->
-    <aside
-      v-if="activeArtifact()"
-      class="artifact-panel"
-      aria-label="产物"
-    >
-      <div class="artifact-card">
-        <div class="artifact-toolbar">
-          <strong>{{ activeArtifact()!.kind === 'video' ? '视频产物' : '图片产物' }}</strong>
+        <label class="composer2-field">
+          <span class="composer2-label">描述你想画的内容</span>
+          <textarea
+            v-model="positive"
+            rows="4"
+            class="composer2-input"
+            placeholder="例如：雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。"
+          />
+        </label>
+
+        <button
+          type="button"
+          class="composer2-link"
+          @click="showNegative = !showNegative"
+        >
+          {{ showNegative ? '收起负面提示词' : '编辑负面提示词' }}{{ negative ? '（已填写）' : '' }}
+        </button>
+        <label
+          v-if="showNegative"
+          class="composer2-field"
+        >
+          <textarea
+            v-model="negative"
+            rows="2"
+            class="composer2-input"
+            placeholder="不希望出现的内容：模糊、畸形手指、文字水印……"
+          />
+        </label>
+
+        <div class="composer2-section">
+          <div class="composer2-section-title">
+            底模
+          </div>
+          <select
+            v-model="modelId"
+            class="composer2-select"
+          >
+            <option
+              v-for="m in catalog?.models || []"
+              :key="m.id"
+              :value="m.id"
+              :disabled="!m.selectable"
+            >
+              {{ m.name }}{{ !m.selectable ? '（不可用）' : '' }}
+            </option>
+          </select>
+          <template v-if="(catalog?.loras || []).length">
+            <span class="composer2-section-title">效果包（LoRA）</span>
+            <div class="composer2-lora-list">
+              <div
+                v-for="l in catalog?.loras || []"
+                :key="l.id"
+                class="composer2-lora"
+                :class="{ active: selectedLoraIds.includes(l.id) }"
+              >
+                <button
+                  type="button"
+                  class="composer2-lora-toggle"
+                  @click="toggleLora(l.id)"
+                >
+                  {{ l.name }}{{ selectedLoraIds.includes(l.id) ? ' ✓' : '' }}
+                </button>
+                <input
+                  v-if="selectedLoraIds.includes(l.id) && l.weight"
+                  type="range"
+                  :min="l.weight.min"
+                  :max="l.weight.max"
+                  :step="0.05"
+                  :value="currentLoraWeight(l.fileName || l.id)"
+                  @input="onLoraWeight(l.id, $event)"
+                >
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="composer2-section">
           <button
             type="button"
-            aria-label="关闭产物"
-            @click="activeRunId = null"
+            class="composer2-section-toggle"
+            @click="parametersOpen = !parametersOpen"
           >
-            <span
-              class="i-lucide-x"
-              aria-hidden="true"
-            />
+            <span class="composer2-section-title">生成参数</span><span>{{ parametersOpen ? '收起' : '展开' }}</span>
           </button>
-        </div>
-
-        <div
-          v-if="activeArtifact()!.kind === 'video'"
-          class="mock-player"
-        >
-          <img
-            :src="activeArtifact()!.poster"
-            :alt="activeArtifact()!.prompt"
+          <div
+            v-if="parametersOpen"
+            class="composer2-params"
           >
-          <span
-            class="story-wash"
-            aria-hidden="true"
-          />
-          <div class="player-chrome">
-            <button
-              type="button"
-              class="play-btn"
-              :aria-label="playing ? '暂停' : '播放'"
-              @click="togglePlay"
-            >
-              <span
-                :class="playing ? 'i-lucide-pause' : 'i-lucide-play'"
-                aria-hidden="true"
-              />
-            </button>
-            <div class="player-track">
-              <div
-                class="player-track-fill"
-                :style="{ width: `${(playSeconds / MOCK_VIDEO_SECONDS) * 100}%` }"
-              />
+            <div class="param-row">
+              <span class="param-label">画幅</span>
+              <div class="composer2-ratios">
+                <button
+                  v-for="r in ratioPresets"
+                  :key="r.ratio"
+                  type="button"
+                  class="ratio-chip"
+                  :class="{ active: ratio === r.ratio }"
+                  @click="selectRatio(r)"
+                >
+                  {{ r.label }}
+                </button>
+              </div>
             </div>
-            <span class="player-time">
-              {{ formatSeconds(playSeconds) }} / 00:0{{ MOCK_VIDEO_SECONDS }}
-            </span>
+            <div class="param-row">
+              <span class="param-label">尺寸</span>
+              <div class="param-inline">
+                <input
+                  v-model.number="customWidth"
+                  type="number"
+                  min="512"
+                  max="1536"
+                  placeholder="宽"
+                  class="composer2-num"
+                >
+                <span>×</span>
+                <input
+                  v-model.number="customHeight"
+                  type="number"
+                  min="512"
+                  max="1536"
+                  placeholder="高"
+                  class="composer2-num"
+                >
+              </div>
+            </div>
+            <div class="param-row">
+              <span class="param-label">数量</span><input
+                v-model.number="count"
+                type="number"
+                min="1"
+                max="4"
+                class="composer2-num"
+              >
+            </div>
+            <div class="param-row">
+              <span class="param-label">种子</span><input
+                v-model.number="seed"
+                type="number"
+                placeholder="随机"
+                class="composer2-num"
+              >
+            </div>
+            <div class="param-row">
+              <span class="param-label">步数</span><input
+                v-model.number="steps"
+                type="number"
+                :min="catalog?.sampling.stepsMin || 4"
+                :max="catalog?.sampling.stepsMax || 50"
+                class="composer2-num"
+              >
+            </div>
+            <div class="param-row">
+              <span class="param-label">采样器</span>
+              <select
+                v-model="sampler"
+                class="composer2-select"
+              >
+                <option
+                  v-for="s in catalog?.sampling.samplers || []"
+                  :key="s"
+                  :value="s"
+                >
+                  {{ s }}
+                </option>
+              </select>
+            </div>
+            <div class="param-row">
+              <span class="param-label">调度器</span>
+              <select
+                v-model="scheduler"
+                class="composer2-select"
+              >
+                <option
+                  v-for="s in catalog?.sampling.schedulers || []"
+                  :key="s"
+                  :value="s"
+                >
+                  {{ s }}
+                </option>
+              </select>
+            </div>
+            <div class="param-row">
+              <span class="param-label">CFG</span><input
+                v-model.number="cfg"
+                type="number"
+                step="0.5"
+                :min="catalog?.sampling.cfgMin || 0"
+                :max="catalog?.sampling.cfgMax || 10"
+                class="composer2-num"
+              >
+            </div>
           </div>
         </div>
 
+        <div class="composer2-section">
+          <span class="composer2-section-title">参考图（视频首帧 / 参考素材）</span>
+          <input
+            id="ref-input"
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp"
+            class="sr-only"
+            @change="handleUpload"
+          >
+          <label
+            for="ref-input"
+            class="composer2-upload"
+          >上传图片</label>
+          <div
+            v-if="referencePreview"
+            class="composer2-ref"
+          >
+            <img
+              :src="referencePreview"
+              :alt="referenceName"
+              class="composer2-ref-img"
+            >
+            <button
+              type="button"
+              @click="clearReference"
+            >
+              移除
+            </button>
+          </div>
+        </div>
+
+        <p
+          v-if="notice"
+          class="composer2-notice"
+        >
+          {{ notice }}
+        </p>
+      </section>
+
+      <section class="composer2-result">
+        <div
+          v-if="resultStatus === 'idle'"
+          class="composer2-empty"
+        >
+          <p>生成结果将在这里显示</p>
+          <p class="muted">
+            左侧填好提示词与参数，点击「开始创作」。
+          </p>
+        </div>
+        <div
+          v-else-if="resultStatus === 'working'"
+          class="composer2-empty"
+        >
+          <p class="spin">
+            正在生成… {{ resultProgress }}%
+          </p>
+        </div>
+        <div
+          v-else-if="resultStatus === 'done' && resultUrl"
+          class="composer2-done"
+        >
+          <img
+            :src="resultUrl"
+            alt="生成结果"
+            class="composer2-result-img"
+          >
+          <p class="muted">
+            已生成，消耗 {{ resultCredits }} 积分，作品已入库。
+          </p>
+        </div>
+        <div
+          v-else-if="resultStatus === 'done'"
+          class="composer2-empty"
+        >
+          <p>生成完成，但未取到产物封面。</p>
+        </div>
         <div
           v-else
-          class="artifact-image"
+          class="composer2-empty"
         >
-          <img
-            :src="activeArtifact()!.poster"
-            :alt="activeArtifact()!.prompt"
-          >
+          <p class="error-text">
+            {{ genError }}
+          </p>
         </div>
-
-        <div class="artifact-meta">
-          <p>{{ activeArtifact()!.prompt }}</p>
-          <dl>
-            <div>
-              <dt>角色</dt>
-              <dd>{{ activeArtifact()!.character }}</dd>
-            </div>
-            <div>
-              <dt>画幅</dt>
-              <dd>{{ activeArtifact()!.ratio }}</dd>
-            </div>
-            <div>
-              <dt>计费</dt>
-              <dd>已结算 {{ activeArtifact()!.credits }} 积分</dd>
-            </div>
-            <div>
-              <dt>时间</dt>
-              <dd>{{ activeArtifact()!.createdAt }}</dd>
-            </div>
-          </dl>
-          <div class="artifact-actions">
-            <button
-              type="button"
-              class="btn-ghost small"
-              @click="hint('收藏与下载在素材库接入后可用。')"
-            >
-              收藏
-            </button>
-            <button
-              type="button"
-              class="btn-ghost small"
-              @click="hint('下载走素材导出接口，原型暂未接入。')"
-            >
-              下载
-            </button>
-            <NuxtLink
-              to="/works"
-              class="btn-primary small"
-            >加入作品库</NuxtLink>
-          </div>
-        </div>
-      </div>
-    </aside>
+      </section>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.composer2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 1.25rem; align-items: start; }
+@media (max-width: 900px) { .composer2 { grid-template-columns: 1fr; } }
+.composer2-card { border: 1px solid var(--hg-line, #e2e4ea); border-radius: 1.25rem; background: #fff; padding: 1.25rem; display: grid; gap: 0.85rem; }
+.composer2-toolbar { display: flex; align-items: center; justify-content: space-between; }
+.composer2-modes { display: flex; gap: 0.4rem; }
+.mode-chip { padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.82rem; font-weight: 700; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; cursor: pointer; color: var(--hg-muted, #777); }
+.mode-chip.active { background: var(--hg-ink, #1a1a1a); color: #fff; border-color: var(--hg-ink, #1a1a1a); }
+.composer2-charge { font-size: 0.82rem; font-weight: 700; color: var(--hg-accent, #b08a4f); }
+.composer2-field { display: grid; gap: 0.4rem; }
+.composer2-label { font-size: 0.82rem; font-weight: 700; color: var(--hg-muted, #666); }
+.composer2-input { width: 100%; padding: 0.75rem 0.9rem; border-radius: 0.7rem; border: 1px solid var(--hg-line, #e2e4ea); font-size: 0.9rem; line-height: 1.6; resize: vertical; outline: none; background: #faf9f7; }
+.composer2-input:focus { border-color: var(--hg-accent, #b08a4f); }
+.composer2-link { font-size: 0.78rem; color: var(--hg-accent, #b08a4f); font-weight: 700; text-align: left; cursor: pointer; background: none; border: none; }
+.composer2-section { border-top: 1px solid var(--hg-line, #eee); padding-top: 0.85rem; display: grid; gap: 0.6rem; }
+.composer2-section-title { font-size: 0.8rem; font-weight: 800; color: #333; }
+.composer2-section-toggle { display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: none; border: none; width: 100%; font-size: 0.8rem; color: var(--hg-muted, #777); }
+.composer2-select, .composer2-num { padding: 0.45rem 0.6rem; border-radius: 0.5rem; border: 1px solid var(--hg-line, #e2e4ea); background: #faf9f7; outline: none; font-size: 0.85rem; }
+.composer2-lora-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.composer2-lora { display: grid; gap: 0.3rem; }
+.composer2-lora-toggle { padding: 0.35rem 0.7rem; border-radius: 999px; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.composer2-lora.active .composer2-lora-toggle { border-color: var(--hg-accent, #b08a4f); color: var(--hg-accent, #b08a4f); }
+.composer2-params { display: grid; gap: 0.7rem; }
+.param-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.param-label { font-size: 0.8rem; color: var(--hg-muted, #666); font-weight: 600; flex-shrink: 0; }
+.composer2-ratios { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ratio-chip { padding: 0.3rem 0.6rem; border-radius: 0.5rem; border: 1px solid var(--hg-line, #e2e4ea); background: transparent; font-size: 0.75rem; cursor: pointer; }
+.ratio-chip.active { background: var(--hg-amber, #f3e3c0); border-color: var(--hg-accent, #b08a4f); color: #333; font-weight: 700; }
+.param-inline { display: flex; align-items: center; gap: 0.4rem; }
+.composer2-num { width: 88px; }
+.composer2-upload { display: inline-grid; place-items: center; padding: 0.6rem 1rem; border: 1px dashed var(--hg-line, #ccc); border-radius: 0.7rem; cursor: pointer; font-size: 0.82rem; font-weight: 700; color: var(--hg-muted, #666); }
+.composer2-ref { display: flex; align-items: center; gap: 0.6rem; }
+.composer2-ref-img { max-height: 72px; border-radius: 0.5rem; border: 1px solid var(--hg-line, #e2e4ea); }
+.composer2-notice { font-size: 0.8rem; color: var(--hg-accent, #b08a4f); font-weight: 700; }
+.composer2-result { border: 1px solid var(--hg-line, #e2e4ea); border-radius: 1.25rem; background: #fff; min-height: 320px; padding: 1rem; position: sticky; top: 1rem; }
+.composer2-empty { min-height: 280px; display: grid; place-items: center; text-align: center; color: var(--hg-muted, #777); font-size: 0.88rem; gap: 0.3rem; }
+.composer2-done { display: grid; gap: 0.6rem; text-align: center; }
+.composer2-result-img { width: 100%; border-radius: 0.8rem; border: 1px solid var(--hg-line, #e2e4ea); }
+.muted { color: var(--hg-muted, #999); }
+.error-text { color: #dc2626; font-weight: 700; }
+.spin { display: flex; align-items: center; gap: 0.4rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>

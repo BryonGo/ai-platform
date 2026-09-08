@@ -55,6 +55,36 @@ export interface StoryItem {
   updatedAt: number
 }
 
+export interface CatalogSampling {
+  steps: number
+  stepsMin: number
+  stepsMax: number
+  cfgMin: number
+  cfgMax: number
+  cfgStep: number
+  samplers: string[]
+  schedulers: string[]
+}
+
+export interface CatalogItem {
+  id: string
+  type: 'model' | 'lora'
+  name: string
+  family: string
+  fileName?: string
+  available: boolean
+  selectable: boolean
+  weight?: { default: number, min: number, max: number }
+  sampling?: { steps: number, sampler: string, scheduler: string, cfg: number }
+}
+
+export interface Catalog {
+  version: number
+  sampling: CatalogSampling
+  models: CatalogItem[]
+  loras: CatalogItem[]
+}
+
 export interface HougongTask {
   id: number
   type: string
@@ -135,6 +165,10 @@ export function useHougongApi() {
     return apiRequest('/account/credits')
   }
 
+  async function getCatalog(): Promise<Catalog> {
+    return apiRequest<Catalog>('/platform/catalog')
+  }
+
   async function uploadMedia(file: File): Promise<{ mediaAssetId: string, width: number, height: number, mime: string }> {
     const form = new FormData()
     form.append('file', file)
@@ -145,9 +179,17 @@ export function useHougongApi() {
     clientKey: string
     type: string
     prompt: string
+    negativePrompt?: string
     ratio?: string
+    width?: number
+    height?: number
+    count?: number
+    seed?: number
+    sampling?: { steps: number, sampler: string, scheduler: string, cfg: number, denoise?: number }
+    loras?: { name: string, weight: number }[]
+    modelId?: string
     characterId?: string
-    refAssetIds?: number[]
+    refAssetIds?: string[]
   }): Promise<HougongTask> {
     return apiRequest<HougongTask>('/hougong/tasks', { method: 'POST', body: input })
   }
@@ -178,6 +220,7 @@ export function useHougongApi() {
     createTask,
     getTask,
     cancelTask,
-    createWork
+    createWork,
+    getCatalog
   }
 }
