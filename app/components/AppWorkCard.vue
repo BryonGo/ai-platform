@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { characterOf, type Work } from '~/composables/useHougong'
+import { characterOf } from '~/composables/useHougong'
+
+// 结构属性：同时兼容 mock Work（useHougong）与真实 API WorkItem（listWorks 映射后补齐展示字段）。
+export interface WorkCardItem {
+  id: string | number
+  title: string
+  characterId: string | number
+  kind: string
+  meta?: string
+  image?: string
+  tone?: string
+  recommended?: boolean
+  status?: string
+}
 
 defineProps<{
-  work: Work
+  work: WorkCardItem
   index: number
 }>()
 </script>
@@ -13,9 +26,17 @@ defineProps<{
     class="story-card"
   >
     <img
+      v-if="work.image"
       :src="work.image"
       :alt="work.title"
     >
+    <div
+      v-else
+      class="work-placeholder"
+      aria-hidden="true"
+    >
+      <span>{{ work.title.slice(0, 1) }}</span>
+    </div>
     <span
       class="story-wash"
       aria-hidden="true"
@@ -30,15 +51,15 @@ defineProps<{
       class="story-recommended"
     >推荐</span>
     <div class="story-info">
-      <small>{{ work.kind }} · {{ work.meta }}</small>
+      <small>{{ work.kind }}<template v-if="work.meta"> · {{ work.meta }}</template></small>
       <h3>{{ work.title }}</h3>
       <div>
-        <template v-if="characterOf(work.characterId)">
+        <template v-if="characterOf(String(work.characterId))">
           <img
-            :src="characterOf(work.characterId)?.image"
-            :alt="characterOf(work.characterId)?.name"
+            :src="characterOf(String(work.characterId))?.image"
+            :alt="characterOf(String(work.characterId))?.name"
           >
-          <span>{{ characterOf(work.characterId)?.name }}</span>
+          <span>{{ characterOf(String(work.characterId))?.name }}</span>
         </template><span
           v-else
           class="story-role-fallback"
@@ -47,3 +68,16 @@ defineProps<{
     </div>
   </NuxtLink>
 </template>
+
+<style scoped>
+.work-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(160deg, #efe6f5, #d9c7e6);
+  color: #6d5390;
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 800;
+}
+</style>
