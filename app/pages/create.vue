@@ -780,40 +780,6 @@ function handleUpload(event: Event) {
                 placeholder="描述你想创作的下一幕，输入 @ 唤出角色、服装、画风…"
                 @open-category="onOpenCategory"
               />
-              <button
-                type="button"
-                class="inspire"
-                @click="inspire"
-              >
-                <span
-                  class="i-lucide-dices"
-                  aria-hidden="true"
-                />给我灵感
-              </button>
-              <button
-                type="button"
-                class="inspire"
-                :disabled="optimizing || translating"
-                :aria-busy="translating"
-                @click="runTranslate"
-              >
-                <span
-                  class="i-lucide-languages"
-                  aria-hidden="true"
-                />{{ translating ? '翻译中…' : '翻译' }}
-              </button>
-              <button
-                type="button"
-                class="inspire"
-                :disabled="optimizing || translating"
-                :aria-busy="optimizing"
-                @click="runOptimize"
-              >
-                <span
-                  class="i-lucide-wand-sparkles"
-                  aria-hidden="true"
-                />{{ optimizing ? '润色中…' : '润色' }}
-              </button>
             </div>
           </div>
 
@@ -821,19 +787,21 @@ function handleUpload(event: Event) {
             <div class="parameters">
               <button
                 type="button"
+                :class="{ active: showNegative }"
                 @click="showNegative = !showNegative"
               >
                 <span
-                  class="i-lucide-image-plus"
+                  class="i-lucide-minus-circle"
                   aria-hidden="true"
-                />{{ showNegative ? '负面词 ✓' : '负面词' }}
+                />负面词
               </button>
               <button
                 type="button"
+                :class="{ active: assetOpen }"
                 @click="openAssets"
               >
                 <span
-                  class="i-lucide-image-plus"
+                  class="i-lucide-library"
                   aria-hidden="true"
                 />素材库
               </button>
@@ -843,24 +811,34 @@ function handleUpload(event: Event) {
               >
                 <button
                   type="button"
+                  class="model-btn"
                   :class="{ active: !useCloud }"
                   @click="clearCloudModel(); modelPickerOpen = true"
                 >
+                  <img
+                    v-if="activeModel?.cover"
+                    :src="activeModel.cover"
+                    :alt="activeModel.name"
+                    class="model-thumb"
+                  >
                   <span
-                    class="i-lucide-box"
-                    aria-hidden="true"
-                  />{{ activeModel?.name || '底模' }} <small class="fam">{{ activeModel?.family || '' }}</small>
+                    v-else
+                    class="model-thumb model-thumb-fallback"
+                  >{{ (activeModel?.name || '模')[0] }}</span>
+                  <span class="model-name">{{ activeModel?.name || '底模' }}</span>
+                  <small class="fam">{{ activeModel?.family || '' }}</small>
                 </button>
               </div>
               <button
                 v-if="familyLoras.length && !useCloud && mode === 'image'"
                 type="button"
+                :class="{ active: selectedLoras.length > 0 }"
                 @click="loraPickerOpen = true"
               >
                 <span
-                  class="i-lucide-layers-3"
+                  class="i-lucide-layers"
                   aria-hidden="true"
-                />效果包 {{ selectedLoras.length }}/8
+                />效果包 <b>{{ selectedLoras.length }}</b>/8
               </button>
               <button
                 v-if="cloudModels.length && mode === 'image'"
@@ -871,7 +849,7 @@ function handleUpload(event: Event) {
                 <span
                   class="i-lucide-cloud"
                   aria-hidden="true"
-                />{{ activeCloudModel?.name || '云端' }}
+                />{{ useCloud ? activeCloudModel?.name : '云端' }}
               </button>
               <button
                 v-if="useCloud"
@@ -903,33 +881,72 @@ function handleUpload(event: Event) {
                 />{{ duration }}
               </button>
             </div>
-            <div
-              v-if="selectedLoras.length && !useCloud && mode === 'image'"
-              class="lora-strip"
-            >
-              <span class="lora-strip-label">已选效果包：</span>
+            <div class="footer-actions">
               <button
-                v-for="s in selectedLoras"
-                :key="s.id"
                 type="button"
-                class="lora-chip"
-                @click="loraPickerOpen = true"
+                class="icon-btn"
+                title="给我灵感"
+                @click="inspire"
               >
-                {{ (catalog?.loras || []).find(l => l.id === s.id)?.name || s.id }} · {{ s.weight }}
+                <span
+                  class="i-lucide-dices"
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                class="icon-btn"
+                :disabled="optimizing || translating"
+                :aria-busy="translating"
+                :title="translating ? '翻译中…' : '翻译提示词'"
+                @click="runTranslate"
+              >
+                <span
+                  class="i-lucide-languages"
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                class="icon-btn"
+                :disabled="optimizing || translating"
+                :aria-busy="optimizing"
+                :title="optimizing ? '润色中…' : '一键润色'"
+                @click="runOptimize"
+              >
+                <span
+                  class="i-lucide-wand-sparkles"
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                class="generate"
+                :disabled="!canSend"
+                @click="send"
+              >
+                <span
+                  class="i-lucide-sparkles"
+                  aria-hidden="true"
+                />
+                生成{{ mode === 'video' ? '视频' : '图片' }}
+                <small>{{ cost }} {{ useCloud ? '余额' : '积分' }}</small>
               </button>
             </div>
+          </div>
+          <div
+            v-if="selectedLoras.length && !useCloud && mode === 'image'"
+            class="lora-strip"
+          >
+            <span class="lora-strip-label">已选效果包：</span>
             <button
+              v-for="s in selectedLoras"
+              :key="s.id"
               type="button"
-              class="generate"
-              :disabled="!canSend"
-              @click="send"
+              class="lora-chip"
+              @click="loraPickerOpen = true"
             >
-              <span
-                class="i-lucide-sparkles"
-                aria-hidden="true"
-              />
-              生成{{ mode === 'video' ? '视频' : '图片' }}
-              <small>{{ cost }} {{ useCloud ? '余额' : '积分' }}</small>
+              {{ (catalog?.loras || []).find(l => l.id === s.id)?.name || s.id }} · {{ s.weight }}
             </button>
           </div>
           <textarea

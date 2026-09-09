@@ -736,13 +736,11 @@ textarea:focus-visible {
   padding: 16px 17px 12px;
 }
 .upload-box {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 5;
-  flex: none;
-  width: 44px;
-  height: 44px;
+  position: relative;
+  flex: 0 0 56px;
+  align-self: flex-start;
+  width: 56px;
+  height: 56px;
   overflow: hidden;
   border: 1px dashed rgb(251 191 36 / 0.34);
   border-radius: 10px;
@@ -810,7 +808,6 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-left: 56px;
 }
 /* TipTap 编辑器主体 */
 .prompt-copy .prompt-editor {
@@ -879,28 +876,98 @@ textarea:focus-visible {
 }
 .parameters {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 4px;
+  min-width: 0;
 }
 .parameters button {
-  min-height: 36px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgb(255 255 255 / 0.025);
-  color: #aaa9a6;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #8f8f95;
   font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .parameters button:hover {
-  border-color: rgb(251 191 36 / 0.38);
+  background: rgb(255 255 255 / 0.07);
   color: var(--ink);
 }
+.parameters button.active {
+  border-color: rgb(251 191 36 / 0.45);
+  background: rgb(251 191 36 / 0.1);
+  color: var(--amber-soft);
+}
+.parameters button b {
+  color: var(--amber);
+  font-weight: 700;
+}
+.model-btn {
+  max-width: 220px;
+}
+.model-thumb {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  object-fit: cover;
+  background: rgb(255 255 255 / 0.1);
+}
+.model-thumb-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--amber-soft);
+}
+.model-name {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-btn .fam {
+  color: #63636a;
+  font-size: 10px;
+  font-weight: 400;
+}
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #8f8f95;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.icon-btn:hover {
+  background: rgb(255 255 255 / 0.07);
+  color: var(--amber);
+}
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .generate {
-  min-width: 170px;
-  height: 46px;
+  min-width: 168px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
