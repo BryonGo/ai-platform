@@ -54,12 +54,13 @@ const emit = defineEmits<{
 .sel-dialog {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   background: rgb(0 0 0 / 0.78);
   backdrop-filter: blur(6px);
   padding: 28px 20px 20px;
+  overflow: hidden;
 }
 .sel-dialog__head {
   display: flex;
@@ -67,6 +68,7 @@ const emit = defineEmits<{
   justify-content: center;
   position: relative;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 .sel-dialog__title { font-size: 22px; font-weight: 600; color: #fff; }
 .sel-dialog__close {
@@ -79,13 +81,17 @@ const emit = defineEmits<{
 .sel-dialog__close:hover { opacity: 1; background: rgb(255 255 255 / 0.1); }
 .sel-dialog__filters {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   margin-bottom: 16px;
   overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+  max-height: 40px;
   scrollbar-width: none;
 }
+.sel-dialog__filters::-webkit-scrollbar { display: none; }
 .sel-filter {
   flex-shrink: 0;
   padding: 7px 14px;
