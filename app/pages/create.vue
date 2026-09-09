@@ -111,6 +111,9 @@ function pickModel(id: string) {
   const m = (catalog.value?.models || []).find(x => x.id === id)
   if (m?.sampling) {
     sampling.value = { steps: m.sampling.steps, sampler: m.sampling.sampler, scheduler: m.sampling.scheduler, cfg: m.sampling.cfg }
+  } else {
+    // 模型无显式采样配置：清空，后端按工作流默认采样（如 Illustrious 24 步/CFG 6）。
+    sampling.value = null
   }
 }
 
@@ -163,6 +166,8 @@ async function loadCatalog() {
       modelId.value = model.id
       if (model.sampling) {
         sampling.value = { steps: model.sampling.steps, sampler: model.sampling.sampler, scheduler: model.sampling.scheduler, cfg: model.sampling.cfg }
+      } else {
+        sampling.value = null
       }
     }
   } catch {
@@ -300,13 +305,9 @@ async function send() {
         throw new Error('视频生成请先上传首帧图片或从素材库选择')
       }
     }
-    // 已选 LoRA：传 comfy 文件名（lora_name）+ 权重。
+    // 已选 LoRA：传 catalog id + 权重（后端按 id 校验 family 兼容并解析 comfy 文件名）。
     const selectedLoraItems = selectedLoras.value
-      .map((s) => {
-        const l = (catalog.value?.loras || []).find(x => x.id === s.id)
-        return l ? { name: l.fileName || l.name, weight: s.weight } : null
-      })
-      .filter((x): x is { name: string, weight: number } => x !== null)
+      .map(s => ({ name: s.id, weight: s.weight }))
 
     const task = await hgApi.createTask({
       clientKey: `hg-web-${Date.now()}-${runSeq}`,
