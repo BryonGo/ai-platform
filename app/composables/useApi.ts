@@ -73,9 +73,11 @@ export async function apiRequest<T = unknown>(
   }
   const res = parseWithBigInt(await resp.text()) as ApiEnvelope<T>
   if (res.code !== 0) {
-    // 登录失效（60001 未登录/Token 无效）：清除本地登录态，路由守卫会引导重新登录。
-    if (res.code === 60001) {
+    // 登录失效：JWT 中间件返回 401（"请求要求用户的身份认证"）或平台接口 60001。
+    // 清除本地登录态并给友好提示，页面会引导重新登录（游客一键登录）。
+    if (res.code === 60001 || res.code === 401) {
       session.clear()
+      throw new Error('登录已过期，请重新登录（可点「游客一键登录」）')
     }
     throw new Error(res.message || `API error ${res.code}`)
   }

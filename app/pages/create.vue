@@ -395,6 +395,11 @@ async function send() {
       cur.text = `${msgText(kind, characterName, ratioNow, credits)} → 失败（积分未扣）`
     }
     notice.value = reason
+    // 登录过期：稍候跳转登录页（游客一键登录恢复）。
+    if (reason.includes('登录已过期')) {
+      await sleep(1200)
+      await navigateTo('/auth/login')
+    }
   }
 }
 
