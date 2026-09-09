@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 带封面图的选择卡片（对齐 PeachArt SelectionCard）：封面 + 底部渐变 + 标题 + 副标题，选中粉色高亮。
-defineProps<{
+// 图片加载失败（CDN 404 等）时降级为占位，不显示破图。
+import { ref, watch } from 'vue'
+
+const props = defineProps<{
   image: string | null
   title: string
   description?: string
@@ -9,6 +12,11 @@ defineProps<{
   disabled?: boolean
 }>()
 const emit = defineEmits<{ (e: 'select'): void }>()
+
+const imgError = ref(false)
+watch(() => props.image, () => {
+  imgError.value = false
+})
 </script>
 
 <template>
@@ -21,11 +29,13 @@ const emit = defineEmits<{ (e: 'select'): void }>()
     @click="emit('select')"
   >
     <img
-      v-if="image"
+      v-if="image && !imgError"
       :src="image"
       :alt="title"
       class="sel-card__img"
       loading="lazy"
+      referrerpolicy="no-referrer"
+      @error="imgError = true"
     >
     <div
       v-else

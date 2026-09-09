@@ -73,6 +73,10 @@ export async function apiRequest<T = unknown>(
   }
   const res = parseWithBigInt(await resp.text()) as ApiEnvelope<T>
   if (res.code !== 0) {
+    // 登录失效（60001 未登录/Token 无效）：清除本地登录态，路由守卫会引导重新登录。
+    if (res.code === 60001) {
+      session.clear()
+    }
     throw new Error(res.message || `API error ${res.code}`)
   }
   return res.data
@@ -83,7 +87,7 @@ export async function apiRequest<T = unknown>(
 // 任何 reviver 都救不回已舍入的数值。这里用正则把 16 位以上整数整体加引号。
 function parseWithBigInt(text: string): unknown {
   const guarded = text.replace(
-    /([:{}\[\],])\s*(-?\d{16,})(?=\s*[,}\]])/g,
+    /([:{}[\],])\s*(-?\d{16,})(?=\s*[,}\]])/g,
     (_m, prefix: string, digits: string) => `${prefix}"${digits}"`
   )
   return JSON.parse(guarded)

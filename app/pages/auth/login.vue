@@ -22,6 +22,20 @@ async function submit() {
     pending.value = false
   }
 }
+
+// 游客一键登录：后端自动建临时账号返回 token，无需注册。
+async function guest() {
+  error.value = ''
+  pending.value = true
+  try {
+    await useHougongApi().guestLogin()
+    await navigateTo('/')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '游客登录失败，请稍后重试'
+  } finally {
+    pending.value = false
+  }
+}
 </script>
 
 <template>
@@ -95,6 +109,16 @@ async function submit() {
         :disabled="pending"
       >
         {{ pending ? '登录中…' : '登录并继续' }}
+      </button>
+
+      <button
+        type="button"
+        class="btn-ghost btn-block"
+        :disabled="pending"
+        style="margin-top: 10px"
+        @click="guest"
+      >
+        {{ pending ? '请稍候…' : '游客一键登录（无需注册）' }}
       </button>
 
       <p class="auth-foot">
