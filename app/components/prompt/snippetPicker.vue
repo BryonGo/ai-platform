@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// @ 唤起的超级标签选择器：分类 tab + 搜索 + 结果网格，选中后回传 apply(source)。
-import { ref, watch } from 'vue'
+// 第二级：某分类下的超级标签卡片弹层（底部全屏，带封面卡片）。
+// 对齐 PeachArt snippet-picker.tsx（SelectionDialog + SelectionCard）。
 import type { SnippetCategory, SnippetItem } from '~/composables/useHougongApi'
 import type { SnippetSnapshot } from './enhancement-mark'
 
 const props = defineProps<{
   open: boolean
+  category: string
 }>()
 const emit = defineEmits<{
   (e: 'close'): void
@@ -13,37 +14,44 @@ const emit = defineEmits<{
 }>()
 
 const hgApi = useHougongApi()
-const categories = ref<SnippetCategory[]>([])
-const activeCategory = ref('character')
+const categoryMeta = ref<SnippetCategory | null>(null)
+const subcategory = ref('')
 const query = ref('')
 const items = ref<SnippetItem[]>([])
 const loading = ref(false)
 
-const categoryLabels: Record<string, string> = {
+const labels: Record<string, string> = {
   character: '角色',
   clothing: '服装',
   background: '背景',
   pose: '姿势',
   style: '画风'
 }
+const title = computed(() => `选择${labels[props.category] || '超级标签'}`)
+const subfilters = computed(() => {
+  const subs = categoryMeta.value?.subcategories || []
+  return [{ key: '', label: '全部' }, ...subs.map(s => ({ key: s.key, label: s.labels.chinese }))]
+})
 
-async function loadCategories() {
+async function loadCategory() {
   try {
-    categories.value = await hgApi.snippetCategories()
-    const first = categories.value[0]
-    if (first && !categories.value.some(c => c.key === activeCategory.value)) {
-      activeCategory.value = first.key
-    }
+    const cats = await hgApi.snippetCategories()
+    categoryMeta.value = cats.find(c => c.key === props.category) || null
   } catch {
-    categories.value = []
+    categoryMeta.value = null
   }
 }
 
 async function loadItems() {
-  if (!activeCategory.value) return
+  if (!props.category) return
   loading.value = true
   try {
-    const r = await hgApi.snippetList({ category: activeCategory.value, query: query.value.trim() || undefined, limit: 50 })
+    const r = await hgApi.snippetList({
+      category: props.category,
+      subcategory: subcategory.value || undefined,
+      query: query.value.trim() || undefined,
+      limit: 50
+    })
     items.value = r.items || []
   } catch {
     items.value = []
@@ -53,10 +61,16 @@ async function loadItems() {
 }
 
 function pick(item: SnippetItem) {
-  const cat = categories.value.find(c => c.key === item.category)
+  const cat = categoryMeta.value
   emit('apply', {
     id: item.id,
-    category: { key: item.category, labels: { chinese: cat?.labels.chinese || categoryLabels[item.category] || item.category, english: cat?.labels.english || item.category } },
+    category: {
+      key: item.category,
+      labels: {
+        chinese: cat?.labels.chinese || labels[item.category] || item.category,
+        english: cat?.labels.english || item.category
+      }
+    },
     labels: item.labels,
     prompt: item.prompt,
     preview: item.preview
@@ -68,153 +82,82 @@ watch(query, () => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(loadItems, 200)
 })
-
-watch(() => props.open, (open) => {
-  if (open) {
+watch(subcategory, () => {
+  if (props.open) loadItems()
+})
+watch(() => props.open, (o) => {
+  if (o) {
     query.value = ''
-    if (!categories.value.length) {
-      loadCategories().then(loadItems)
-    } else {
-      loadItems()
-    }
+    subcategory.value = ''
+    if (!categoryMeta.value) loadCategory().then(loadItems)
+    else loadItems()
   }
 }, { immediate: true })
-
-watch(activeCategory, () => {
-  if (props.open) loadItems()
+watch(() => props.category, () => {
+  categoryMeta.value = null
+  if (props.open) loadCategory().then(loadItems)
 })
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="snippet-picker"
-    @click.stop
+  <SelectionDialog
+    :open="open"
+    :title="title"
+    :filters="subfilters.map(f => f.label)"
+    :active-filter="subcategory === '' ? '全部' : (subfilters.find(f => f.key === subcategory)?.label || '全部')"
+    @close="emit('close')"
+    @update:active-filter="(label) => { const f = subfilters.find(x => x.label === label); subcategory = f?.key ?? '' }"
   >
-    <div class="snippet-picker__head">
-      <span class="snippet-picker__title">选择超级标签</span>
-      <button
-        type="button"
-        class="snippet-picker__close"
-        @click="emit('close')"
+    <div class="snippet-second">
+      <input
+        v-model="query"
+        type="text"
+        class="snippet-second__search"
+        :placeholder="`搜索${labels[category] || '标签'}…`"
       >
-        ✕
-      </button>
-    </div>
-    <div class="snippet-picker__cats">
-      <button
-        v-for="c in categories"
-        :key="c.key"
-        type="button"
-        class="snippet-picker__cat"
-        :class="{ active: activeCategory === c.key }"
-        @click="activeCategory = c.key"
+      <div
+        v-if="loading"
+        class="snippet-second__empty"
       >
-        {{ c.labels.chinese }}
-      </button>
-    </div>
-    <input
-      v-model="query"
-      type="text"
-      class="snippet-picker__search"
-      placeholder="搜索角色、服装、画风…"
-    >
-    <div
-      v-if="loading"
-      class="snippet-picker__empty"
-    >
-      加载中…
-    </div>
-    <div
-      v-else-if="!items.length"
-      class="snippet-picker__empty"
-    >
-      暂无匹配标签
-    </div>
-    <div
-      v-else
-      class="snippet-picker__grid"
-    >
-      <button
-        v-for="it in items"
-        :key="it.id"
-        type="button"
-        class="snippet-picker__item"
-        @click="pick(it)"
+        加载中…
+      </div>
+      <div
+        v-else-if="!items.length"
+        class="snippet-second__empty"
       >
-        <img
-          v-if="it.preview"
-          :src="it.preview"
-          :alt="it.labels.chinese"
-          class="snippet-picker__img"
-        >
-        <div
-          v-else
-          class="snippet-picker__img snippet-picker__placeholder"
-        >
-          {{ it.labels.chinese.slice(0, 1) }}
-        </div>
-        <span class="snippet-picker__name">{{ it.labels.chinese }}</span>
-      </button>
+        没有找到匹配的超级标签。
+      </div>
+      <div
+        v-else
+        class="snippet-second__grid"
+      >
+        <SelectionCard
+          v-for="it in items"
+          :key="it.id"
+          :image="it.preview"
+          :title="it.labels.chinese"
+          :description="it.labels.english"
+          :label="subfilters.find(f => f.key === it.subcategory)?.label"
+          @select="pick(it)"
+        />
+      </div>
     </div>
-  </div>
+  </SelectionDialog>
 </template>
 
 <style scoped>
-.snippet-picker {
-  position: absolute;
-  z-index: 40;
-  bottom: calc(100% + 8px);
-  left: 0;
-  width: min(420px, 92vw);
-  max-height: 360px;
-  overflow-y: auto;
-  padding: 10px;
-  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
-  border-radius: 12px;
-  background: var(--bg-elev, rgb(20 20 24 / 0.98));
-  box-shadow: 0 10px 32px rgb(0 0 0 / 0.45);
+.snippet-second { display: flex; flex-direction: column; gap: 12px; }
+.snippet-second__search {
+  width: 100%; max-width: 360px; align-self: center;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.18); border-radius: 8px;
+  background: rgb(255 255 255 / 0.08); color: #fff; font-size: 14px; outline: none;
 }
-.snippet-picker__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.snippet-picker__title { font-size: 12px; font-weight: 700; color: var(--muted); }
-.snippet-picker__close { color: var(--muted); cursor: pointer; font-size: 14px; }
-.snippet-picker__cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.snippet-picker__cat {
-  padding: 4px 10px;
-  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
-  border-radius: 999px;
-  cursor: pointer;
-  color: var(--ink);
-  background: var(--panel);
-  font-size: 12px;
+.snippet-second__search:focus { border-color: rgb(246 83 140 / 0.7); }
+.snippet-second__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
 }
-.snippet-picker__cat.active { border-color: var(--amber); background: rgb(251 191 36 / 0.16); }
-.snippet-picker__search {
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
-  border-radius: 8px;
-  background: var(--hg-input, rgb(255 255 255 / 0.05));
-  color: var(--ink);
-  font-size: 13px;
-  outline: none;
-}
-.snippet-picker__empty { color: var(--faint); font-size: 12px; padding: 12px 0; text-align: center; }
-.snippet-picker__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.snippet-picker__item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  background: transparent;
-}
-.snippet-picker__item:hover { border-color: var(--hg-line, rgb(255 255 255 / 0.16)); }
-.snippet-picker__img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--panel); }
-.snippet-picker__placeholder { display: grid; place-items: center; color: var(--muted); font-size: 16px; }
-.snippet-picker__name { font-size: 11px; color: var(--ink); }
+.snippet-second__empty { color: rgb(255 255 255 / 0.65); text-align: center; padding: 24px 0; font-size: 14px; }
 </style>

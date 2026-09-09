@@ -2,7 +2,8 @@
 import { characters } from '~/composables/useHougong'
 import { useComposerDraft } from '~/composables/useComposerDraft'
 import PromptEditor from '~/components/prompt/promptEditor.vue'
-import { promptText, type Prompt } from '~/components/prompt/enhancement-mark'
+import { promptText, type Prompt, type SnippetSnapshot } from '~/components/prompt/enhancement-mark'
+import SnippetPicker from '~/components/prompt/snippetPicker.vue'
 import ModelPicker from '~/components/selection/modelPicker.vue'
 import LoraPicker, { type LoraSelection } from '~/components/selection/loraPicker.vue'
 
@@ -38,6 +39,20 @@ const prompt = ref('')
 const promptModel = ref<Prompt>({ parts: [] })
 // 防止同步回环的标记。
 let syncingPrompt = false
+// 超级标签第二级弹层（点分类菜单后打开）。
+const snippetPickerOpen = ref(false)
+const snippetCategory = ref('character')
+const promptEditorRef = ref<InstanceType<typeof PromptEditor> | null>(null)
+
+function onOpenCategory(category: string) {
+  snippetCategory.value = category
+  snippetPickerOpen.value = true
+}
+
+function onApplySnippet(source: SnippetSnapshot) {
+  promptEditorRef.value?.applySnippet(source)
+  snippetPickerOpen.value = false
+}
 
 // PromptEditor 结构化 → 纯文本（snippet 取英文 prompt），同步回 prompt。
 function syncFromModel() {
@@ -754,8 +769,10 @@ function handleUpload(event: Event) {
 
             <div class="prompt-copy">
               <PromptEditor
+                ref="promptEditorRef"
                 v-model="promptModel"
                 placeholder="描述你想创作的下一幕，输入 @ 唤出角色、服装、画风…"
+                @open-category="onOpenCategory"
               />
               <button
                 type="button"
@@ -1075,6 +1092,12 @@ function handleUpload(event: Event) {
       :selected="selectedLoras"
       @close="loraPickerOpen = false"
       @update="selectedLoras = $event"
+    />
+    <SnippetPicker
+      :open="snippetPickerOpen"
+      :category="snippetCategory"
+      @close="snippetPickerOpen = false; promptEditorRef?.cancelSnippet()"
+      @apply="onApplySnippet"
     />
   </div>
 </template>
