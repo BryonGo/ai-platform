@@ -10,7 +10,8 @@ const error = ref('')
 const models = ref<ModelListItem[]>([])
 const facets = ref<ModelFacets | null>(null)
 const famFilter = ref('')
-const typeFilter = ref('model')
+// 底模/LoRA 属于图片；视频模型单列（图生视频）。默认只看图片底模。
+const typeFilter = ref<'model' | 'lora' | 'video' | ''>('model')
 const detail = ref<ModelDetail | null>(null)
 
 // 我的模型
@@ -69,6 +70,12 @@ async function loadMine() {
   } finally {
     loading.value = false
   }
+}
+
+// typeLabel 卡片副标题：视频模型标「视频」，LoRA 标「LoRA」，其余显示底模族。
+function typeLabel(m: ModelListItem) {
+  if (m.type === 'video') return '视频模型'
+  return m.type === 'lora' ? 'LoRA' : (m.family || '底模')
 }
 
 function switchTab(t: 'market' | 'mine') {
@@ -201,7 +208,7 @@ onMounted(() => {
     <template v-if="tab === 'market'">
       <div class="filters">
         <button
-          v-for="t in ([{ key: 'model', label: '底模' }, { key: 'lora', label: 'LoRA' }, { key: '', label: '全部' }] as const)"
+          v-for="t in ([{ key: 'model', label: '图片底模' }, { key: 'lora', label: '图片 LoRA' }, { key: 'video', label: '视频模型' }] as const)"
           :key="t.key"
           type="button"
           class="filter-btn"
@@ -210,7 +217,7 @@ onMounted(() => {
         >{{ t.label }}</button>
       </div>
       <div
-        v-if="facets?.families.length"
+        v-if="typeFilter !== 'video' && facets?.families.length"
         class="fam-row"
       >
         <button
@@ -242,11 +249,17 @@ onMounted(() => {
             :alt="m.name"
           >
           <div
+            v-else-if="m.type === 'video'"
+            class="model-cover-placeholder video"
+          >
+            <span class="play-badge">▶</span>
+          </div>
+          <div
             v-else
             class="model-cover-placeholder"
           >{{ m.name.slice(0, 1) }}</div>
           <div class="model-info">
-            <small>{{ m.type === 'lora' ? 'LoRA' : m.family || '底模' }}</small>
+            <small>{{ typeLabel(m) }}</small>
             <strong>{{ m.name }}</strong>
             <span class="muted">{{ m.author }} · {{ m.category }}</span>
           </div>
@@ -255,7 +268,7 @@ onMounted(() => {
       <p
         v-if="!loading && !models.length"
         class="empty-tip"
-      >暂无模型</p>
+      >{{ typeFilter === 'video' ? '暂无可用视频模型' : '暂无模型' }}</p>
 
       <div
         v-if="detail"
@@ -508,6 +521,21 @@ onMounted(() => {
   color: var(--amber-soft);
   font-size: 2.4rem;
   font-weight: 800;
+}
+.model-cover-placeholder.video {
+  background: linear-gradient(160deg, #2a2320, #14161a);
+  position: relative;
+}
+.model-cover-placeholder .play-badge {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 196, 118, 0.55);
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 1.1rem;
+  padding-left: 0.2rem;
 }
 .model-info {
   display: grid;

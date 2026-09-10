@@ -1,18 +1,38 @@
 <script setup lang="ts">
 import { useComposerDraft } from '~/composables/useComposerDraft'
+import type { Catalog } from '~/composables/useHougongApi'
+
+const hgApi = useHougongApi()
 
 type Mode = 'video' | 'image'
 
 const mode = ref<Mode>('image')
 const prompt = ref('')
 const ratio = ref('16:9')
-const duration = ref('5 秒')
+const durationSeconds = ref(5)
 const notice = ref('')
 const uploadPreview = ref('')
 const uploadName = ref('')
 const uploadFile = ref<File | null>(null)
 
-const cost = computed(() => (mode.value === 'video' ? 24 : 8))
+// 价格来自后端报价表（catalog.rates，billing_rate_version 最新 revision），
+// 与创建任务时的实际预占一致；取不到时回退默认值。
+const catalog = ref<Catalog | null>(null)
+const cost = computed(() => {
+  const rates = catalog.value?.rates
+  const table = mode.value === 'video' ? rates?.video : rates?.image
+  const quoted = table?.[ratio.value]
+  if (typeof quoted === 'number' && quoted > 0) return quoted
+  return mode.value === 'video' ? 24 : 8
+})
+
+onMounted(async () => {
+  try {
+    catalog.value = await hgApi.getCatalog()
+  } catch {
+    catalog.value = null
+  }
+})
 
 const { setDraft } = useComposerDraft()
 
@@ -38,7 +58,7 @@ function submit() {
     prompt: prompt.value,
     mode: mode.value,
     ratio: ratio.value,
-    duration: duration.value,
+    durationSeconds: durationSeconds.value,
     uploadName: uploadName.value,
     file: uploadFile.value
   })
@@ -253,12 +273,12 @@ onBeforeUnmount(() => {
             <button
               v-if="mode === 'video'"
               type="button"
-              @click="duration = duration === '5 秒' ? '10 秒' : '5 秒'"
+              @click="durationSeconds = durationSeconds === 5 ? 10 : 5"
             >
               <span
                 class="i-lucide-clock-3"
                 aria-hidden="true"
-              />{{ duration }}
+              />{{ durationSeconds }} 秒
             </button>
           </div>
           <button

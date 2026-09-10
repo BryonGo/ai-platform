@@ -5,7 +5,8 @@ export interface ComposerDraft {
   prompt: string
   mode: 'image' | 'video'
   ratio: string
-  duration: string
+  /** 视频时长（秒），与创作页 videoSeconds 一致 */
+  durationSeconds: number
   uploadName: string
   file: File | null
 }

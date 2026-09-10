@@ -34,6 +34,11 @@ interface ChatMessage {
 }
 
 const mode = ref<Mode>('image')
+const ratio = ref('16:9')
+const notice = ref('')
+const uploadPreview = ref('')
+const uploadName = ref('')
+const selected = ref('daji')
 const prompt = ref('')
 // 结构化提示词（TipTap：@ 超级标签节点 + 润色增强），与纯文本 prompt 双向同步。
 const promptModel = ref<Prompt>({ parts: [] })
@@ -53,6 +58,104 @@ function onApplySnippet(source: SnippetSnapshot) {
   promptEditorRef.value?.applySnippet(source)
   snippetPickerOpen.value = false
 }
+
+// ── 出图参数（对齐 PeachArt generationSizePresets + 采样设置）──
+const SIZE_PRESETS = [
+  { ratio: '1:1', label: '方形', width: 1024, height: 1024 },
+  { ratio: '2:3', label: '竖图', width: 832, height: 1248 },
+  { ratio: '3:2', label: '横图', width: 1248, height: 832 },
+  { ratio: '9:16', label: '手机', width: 768, height: 1344 },
+  { ratio: '16:9', label: '桌面', width: 1344, height: 768 }
+] as const
+const width = ref(1344)
+const height = ref(768)
+const count = ref(1)
+const paramsOpen = ref(false)
+
+const SIZE_POLICY = { min: 512, max: 1536 } as const
+
+function clampSize(n: number) {
+  const v = Math.round(Number(n) || 0)
+  return Math.min(SIZE_POLICY.max, Math.max(SIZE_POLICY.min, v))
+}
+
+function setSize(nextW: number, nextH: number) {
+  width.value = clampSize(nextW)
+  height.value = clampSize(nextH)
+  const match = SIZE_PRESETS.find(s => s.width === width.value && s.height === height.value)
+  if (match) ratio.value = match.ratio
+}
+
+function setCount(n: number) {
+  const max = countMax.value
+  count.value = Math.min(max, Math.max(1, Math.round(n) || 1))
+}
+
+function ratioIconWidth(r: string) {
+  const [rw, rh] = r.split(':').map(Number)
+  const aspect = rw && rh ? rw / rh : 1
+  return Math.round(Math.min(28, Math.max(11, 18 * aspect)))
+}
+
+function isPresetSelected(preset: { ratio: string, width: number, height: number }) {
+  if (useCloud.value) return preset.ratio === ratio.value
+  return preset.width === width.value && preset.height === height.value
+}
+
+function pickSizePreset(preset: { ratio: string, label: string, width: number, height: number }) {
+  ratio.value = preset.ratio
+  if (preset.width > 0 && preset.height > 0) {
+    width.value = preset.width
+    height.value = preset.height
+  }
+}
+
+function onWidthInput(e: Event) {
+  setSize(Number((e.target as HTMLInputElement).value), height.value)
+}
+
+function onHeightInput(e: Event) {
+  setSize(width.value, Number((e.target as HTMLInputElement).value))
+}
+
+function onStepsInput(e: Event) {
+  patchSampling({ steps: Number((e.target as HTMLInputElement).value) })
+}
+
+function onCfgInput(e: Event) {
+  patchSampling({ cfg: Number((e.target as HTMLInputElement).value) })
+}
+
+function onSamplerInput(e: Event) {
+  patchSampling({ sampler: (e.target as HTMLSelectElement).value })
+}
+
+function onSchedulerInput(e: Event) {
+  patchSampling({ scheduler: (e.target as HTMLSelectElement).value })
+}
+
+function patchSampling(patch: Partial<{ steps: number, sampler: string, scheduler: string, cfg: number }>) {
+  const base = sampling.value ?? activeModel.value?.sampling ?? { steps: 24, sampler: 'euler', scheduler: 'normal', cfg: 6 }
+  sampling.value = {
+    steps: patch.steps ?? base.steps,
+    sampler: patch.sampler ?? base.sampler,
+    scheduler: patch.scheduler ?? base.scheduler,
+    cfg: patch.cfg ?? base.cfg
+  }
+}
+
+function resetSampling() {
+  const m = activeModel.value
+  if (m?.sampling) {
+    sampling.value = { steps: m.sampling.steps, sampler: m.sampling.sampler, scheduler: m.sampling.scheduler, cfg: m.sampling.cfg }
+  } else {
+    sampling.value = null
+  }
+}
+
+watch(mode, (m) => {
+  if (m === 'video') paramsOpen.value = false
+})
 
 // PromptEditor 结构化 → 纯文本（snippet 取英文 prompt），同步回 prompt。
 function syncFromModel() {
@@ -76,12 +179,6 @@ watch(prompt, (v) => {
 })
 
 const negative = ref('')
-const ratio = ref('16:9')
-const duration = ref('5 秒')
-const notice = ref('')
-const uploadPreview = ref('')
-const uploadName = ref('')
-const selected = ref('daji')
 
 // ── 真实能力目录（模型/采样）与素材库 ──
 const catalog = ref<Catalog | null>(null)
@@ -97,6 +194,82 @@ const loraPickerOpen = ref(false)
 const selectedLoras = ref<LoraSelection[]>([])
 
 const activeModel = computed(() => (catalog.value?.models || []).find(m => m.id === modelId.value) || null)
+
+// ── 视频模型（图生视频）：来自 catalog.videoModels（后端 task/workflow 冻结常量投影）──
+// i2v 后端固定走 MiniMax H3 fl2va + 官方 turbo 4 步，无 modelId 分支，
+// 所以视频模式不再展示图片底模，而是显示真正在跑的模型。
+const videoModels = computed(() => catalog.value?.videoModels || [])
+const activeVideoModel = computed(
+  () => videoModels.value.find(m => m.available) || videoModels.value[0] || null
+)
+// ── 视频时长：默认 5 秒，点击出拖动条，确认后生效 ──
+// 档位表由后端给出（模型按 24fps + 17k+5 网格吸附，5s→124 帧≈5.2s），前端不重复算。
+const videoSeconds = ref(5)
+const videoSecondsDraft = ref(5)
+const durationOpen = ref(false)
+const durationOptions = computed(() => activeVideoModel.value?.durations || [])
+const durationBounds = computed(() => ({
+  min: activeVideoModel.value?.minSeconds ?? 1,
+  max: activeVideoModel.value?.maxSeconds ?? 10
+}))
+const durationOption = computed(
+  () => durationOptions.value.find(o => o.seconds === videoSecondsDraft.value) || null
+)
+const videoDurationLabel = computed(() => `${videoSeconds.value} 秒`)
+const durationFill = computed(() => {
+  const { min, max } = durationBounds.value
+  const span = Math.max(1, max - min)
+  return `${((videoSecondsDraft.value - min) / span) * 100}%`
+})
+// ── 视频画幅：视频尺寸与图片不同（ResolutionSelector 实测），1:1 等图片画幅在视频档不可用 ──
+const ratioOpen = ref(false)
+const videoResolutions = computed(() => activeVideoModel.value?.resolutions || [])
+const activeVideoResolution = computed(
+  () => videoResolutions.value.find(r => r.ratio === ratio.value) || null
+)
+const videoRatioLabel = computed(() =>
+  activeVideoResolution.value
+    ? `${activeVideoResolution.value.ratio} ${activeVideoResolution.value.label}`
+    : ratio.value
+)
+function toggleRatio() {
+  ratioOpen.value = !ratioOpen.value
+}
+function pickVideoRatio(r: string) {
+  ratio.value = r
+  ratioOpen.value = false
+}
+// 进入视频档时，当前画幅若视频不支持（图片档的 1:1/2:3 等），回落到第一个可用画幅
+watch([mode, videoResolutions], () => {
+  if (mode.value !== 'video') {
+    ratioOpen.value = false
+    return
+  }
+  const list = videoResolutions.value
+  if (!list.length) return
+  if (!list.some(r => r.ratio === ratio.value)) ratio.value = list[0]!.ratio
+}, { immediate: true })
+
+const durationTouched = ref(false)
+watch(activeVideoModel, (m) => {
+  if (m?.defaultSeconds && !durationTouched.value) {
+    videoSeconds.value = m.defaultSeconds
+    videoSecondsDraft.value = m.defaultSeconds
+  }
+}, { immediate: true })
+function openDuration() {
+  videoSecondsDraft.value = videoSeconds.value
+  durationOpen.value = !durationOpen.value
+}
+function confirmDuration() {
+  videoSeconds.value = videoSecondsDraft.value
+  durationTouched.value = true
+  durationOpen.value = false
+}
+function cancelDuration() {
+  videoSecondsDraft.value = videoSeconds.value
+  durationOpen.value = false
+}
 // 当前底模 family 下可选的 LoRA。
 const familyLoras = computed(() => {
   const fam = activeModel.value?.family
@@ -119,20 +292,34 @@ function pickModel(id: string) {
 
 // ── 云端模型（seedream/xiaoyi，balance 计费）选择 ──
 const cloudModels = computed(() => catalog.value?.cloudModels || [])
+const cloudPickerOpen = ref(false)
 const cloudModelId = ref('')
 const cloudQuality = ref('')
+
+// 云端可生成模型 = API 目录（/platform/catalog.cloudModels）标记 available 的条目；
+// 供弹窗枚举，任务侧仍需走后端 cloud.Resolve 再次校验可用性。
+const availableCloudModels = computed(() =>
+  cloudModels.value.filter(m => m.state === 'available')
+)
 
 const activeCloudModel = computed(() => cloudModels.value.find(m => m.id === cloudModelId.value) || null)
 // 只选云端（balance）或本地 comfy；云端模型仅图片（t2i），视频仍走 comfy i2v。
 const useCloud = computed(() => mode.value === 'image' && !!activeCloudModel.value)
 
-function cycleCloudModel() {
-  if (!cloudModels.value.length) return
-  const idx = Math.max(0, cloudModels.value.findIndex(m => m.id === cloudModelId.value))
-  const next = cloudModels.value[(idx + 1) % cloudModels.value.length]
-  if (!next) return
-  cloudModelId.value = next.id
-  cloudQuality.value = next.capabilities.default.quality
+function openCloudPicker() {
+  // 云端缺省但目录里只有已占用 server? 尽力拉取。
+  cloudPickerOpen.value = true
+}
+
+function pickCloudModel(id: string) {
+  const m = cloudModels.value.find(x => x.id === id && x.state === 'available')
+  if (!m) return
+  modelId.value = ''
+  selectedLoras.value = []
+  sampling.value = null
+  cloudModelId.value = m.id
+  cloudQuality.value = m.capabilities?.default?.quality || m.capabilities?.parameters?.[0]?.quality || ''
+  cloudPickerOpen.value = false
 }
 
 function clearCloudModel() {
@@ -140,14 +327,14 @@ function clearCloudModel() {
   cloudQuality.value = ''
 }
 
-function cycleCloudQuality() {
-  const m = activeCloudModel.value
-  if (!m) return
-  const quals = m.capabilities.parameters.map(p => p.quality)
-  if (!quals.length) return
-  const idx = Math.max(0, quals.indexOf(cloudQuality.value))
-  cloudQuality.value = quals[(idx + 1) % quals.length] || quals[0] || ''
-}
+// 参考图仅两种合法场景：云端图生图（t2i；comfy base = 纯文生图）或 i2v 视频首帧。
+// 切到纯文生图（本机底模、无云端模型）时不残留曾在云端/视频模式下选过的参考图。
+watch([mode, cloudModelId], () => {
+  const refExpected = mode.value === 'video' || (mode.value === 'image' && !!activeCloudModel.value)
+  if (!refExpected && (uploadPreview.value || rawFile.value || selectedAssetId.value)) {
+    clearReferenceUpload()
+  }
+})
 
 // 当前计费提示：云端按 balance 分显示（pricing.balance），本地按 credit 积分。
 const activeCloudCharge = computed(() => {
@@ -156,6 +343,80 @@ const activeCloudCharge = computed(() => {
   const q = m.pricing.qualities.find(x => x.quality === cloudQuality.value)
   return q?.balance ?? 0
 })
+
+const countMax = computed(() => {
+  if (mode.value === 'video') return 1
+  if (useCloud.value) {
+    const maxOut = activeCloudModel.value?.capabilities.maxOutputs || 4
+    return Math.min(4, Math.max(1, maxOut))
+  }
+  return 4
+})
+
+watch(countMax, (max) => {
+  if (count.value > max) count.value = max
+})
+
+const paramsLabel = computed(() => {
+  if (useCloud.value) {
+    const q = cloudQuality.value ? ' · ' + cloudQuality.value : ''
+    return ratio.value + q + ' · ' + count.value + '张'
+  }
+  const p = SIZE_PRESETS.find(s => s.width === width.value && s.height === height.value)
+  const tag = p ? (p.label + ' ' + width.value + '×' + height.value) : (width.value + '×' + height.value)
+  return tag + ' · ' + count.value + '张'
+})
+
+const sizeChoices = computed(() => {
+  if (!useCloud.value) return [...SIZE_PRESETS]
+  const m = activeCloudModel.value
+  const param = m?.capabilities.parameters.find(p => p.quality === cloudQuality.value) || m?.capabilities.parameters[0]
+  const ratios = param?.ratios || []
+  if (!ratios.length) return [...SIZE_PRESETS]
+  return ratios.map((r) => {
+    const preset = SIZE_PRESETS.find(s => s.ratio === r.ratio)
+    return preset || { ratio: r.ratio, label: r.ratio, width: 0, height: 0 }
+  })
+})
+
+const cloudQualityChoices = computed(() => {
+  const m = activeCloudModel.value
+  if (!m) return []
+  return m.capabilities.parameters.map(p => p.quality)
+})
+
+const samplingLimits = computed(() => {
+  const s = catalog.value?.sampling
+  return {
+    stepsMin: s?.stepsMin || 1,
+    stepsMax: s?.stepsMax || 50,
+    cfgMin: s?.cfgMin ?? 0,
+    cfgMax: s?.cfgMax ?? 10,
+    cfgStep: s?.cfgStep || 0.1,
+    samplers: s?.samplers?.length ? s.samplers : ['euler', 'dpmpp_2m', 'euler_ancestral', 'dpmpp_sde'],
+    schedulers: s?.schedulers?.length ? s.schedulers : ['normal', 'karras', 'simple', 'sgm_uniform']
+  }
+})
+
+const currentSampling = computed(() =>
+  sampling.value
+  ?? activeModel.value?.sampling
+  ?? { steps: 24, sampler: 'euler', scheduler: 'normal', cfg: 6 }
+)
+
+const paramsWrapRef = ref<HTMLElement | null>(null)
+
+function onParamsPointerDown(e: PointerEvent) {
+  const el = paramsWrapRef.value
+  if (el && !el.contains(e.target as Node)) paramsOpen.value = false
+}
+
+watch(paramsOpen, (open) => {
+  if (open) document.addEventListener('pointerdown', onParamsPointerDown)
+  else document.removeEventListener('pointerdown', onParamsPointerDown)
+})
+
+onUnmounted(() => document.removeEventListener('pointerdown', onParamsPointerDown))
 
 async function loadCatalog() {
   try {
@@ -198,7 +459,13 @@ function pickAsset(a: AssetItem) {
 }
 
 const cost = computed(() => {
-  if (useCloud.value) return activeCloudCharge.value
+  if (useCloud.value) return activeCloudCharge.value * Math.max(1, count.value)
+  // 价格来自后端报价表（billing_rate_version），必须与创建任务时的实际预占一致；
+  // 取不到时回退默认值，仅作展示兜底。
+  const rates = catalog.value?.rates
+  const table = mode.value === 'video' ? rates?.video : rates?.image
+  const quoted = table?.[ratio.value]
+  if (typeof quoted === 'number' && quoted > 0) return quoted
   return mode.value === 'video' ? 24 : 8
 })
 const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
@@ -209,6 +476,137 @@ const canSend = computed(() => !running.value && (promptText(promptModel.value).
 const messages = ref<ChatMessage[]>([])
 const artifacts = ref<Artifact[]>([])
 const activeRunId = ref<number | null>(null)
+
+// 历史会话抽拉侧栏：会话列表来自 /platform/session；选择会话拉取其 task 行程。
+const railOpen = ref(false)
+const sessions = ref<SessionItem[]>([])
+const activeSessionId = ref<string | null>(null)
+const sessionLoading = ref(false)
+
+async function loadSessions() {
+  sessionLoading.value = true
+  try {
+    const items = await hgApi.listSessions(1, 100)
+    sessions.value = items.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0))
+    const cur = sessions.value.find(s => s.current)
+    if (cur) activeSessionId.value = cur.id
+  } catch {
+    sessions.value = []
+  } finally {
+    sessionLoading.value = false
+  }
+}
+
+function openRail() {
+  railOpen.value = !railOpen.value
+  if (railOpen.value && !sessions.value.length && session.token.value) {
+    void loadSessions()
+  }
+}
+
+// 在侧栏列出该会话的最近任务（历史只读性列出；当前服务器 active 只由后端 EnsureActive 决定）
+// 注意：库里 task.snapshot 是包在 input 下的（对齐后端 workflow.snapshotParams），
+// 直接读 snap.prompt 会拿到空值——这正是「点了历史会话没反应」的原因。
+const sessionLoadingId = ref<string | null>(null)
+
+async function openHistorySession(id: string) {
+  activeSessionId.value = id
+  sessionLoadingId.value = id
+  const sessionTitle = sessions.value.find(s => s.id === id)?.title || `会话 ${String(id).slice(-6)}`
+  try {
+    const rows = await hgApi.listSessionTasks(id, 1, 30)
+    // 产物 URL：任务产物 asset 在素材库里（隐藏态也一并取），供历史回看播放。
+    const assetMap = new Map<string, AssetItem>()
+    try {
+      const [visible, hidden] = await Promise.all([
+        hgApi.listAssets(false, 1, 200),
+        hgApi.listAssets(true, 1, 200)
+      ])
+      for (const a of [...visible, ...hidden]) assetMap.set(a.id, a)
+    } catch {
+      /* 素材库不可读时仍展示历史文本 */
+    }
+
+    // 用任务快照重建读回聊天视图：越旧的排到前面
+    const rebuilt: ChatMessage[] = []
+    const rebuiltArtifacts: Artifact[] = []
+    const newest = [...rows].reverse()
+    for (const t of newest) {
+      const raw = (t.snapshot || {}) as Record<string, any>
+      const inner = raw.input && typeof raw.input === 'object' ? raw.input as Record<string, any> : raw
+      const prompt = typeof inner.prompt === 'string' ? inner.prompt : ''
+      const ratio = typeof inner.ratio === 'string' ? inner.ratio : ''
+      const kind: Mode = t.type === 'i2v' ? 'video' : 'image'
+      const runId = Number(t.id) || null
+      const time = t.createdAt
+        ? new Date(t.createdAt * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        : ''
+
+      // 产物：outputAssets[0] → 素材库 presign URL（图片/视频都能直接渲染）
+      const outId = String((t.outputAssets || [])[0] ?? '')
+      const asset = outId ? assetMap.get(outId) : undefined
+      if (asset?.url) {
+        rebuiltArtifacts.push({
+          runId: runId ?? 0,
+          kind: (asset.mimeType || '').startsWith('video/') ? 'video' : 'image',
+          prompt,
+          character: '历史',
+          ratio,
+          credits: t.billedCredits || 0,
+          poster: asset.url,
+          createdAt: time || now()
+        })
+      }
+
+      if (prompt) {
+        rebuilt.push({
+          id: ++msgSeq,
+          role: 'user',
+          runId,
+          status: null,
+          progress: 0,
+          event: '',
+          text: prompt,
+          time
+        })
+      }
+      const done = t.status === 'succeeded'
+      rebuilt.push({
+        id: ++msgSeq,
+        role: 'assistant',
+        runId,
+        status: done ? 'done' : 'cancelled',
+        progress: t.progress || 0,
+        event: `${t.status}${done ? ' · 完成' : ' · 未完成'}`,
+        text: `${prompt ? prompt.slice(0, 24) : typeLabel(t.type)}${ratio ? ' · ' + ratio : ''}`,
+        time
+      })
+    }
+
+    if (rebuilt.length) {
+      messages.value = [welcomeMessage(), ...rebuilt]
+      const last = rebuilt[rebuilt.length - 1]
+      if (last) msgSeq = last.id
+      // 历史产物挂到产物卡（runId 对齐任务 id，点「查看产物」可回看）
+      for (const a of rebuiltArtifacts) {
+        if (!artifacts.value.some(x => x.runId === a.runId)) artifacts.value.push(a)
+      }
+    } else {
+      // 空会话也要有明确反馈，否则用户会以为「点了没反应」
+      messages.value = [welcomeMessage(), assistText(`「${sessionTitle}」还没有创作记录。`)]
+    }
+    railOpen.value = false
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : '会话读取失败'
+    notice.value = `历史会话读取失败：${reason}`
+  } finally {
+    sessionLoadingId.value = null
+  }
+}
+
+function typeLabel(t?: string) {
+  return t === 'i2v' ? '图生视频' : t === 't2i' ? '文生图' : ''
+}
 
 let msgSeq = 0
 let runSeq = 0
@@ -236,6 +634,11 @@ function assistText(text: string): ChatMessage {
 
 function activeArtifact() {
   return artifacts.value.find(a => a.runId === activeRunId.value) ?? artifacts.value.at(-1) ?? null
+}
+
+// 该任务是否已有可展示的产物（历史会话回看时用于决定是否显示「查看产物」）。
+function hasArtifact(runId: number | null) {
+  return runId !== null && artifacts.value.some(a => a.runId === runId)
 }
 
 const hgApi = useHougongApi()
@@ -294,16 +697,15 @@ async function send() {
     if (!session.token.value) {
       throw new Error('请先登录')
     }
-    let firstFrameId = ''
-    if (kind === 'video') {
-      if (selectedAssetId.value) {
-        firstFrameId = selectedAssetId.value
-      } else if (rawFile.value) {
-        const up = await hgApi.uploadMedia(rawFile.value)
-        firstFrameId = up.mediaAssetId
-      } else {
-        throw new Error('视频生成请先上传首帧图片或从素材库选择')
-      }
+    let referenceAssetId = ''
+    if (selectedAssetId.value) {
+      referenceAssetId = selectedAssetId.value
+    } else if (rawFile.value) {
+      const up = await hgApi.uploadMedia(rawFile.value)
+      referenceAssetId = up.mediaAssetId
+    }
+    if (kind === 'video' && !referenceAssetId) {
+      throw new Error('视频生成请先上传首帧图片或从素材库选择')
     }
     // 已选 LoRA：传 catalog id + 权重（后端按 id 校验 family 兼容并解析 comfy 文件名）。
     const selectedLoraItems = selectedLoras.value
@@ -311,10 +713,14 @@ async function send() {
 
     const task = await hgApi.createTask({
       clientKey: `hg-web-${Date.now()}-${runSeq}`,
+      ...(mode.value === 'video' ? { durationSeconds: videoSeconds.value } : {}),
       type: kind === 'video' ? 'i2v' : 't2i',
       prompt: text,
       negativePrompt: negative.value.trim() || undefined,
       ratio: ratioNow,
+      width: kind === 'video' || useCloud.value ? undefined : width.value,
+      height: kind === 'video' || useCloud.value ? undefined : height.value,
+      count: kind === 'image' ? count.value : undefined,
       // i2v 走 MiniMax H3 专用工作流，不传文生图模型/采样参数（否则用错模型卡死）
       modelId: kind === 'video' ? undefined : (useCloud.value ? cloudModelId.value : (modelId.value || undefined)),
       quality: kind === 'video' ? undefined : (useCloud.value ? (cloudQuality.value || undefined) : undefined),
@@ -322,7 +728,7 @@ async function send() {
       sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
       loras: kind === 'video' || useCloud.value ? undefined : (selectedLoraItems.length ? selectedLoraItems : undefined),
       characterId: characterId === 'daji' ? '' : characterId,
-      refAssetIds: firstFrameId ? [firstFrameId] : []
+      refAssetIds: referenceAssetId ? [referenceAssetId] : []
     })
     const msg = () => messages.value.find(m => m.runId === runId)
     const taskId = task.id
@@ -425,40 +831,7 @@ function sample(kind: Mode, text: string) {
   prompt.value = text
 }
 
-// ---- 播放器 mock：接入真实视频源前用海报演示播放器形态 ----
-const playing = ref(false)
-const playSeconds = ref(0)
-let playTimer: ReturnType<typeof setInterval> | undefined
-const MOCK_VIDEO_SECONDS = 8
-
-function togglePlay() {
-  if (!playing.value) {
-    playing.value = true
-    playSeconds.value = 0
-    playTimer = setInterval(() => {
-      playSeconds.value += 0.1
-      if (playSeconds.value >= MOCK_VIDEO_SECONDS) {
-        stopPlay()
-      }
-    }, 100)
-  } else {
-    stopPlay()
-  }
-}
-
-function stopPlay() {
-  playing.value = false
-  if (playTimer) {
-    clearInterval(playTimer)
-    playTimer = undefined
-  }
-}
-
-function formatSeconds(s: number) {
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-}
+// （产物单卡 video 现在直接用原生 <video> 播放，移除了此前 mock 播放器占位逻辑。）
 
 function pickArtifact(runId: number) {
   activeRunId.value = runId
@@ -479,7 +852,11 @@ onMounted(() => {
   if (draft) {
     mode.value = draft.mode
     ratio.value = draft.ratio
-    duration.value = draft.duration || '5 秒'
+    if (typeof draft.durationSeconds === 'number' && draft.durationSeconds > 0) {
+      videoSeconds.value = draft.durationSeconds
+      videoSecondsDraft.value = draft.durationSeconds
+      durationTouched.value = true
+    }
     prompt.value = draft.prompt
     if (draft.file) {
       if (uploadPreview.value) {
@@ -500,8 +877,9 @@ onMounted(() => {
 })
 
 function onKeydown(event: KeyboardEvent) {
+  // Escape：关闭右侧产物单卡（含暂停原生 <video>）。
   if (event.key === 'Escape') {
-    stopPlay()
+    activeRunId.value = null
   }
 }
 
@@ -511,7 +889,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearRunTimers()
-  stopPlay()
   document.removeEventListener('keydown', onKeydown)
   if (uploadPreview.value) {
     URL.revokeObjectURL(uploadPreview.value)
@@ -570,6 +947,14 @@ async function runTranslate() {
 
 const rawFile = ref<File | null>(null)
 
+function clearReferenceUpload() {
+  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
+  uploadPreview.value = ''
+  uploadName.value = ''
+  rawFile.value = null
+  selectedAssetId.value = ''
+}
+
 function handleUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -593,6 +978,42 @@ function handleUpload(event: Event) {
     class="chat-page"
     :class="{ 'has-artifact': !!activeArtifact() }"
   >
+    <!-- 历史会话抽拉侧栏 -->
+    <div v-if="railOpen" class="session-rail-backdrop" @click="railOpen = false" />
+    <aside v-if="railOpen" class="session-rail" aria-label="历史会话">
+      <div class="session-rail__head">
+        <div>
+          <strong>历史会话</strong>
+          <small v-if="!sessionLoading">共 {{ sessions.length }} 个</small>
+        </div>
+        <button type="button" aria-label="关闭" @click="railOpen = false">
+          <span class="i-lucide-x" aria-hidden="true" />
+        </button>
+      </div>
+      <div class="session-rail__body">
+        <p v-if="sessionLoading" class="session-rail__empty">加载中…</p>
+        <p v-else-if="!sessions.length" class="session-rail__empty">还没有历史会话<br>发送一条创作后即可在这里看到</p>
+        <ul v-else class="session-rail__list">
+          <li v-for="s in sessions" :key="s.id">
+            <button
+              type="button"
+              class="session-row"
+              :class="{ active: activeSessionId === s.id, current: s.current }"
+              :disabled="sessionLoadingId === s.id"
+              @click="openHistorySession(s.id)"
+            >
+              <span class="session-row__name">{{ s.title || `会话 ${String(s.id).slice(-6)}` }}</span>
+              <span class="session-row__meta">
+                <b v-if="s.current">当前</b>
+                <span v-if="sessionLoadingId === s.id">加载中…</span>
+                <span v-else>{{ s.latestTask?.status || '无任务' }}</span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
     <!-- 对话主列 -->
     <section
       class="chat-panel"
@@ -604,6 +1025,9 @@ function handleUpload(event: Event) {
           aria-hidden="true"
         />
         <strong>创作台 · SSE 会话</strong>
+        <button type="button" class="history-toggle" @click="openRail">
+          <span class="i-lucide-history" aria-hidden="true" />历史{{ sessions.length ? ` ${sessions.length}` : '' }}
+        </button>
         <small>{{ running ? '有任务进行中' : '空闲' }}</small>
       </div>
 
@@ -697,7 +1121,7 @@ function handleUpload(event: Event) {
               </div>
 
               <button
-                v-if="m.status === 'done' && m.runId"
+                v-if="m.status === 'done' && m.runId && hasArtifact(m.runId)"
                 type="button"
                 class="view-artifact"
                 @click="pickArtifact(m.runId!)"
@@ -744,7 +1168,10 @@ function handleUpload(event: Event) {
           </div>
 
           <div class="prompt-area">
-            <label class="upload-box">
+            <label
+              v-if="useCloud || mode === 'video'"
+              class="upload-box"
+            >
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
@@ -806,7 +1233,7 @@ function handleUpload(event: Event) {
                 />素材库
               </button>
               <div
-                v-if="(catalog?.models || []).length"
+                v-if="mode === 'image' && (catalog?.models || []).length"
                 class="model-selector"
               >
                 <button
@@ -829,6 +1256,121 @@ function handleUpload(event: Event) {
                   <small class="fam">{{ activeModel?.family || '' }}</small>
                 </button>
               </div>
+              <!-- 视频模式：显示后端实际使用的视频模型（当前仅 MiniMax H3，无选择分支） -->
+              <div
+                v-else-if="mode === 'video' && activeVideoModel"
+                class="model-selector"
+              >
+                <span
+                  class="model-btn video-model active"
+                  :title="`${activeVideoModel.workflow} · ${activeVideoModel.steps} 步 · ${activeVideoModel.frameRate}fps`"
+                >
+                  <span class="model-thumb model-thumb-fallback">{{ activeVideoModel.name[0] }}</span>
+                  <span class="model-name">{{ activeVideoModel.name }}</span>
+                  <small class="fam">{{ activeVideoModel.note || '图生视频' }}</small>
+                </span>
+              </div>
+              <!-- 视频画幅：尺寸来自后端（ResolutionSelector 实测），与图片档画幅不同 -->
+              <div
+                v-if="mode === 'video' && videoResolutions.length"
+                class="params-wrap"
+              >
+                <button
+                  type="button"
+                  class="params-trigger"
+                  :class="{ active: ratioOpen }"
+                  title="视频画幅"
+                  @click="toggleRatio"
+                >
+                  <span
+                    class="i-lucide-monitor"
+                    aria-hidden="true"
+                  />
+                  <span class="params-trigger-label">{{ videoRatioLabel }}</span>
+                </button>
+                <div
+                  v-if="ratioOpen"
+                  class="params-popover resolution-popover"
+                  role="dialog"
+                  aria-label="视频画幅"
+                >
+                  <section class="params-section">
+                    <h2>视频画幅</h2>
+                    <div class="resolution-list">
+                      <button
+                        v-for="r in videoResolutions"
+                        :key="r.ratio"
+                        type="button"
+                        class="resolution-item"
+                        :class="{ selected: r.ratio === ratio }"
+                        :aria-pressed="r.ratio === ratio"
+                        @click="pickVideoRatio(r.ratio)"
+                      >
+                        <span class="resolution-ratio">{{ r.ratio }}</span>
+                        <span class="resolution-label">{{ r.label }}</span>
+                        <span class="resolution-size">{{ r.width }}×{{ r.height }}</span>
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+              <!-- 视频时长：默认 5 秒；点击出拖动条，确认后生效 -->
+              <div
+                v-if="mode === 'video'"
+                class="params-wrap"
+              >
+                <button
+                  type="button"
+                  class="params-trigger"
+                  :class="{ active: durationOpen }"
+                  title="视频时长"
+                  @click="openDuration"
+                >
+                  <span
+                    class="i-lucide-timer"
+                    aria-hidden="true"
+                  />
+                  <span class="params-trigger-label">{{ videoDurationLabel }}</span>
+                </button>
+                <div
+                  v-if="durationOpen"
+                  class="params-popover duration-popover"
+                  role="dialog"
+                  aria-label="视频时长"
+                >
+                  <section class="params-section">
+                    <h2>视频时长</h2>
+                    <div class="duration-row">
+                      <input
+                        v-model.number="videoSecondsDraft"
+                        type="range"
+                        class="duration-slider"
+                        :style="{ '--duration-fill': durationFill }"
+                        :min="durationBounds.min"
+                        :max="durationBounds.max"
+                        step="1"
+                        :aria-valuetext="`${videoSecondsDraft} 秒`"
+                      >
+                      <span class="duration-value">{{ videoSecondsDraft }} 秒</span>
+                    </div>
+                    <p class="duration-hint">
+                      模型按 {{ activeVideoModel?.frameRate || 24 }}fps 生成<template v-if="durationOption">，实际约 {{ durationOption.actualSeconds.toFixed(1) }} 秒（{{ durationOption.frames }} 帧）</template>
+                    </p>
+                  </section>
+                  <div class="duration-actions">
+                    <button
+                      type="button"
+                      class="duration-cancel"
+                      @click="cancelDuration"
+                    >取消</button>
+                    <button
+                      type="button"
+                      class="duration-confirm"
+                      @click="confirmDuration"
+                    >确认</button>
+                  </div>
+                </div>
+              </div>
               <button
                 v-if="familyLoras.length && !useCloud && mode === 'image'"
                 type="button"
@@ -841,45 +1383,189 @@ function handleUpload(event: Event) {
                 />效果包 <b>{{ selectedLoras.length }}</b>/8
               </button>
               <button
-                v-if="cloudModels.length && mode === 'image'"
+                v-if="availableCloudModels.length && mode === 'image'"
                 type="button"
                 :class="{ active: useCloud }"
-                @click="cycleCloudModel"
+                @click="openCloudPicker"
               >
                 <span
                   class="i-lucide-cloud"
                   aria-hidden="true"
                 />{{ useCloud ? activeCloudModel?.name : '云端' }}
               </button>
-              <button
-                v-if="useCloud"
-                type="button"
-                @click="cycleCloudQuality"
+              <div
+                v-if="mode === 'image'"
+                ref="paramsWrapRef"
+                class="params-wrap"
               >
-                <span
-                  class="i-lucide-sliders-horizontal"
-                  aria-hidden="true"
-                />{{ cloudQuality }}
-              </button>
-              <button
-                type="button"
-                @click="ratio = ratio === '16:9' ? '9:16' : '16:9'"
-              >
-                <span
-                  class="i-lucide-monitor"
-                  aria-hidden="true"
-                />{{ ratio }}
-              </button>
-              <button
-                v-if="mode === 'video'"
-                type="button"
-                @click="duration = duration === '5 秒' ? '10 秒' : '5 秒'"
-              >
-                <span
-                  class="i-lucide-clock-3"
-                  aria-hidden="true"
-                />{{ duration }}
-              </button>
+                <button
+                  type="button"
+                  class="params-trigger"
+                  :class="{ active: paramsOpen }"
+                  :title="paramsLabel"
+                  @click="paramsOpen = !paramsOpen"
+                >
+                  <span
+                    class="i-lucide-sliders-horizontal"
+                    aria-hidden="true"
+                  />
+                  <span class="params-trigger-label">{{ paramsLabel }}</span>
+                </button>
+                <div
+                  v-if="paramsOpen"
+                  class="params-popover"
+                  role="dialog"
+                  aria-label="出图设置"
+                >
+                  <section class="params-section">
+                    <h2>{{ useCloud ? '画幅' : '尺寸' }}</h2>
+                    <div class="params-ratio-grid">
+                      <button
+                        v-for="preset in sizeChoices"
+                        :key="preset.ratio"
+                        type="button"
+                        class="ratio-btn"
+                        :class="{ selected: isPresetSelected(preset) }"
+                        :aria-pressed="isPresetSelected(preset)"
+                        @click="pickSizePreset(preset)"
+                      >
+                        <span
+                          class="ratio-icon-wrap"
+                          aria-hidden="true"
+                        >
+                          <span
+                            class="ratio-icon"
+                            :style="{ width: ratioIconWidth(preset.ratio) + 'px' }"
+                          />
+                        </span>
+                        <span class="ratio-value">{{ preset.ratio }}</span>
+                        <span
+                          v-if="preset.label && preset.label !== preset.ratio"
+                          class="ratio-label"
+                        >{{ preset.label }}</span>
+                      </button>
+                    </div>
+                    <div
+                      v-if="!useCloud"
+                      class="params-size-fields"
+                    >
+                      <label>
+                        宽度
+                        <input
+                          :value="width"
+                          type="number"
+                          min="512"
+                          max="1536"
+                          step="1"
+                          @change="onWidthInput"
+                        >
+                      </label>
+                      <label>
+                        高度
+                        <input
+                          :value="height"
+                          type="number"
+                          min="512"
+                          max="1536"
+                          step="1"
+                          @change="onHeightInput"
+                        >
+                      </label>
+                    </div>
+                  </section>
+                  <section
+                    v-if="useCloud && cloudQualityChoices.length"
+                    class="params-section"
+                  >
+                    <h2>清晰度</h2>
+                    <div class="params-count-row">
+                      <button
+                        v-for="q in cloudQualityChoices"
+                        :key="q"
+                        type="button"
+                        :class="{ selected: cloudQuality === q }"
+                        @click="cloudQuality = q"
+                      >{{ q }}</button>
+                    </div>
+                  </section>
+                  <section class="params-section">
+                    <h2>生成张数</h2>
+                    <div class="params-count-row">
+                      <button
+                        v-for="n in [1, 2, 3, 4]"
+                        :key="n"
+                        type="button"
+                        :disabled="n > countMax"
+                        :class="{ selected: count === n }"
+                        @click="setCount(n)"
+                      >{{ n }}</button>
+                    </div>
+                  </section>
+                  <section
+                    v-if="!useCloud"
+                    class="params-section"
+                  >
+                    <div class="params-sampling-head">
+                      <h2>采样设置</h2>
+                      <button
+                        type="button"
+                        class="params-reset"
+                        @click="resetSampling"
+                      >恢复默认</button>
+                    </div>
+                    <div class="params-size-fields">
+                      <label>
+                        步数
+                        <input
+                          :value="currentSampling.steps"
+                          type="number"
+                          :min="samplingLimits.stepsMin"
+                          :max="samplingLimits.stepsMax"
+                          step="1"
+                          @change="onStepsInput"
+                        >
+                      </label>
+                      <label>
+                        CFG
+                        <input
+                          :value="currentSampling.cfg"
+                          type="number"
+                          :min="samplingLimits.cfgMin"
+                          :max="samplingLimits.cfgMax"
+                          :step="samplingLimits.cfgStep"
+                          @change="onCfgInput"
+                        >
+                      </label>
+                      <label>
+                        采样器
+                        <select
+                          :value="currentSampling.sampler"
+                          @change="onSamplerInput"
+                        >
+                          <option
+                            v-for="s in samplingLimits.samplers"
+                            :key="s"
+                            :value="s"
+                          >{{ s }}</option>
+                        </select>
+                      </label>
+                      <label>
+                        调度器
+                        <select
+                          :value="currentSampling.scheduler"
+                          @change="onSchedulerInput"
+                        >
+                          <option
+                            v-for="s in samplingLimits.schedulers"
+                            :key="s"
+                            :value="s"
+                          >{{ s }}</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </div>
             </div>
             <div class="footer-actions">
               <button
@@ -1014,37 +1700,23 @@ function handleUpload(event: Event) {
 
         <div
           v-if="activeArtifact()!.kind === 'video'"
-          class="mock-player"
+          class="artifact-video"
         >
-          <img
+          <video
+            v-if="activeArtifact()!.poster"
             :src="activeArtifact()!.poster"
-            :alt="activeArtifact()!.prompt"
-          >
-          <span
-            class="story-wash"
-            aria-hidden="true"
+            controls
+            autoplay
+            loop
+            playsinline
+            preload="auto"
+            :poster="activeArtifact()!.poster"
           />
-          <div class="player-chrome">
-            <button
-              type="button"
-              class="play-btn"
-              :aria-label="playing ? '暂停' : '播放'"
-              @click="togglePlay"
-            >
-              <span
-                :class="playing ? 'i-lucide-pause' : 'i-lucide-play'"
-                aria-hidden="true"
-              />
-            </button>
-            <div class="player-track">
-              <div
-                class="player-track-fill"
-                :style="{ width: `${(playSeconds / MOCK_VIDEO_SECONDS) * 100}%` }"
-              />
-            </div>
-            <span class="player-time">
-              {{ formatSeconds(playSeconds) }} / 00:0{{ MOCK_VIDEO_SECONDS }}
-            </span>
+          <div
+            v-else
+            class="artifact-empty"
+          >
+            视频地址暂不可用
           </div>
         </div>
 
@@ -1101,6 +1773,41 @@ function handleUpload(event: Event) {
         </div>
       </div>
     </aside>
+
+    <div v-if="cloudPickerOpen" class="cloud-picker">
+      <div class="cloud-picker__mask" @click="cloudPickerOpen = false" />
+      <div class="cloud-picker__dialog" role="dialog" aria-modal="true" aria-label="选择云端模型">
+        <div class="cloud-picker__head">
+          <div>
+            <strong>选择云端模型</strong>
+            <small>按张扣减余额，失败自动退回</small>
+          </div>
+          <button type="button" aria-label="关闭" class="cloud-picker__close" @click="cloudPickerOpen = false">
+            <span class="i-lucide-x" aria-hidden="true" />
+          </button>
+        </div>
+        <p v-if="!availableCloudModels.length" class="cloud-picker__empty">暂无可用云端模型</p>
+        <ul v-else class="cloud-picker__list">
+          <li v-for="m in availableCloudModels" :key="m.id">
+            <button
+              type="button"
+              class="cloud-picker__row"
+              :class="{ current: activeCloudModel?.id === m.id }"
+              @click="pickCloudModel(m.id)"
+            >
+              <span class="cloud-picker__thumb">{{ (m.name || '云')[0] }}</span>
+              <span class="cloud-picker__meta">
+                <b>{{ m.name }}</b>
+                <small>{{ m.engine }} · {{ m.capabilities?.parameters?.[0]?.quality || '默认' }} · {{ m.pricing?.qualities?.[0]?.balance || '—' }} 余额/张</small>
+              </span>
+              <span v-if="activeCloudModel?.id === m.id" class="cloud-picker__check">
+                <span class="i-lucide-check" aria-hidden="true" />
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
 
     <ModelPicker
       :open="modelPickerOpen"
@@ -1223,5 +1930,544 @@ function handleUpload(event: Event) {
 .lora-chip.active {
   border-color: var(--amber);
   background: rgb(251 191 36 / 0.16);
+}
+
+.params-wrap {
+  position: relative;
+}
+.params-trigger {
+  max-width: 14rem;
+}
+.params-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.params-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  width: min(20rem, calc(100vw - 2rem));
+  padding: 12px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
+  border-radius: 12px;
+  background: var(--panel, #16161a);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.35);
+}
+.params-section + .params-section {
+  margin-top: 16px;
+}
+/* ── 视频画幅：列表 + 尺寸 ── */
+.resolution-popover {
+  width: min(16rem, calc(100vw - 2rem));
+}
+.resolution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+.resolution-item {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.resolution-item:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+.resolution-item.selected {
+  background: rgb(255 255 255 / 0.1);
+}
+.resolution-ratio {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.resolution-label {
+  color: var(--hg-muted, rgb(255 255 255 / 0.55));
+}
+.resolution-size {
+  color: var(--hg-muted, rgb(255 255 255 / 0.4));
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 视频时长：拖动条 + 确认 ── */
+.duration-popover {
+  width: min(18rem, calc(100vw - 2rem));
+}
+.duration-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.duration-slider {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--hg-accent, #b08a4f) 0%,
+    var(--hg-accent, #b08a4f) var(--duration-fill, 44%),
+    rgb(255 255 255 / 0.14) var(--duration-fill, 44%),
+    rgb(255 255 255 / 0.14) 100%
+  );
+  cursor: pointer;
+}
+.duration-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--panel, #16161a);
+  background: var(--hg-accent, #b08a4f);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
+  cursor: pointer;
+}
+.duration-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--panel, #16161a);
+  background: var(--hg-accent, #b08a4f);
+  cursor: pointer;
+}
+.duration-value {
+  min-width: 3.4rem;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.duration-hint {
+  margin: 8px 0 0;
+  color: var(--hg-muted, rgb(255 255 255 / 0.55));
+  font-size: 11px;
+  line-height: 1.5;
+}
+.duration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.duration-actions button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.duration-actions .duration-confirm {
+  border-color: transparent;
+  background: var(--hg-accent, #b08a4f);
+  color: #1a1207;
+}
+.duration-actions button:hover {
+  filter: brightness(1.08);
+}
+.params-section h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.params-ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 8px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.05);
+}
+.params-popover .ratio-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  height: auto;
+  padding: 6px 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8f8f95;
+  gap: 0;
+}
+.params-popover .ratio-btn.selected {
+  background: var(--card, #1f1f24);
+  color: var(--ink);
+  border-color: transparent;
+}
+.ratio-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+.ratio-icon {
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+.ratio-value,
+.ratio-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.ratio-label {
+  font-weight: 400;
+}
+.params-size-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.params-size-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.params-size-fields input,
+.params-size-fields select {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--hg-line, rgb(255 255 255 / 0.12));
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.04);
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+}
+.params-size-fields input:focus,
+.params-size-fields select:focus {
+  border-color: var(--amber);
+}
+.params-count-row {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.05);
+}
+.params-popover .params-count-row button {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8f8f95;
+  font-size: 12px;
+  font-weight: 600;
+}
+.params-popover .params-count-row button.selected {
+  background: var(--card, #1f1f24);
+  color: var(--ink);
+}
+.params-popover .params-count-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.params-sampling-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.params-reset {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.params-reset:hover {
+  color: var(--ink);
+}
+
+/* 云端模型选择弹窗 */
+.cloud-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+}
+.cloud-picker__mask {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.55);
+}
+.cloud-picker__dialog {
+  position: relative;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(520px, calc(100dvh - 64px));
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--line, rgb(255 255 255 / 0.12));
+  border-radius: 14px;
+  background: var(--panel, #16161a);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+}
+.cloud-picker__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.cloud-picker__head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cloud-picker__head strong {
+  font-size: 15px;
+}
+.cloud-picker__head small {
+  color: var(--muted, #8f8f95);
+  font-size: 12px;
+}
+.cloud-picker__close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #999a9f;
+}
+.cloud-picker__close:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--ink);
+}
+.cloud-picker__empty {
+  color: var(--muted, #8f8f95);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+  margin: 0;
+}
+.cloud-picker__list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cloud-picker__row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.03);
+  color: var(--ink);
+  text-align: left;
+}
+.cloud-picker__row:hover {
+  background: rgb(255 255 255 / 0.07);
+}
+.cloud-picker__row.current {
+  border-color: rgb(251 191 36 / 0.5);
+  background: rgb(251 191 36 / 0.1);
+}
+.cloud-picker__thumb {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgb(251 191 36 / 0.18);
+  color: var(--amber-soft, #fbd36a);
+  font-weight: 700;
+}
+.cloud-picker__meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cloud-picker__meta b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.cloud-picker__meta small {
+  color: var(--muted, #8f8f95);
+  font-size: 11px;
+}
+.cloud-picker__check {
+  flex: 0 0 auto;
+  color: var(--amber);
+}
+
+/* 历史会话抽拉侧栏 */
+.history-toggle {
+  margin-left: 8px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line, rgb(255 255 255 / 0.12));
+  border-radius: 7px;
+  background: transparent;
+  color: #999a9f;
+  font-size: 12px;
+}
+.history-toggle:hover {
+  background: rgb(255 255 255 / 0.06);
+  color: var(--ink);
+}
+.session-rail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(0 0 0 / 0.4);
+}
+.session-rail {
+  position: fixed;
+  z-index: 61;
+  top: calc(var(--topbar-h, 58px) + 16px);
+  left: calc(var(--rail, 244px) + 16px);
+  bottom: 16px;
+  width: min(300px, calc(100vw - 350px));
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line, rgb(255 255 255 / 0.12));
+  border-radius: 14px;
+  background: var(--panel, #16161a);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.45);
+  overflow: hidden;
+}
+.session-rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hg-line, rgb(255 255 255 / 0.08));
+}
+.session-rail__head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.session-rail__head strong {
+  font-size: 14px;
+}
+.session-rail__head small {
+  color: var(--muted, #8f8f95);
+  font-size: 11px;
+}
+.session-rail__head button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #999a9f;
+}
+.session-rail__head button:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--ink);
+}
+.session-rail__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.session-rail__empty {
+  margin: 32px auto;
+  text-align: center;
+  color: var(--muted, #8f8f95);
+  font-size: 12px;
+  line-height: 1.9;
+}
+.session-rail__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.session-row:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+.session-row.active {
+  border-color: rgb(251 191 36 / 0.4);
+  background: rgb(251 191 36 / 0.08);
+}
+.session-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.session-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted, #8f8f95);
+  font-size: 11px;
+}
+.session-row__meta b {
+  font-weight: 600;
+  color: var(--amber-soft, #fbd36a);
 }
 </style>

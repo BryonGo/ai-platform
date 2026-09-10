@@ -100,12 +100,57 @@ export interface CloudModel {
   output: { format: string }
 }
 
+export interface VideoDurationOption {
+  seconds: number
+  frames: number
+  actualSeconds: number
+}
+
+/** 视频画幅 → 输出尺寸（来自 comfy85 ResolutionSelector 实测：0.4MP、32 对齐） */
+export interface VideoResolution {
+  ratio: string
+  label: string
+  width: number
+  height: number
+}
+
+export interface CatalogVideoModel {
+  id: string
+  name: string
+  engine: string
+  workflow: string
+  steps: number
+  frameRate: number
+  length: number
+  width: number
+  height: number
+  /** 时长约束（秒）+ 档位表，来自后端 24fps+17k+5 吸附计算 */
+  minSeconds: number
+  maxSeconds: number
+  defaultSeconds: number
+  durations: VideoDurationOption[]
+  resolutions: VideoResolution[]
+  note?: string
+  available: boolean
+  selectable: boolean
+}
+
+/** 站点报价表：键为画幅（如 "1:1"），值为积分单价；来自 billing_rate_version 最新 revision */
+export interface CatalogRates {
+  product: string
+  image: Record<string, number>
+  video: Record<string, number>
+  extend: Record<string, number>
+}
+
 export interface Catalog {
   version: number
   sampling: CatalogSampling
   models: CatalogItem[]
   loras: CatalogItem[]
+  videoModels: CatalogVideoModel[]
   cloudModels: CloudModel[]
+  rates?: CatalogRates
 }
 
 export interface HougongTask {
@@ -502,6 +547,7 @@ export function useHougongApi() {
     width?: number
     height?: number
     count?: number
+    durationSeconds?: number
     seed?: number
     sampling?: { steps: number, sampler: string, scheduler: string, cfg: number, denoise?: number }
     loras?: { name: string, weight: number }[]
