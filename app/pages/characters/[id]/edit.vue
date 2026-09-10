@@ -27,6 +27,18 @@ onMounted(async () => {
   }
 })
 
+// 删除角色（后端会校验：名下还有作品时拒绝，需先删作品）
+async function removeCharacter() {
+  if (!character.value) return
+  if (!window.confirm(`删除角色「${character.value.name}」？删除后无法恢复。`)) return
+  try {
+    await api.deleteCharacter(characterId.value)
+    await navigateTo('/characters')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '删除失败'
+  }
+}
+
 async function onSubmit(input: CharacterInput) {
   submitting.value = true
   error.value = ''
@@ -59,15 +71,29 @@ async function onSubmit(input: CharacterInput) {
     >
       正在加载…
     </p>
-    <AppCharacterForm
-      v-else-if="character"
-      :initial="character"
-      :submitting="submitting"
-      :server-error="error"
-      edit-mode
-      submit-label="保存修改"
-      @submit="onSubmit"
-    />
+    <template v-else-if="character">
+      <AppCharacterForm
+        :initial="character"
+        :submitting="submitting"
+        :server-error="error"
+        edit-mode
+        submit-label="保存修改"
+        @submit="onSubmit"
+      />
+      <div class="danger-zone">
+        <div>
+          <strong>删除角色</strong>
+          <small>名下还有作品时无法删除，请先删除该角色的作品。</small>
+        </div>
+        <button
+          type="button"
+          class="btn-ghost danger"
+          @click="removeCharacter"
+        >
+          删除角色
+        </button>
+      </div>
+    </template>
     <div
       v-else
       class="empty-state"
@@ -81,3 +107,26 @@ async function onSubmit(input: CharacterInput) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 880px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(217, 83, 79, 0.35);
+  border-radius: 12px;
+}
+.danger-zone small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-dim, #8a8f98);
+}
+.btn-ghost.danger {
+  color: #d9534f;
+  border-color: rgba(217, 83, 79, 0.4);
+}
+</style>

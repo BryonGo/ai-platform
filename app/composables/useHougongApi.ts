@@ -30,6 +30,8 @@ export interface CharacterItem {
   appearance: AppearanceItem[]
   outfits: OutfitItem[]
   workCount: number
+  /** 角色封面：该角色最近一部作品的产物（presign），无作品时为空 */
+  coverUrl?: string
 }
 
 // CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）。
@@ -529,6 +531,11 @@ export function useHougongApi() {
     return apiRequest<CharacterItem>(`/hougong/characters/${id}`, { method: 'PUT', body: input })
   }
 
+  // 删除角色：后端软删；该角色名下还有作品时会拒绝（先删作品）。
+  async function deleteCharacter(id: number | string): Promise<void> {
+    await apiRequest(`/hougong/characters/${id}`, { method: 'DELETE' })
+  }
+
   async function listWorks(): Promise<WorkItem[]> {
     const res = await apiRequest<{ list: WorkItem[] }>('/hougong/works')
     return res.list || []
@@ -541,6 +548,10 @@ export function useHougongApi() {
 
   async function favoriteHougongWork(id: string | number, favorite: boolean): Promise<WorkItem> {
     return apiRequest<WorkItem>(`/hougong/works/${id}/favorite`, { method: 'POST', body: { favorite } })
+  }
+
+  async function deleteHougongWork(id: string | number): Promise<void> {
+    await apiRequest(`/hougong/works/${id}`, { method: 'DELETE' })
   }
 
   async function listStories(): Promise<StoryItem[]> {
@@ -811,9 +822,11 @@ export function useHougongApi() {
     getCharacter,
     createCharacter,
     updateCharacter,
+    deleteCharacter,
     listWorks,
     getHougongWork,
     favoriteHougongWork,
+    deleteHougongWork,
     listStories,
     getHougongStory,
     listTasks,

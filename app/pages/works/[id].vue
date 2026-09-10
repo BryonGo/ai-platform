@@ -50,6 +50,18 @@ async function load() {
   }
 }
 
+// 删除作品（后端 DELETE /hougong/works/{id}，此前前端没有入口）
+async function removeWork() {
+  if (!work.value) return
+  if (!window.confirm('删除这部作品？删除后无法恢复。')) return
+  try {
+    await api.deleteHougongWork(work.value.id)
+    await navigateTo('/works')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '删除失败'
+  }
+}
+
 async function toggleFavorite() {
   if (!work.value || favBusy.value) return
   favBusy.value = true
@@ -147,6 +159,13 @@ watch(workId, load)
           >
             {{ work.favorite ? '取消收藏' : '收藏' }}
           </button>
+          <button
+            type="button"
+            class="btn-ghost danger"
+            @click="removeWork"
+          >
+            删除
+          </button>
         </div>
 
         <section class="panel-block">
@@ -227,5 +246,12 @@ watch(workId, load)
   color: var(--amber-soft);
   font-size: clamp(48px, 7vw, 96px);
   font-weight: 800;
+}
+</style>
+
+<style scoped>
+.btn-ghost.danger {
+  color: #d9534f;
+  border-color: rgba(217, 83, 79, 0.4);
 }
 </style>
