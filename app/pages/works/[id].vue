@@ -11,6 +11,8 @@ const related = ref<WorkItem[]>([])
 const loading = ref(true)
 const error = ref('')
 const favBusy = ref(false)
+const coverBusy = ref(false)
+const coverNote = ref('')
 
 const workId = computed(() => String(route.params.id))
 const kindLabel = computed(() => (work.value?.kind === 'video' ? '视频' : '图片'))
@@ -59,6 +61,21 @@ async function removeWork() {
     await navigateTo('/works')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '删除失败'
+  }
+}
+
+// 把这部作品设为出演角色的封面（后端校验素材归属）
+async function setAsCover() {
+  if (!work.value || !work.value.characterId || !work.value.assetId) return
+  coverBusy.value = true
+  coverNote.value = ''
+  try {
+    await api.setCharacterCover(work.value.characterId, work.value.assetId)
+    coverNote.value = '已设为该角色的封面'
+  } catch (e: unknown) {
+    coverNote.value = e instanceof Error ? e.message : '设置失败'
+  } finally {
+    coverBusy.value = false
   }
 }
 
@@ -138,6 +155,12 @@ watch(workId, load)
         >
           {{ error }}
         </p>
+        <p
+          v-else-if="coverNote"
+          class="empty-tip"
+        >
+          {{ coverNote }}
+        </p>
 
         <div class="detail-actions">
           <a
@@ -158,6 +181,15 @@ watch(workId, load)
             @click="toggleFavorite"
           >
             {{ work.favorite ? '取消收藏' : '收藏' }}
+          </button>
+          <button
+            v-if="work.characterId && work.assetId"
+            type="button"
+            class="btn-ghost"
+            :disabled="coverBusy"
+            @click="setAsCover"
+          >
+            设为 TA 的封面
           </button>
           <button
             type="button"

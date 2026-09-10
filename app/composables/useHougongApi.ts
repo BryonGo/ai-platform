@@ -30,8 +30,10 @@ export interface CharacterItem {
   appearance: AppearanceItem[]
   outfits: OutfitItem[]
   workCount: number
-  /** 角色封面：该角色最近一部作品的产物（presign），无作品时为空 */
+  /** 角色封面地址（presign）：手动指定优先，否则取最近作品产物 */
   coverUrl?: string
+  /** 手动指定的封面素材 id（0/缺省 = 按最近作品自动） */
+  coverAssetId?: number
 }
 
 // CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）。
@@ -531,6 +533,14 @@ export function useHougongApi() {
     return apiRequest<CharacterItem>(`/hougong/characters/${id}`, { method: 'PUT', body: input })
   }
 
+  // 指定 / 清除角色封面（assetId=0 恢复自动：取最近作品产物），返回更新后的角色。
+  async function setCharacterCover(id: number | string, assetId: number | string): Promise<CharacterItem> {
+    return apiRequest<CharacterItem>(`/hougong/characters/${id}/cover`, {
+      method: 'PUT',
+      body: { assetId: Number(assetId) || 0 }
+    })
+  }
+
   // 删除角色：后端软删；该角色名下还有作品时会拒绝（先删作品）。
   async function deleteCharacter(id: number | string): Promise<void> {
     await apiRequest(`/hougong/characters/${id}`, { method: 'DELETE' })
@@ -823,6 +833,7 @@ export function useHougongApi() {
     createCharacter,
     updateCharacter,
     deleteCharacter,
+    setCharacterCover,
     listWorks,
     getHougongWork,
     favoriteHougongWork,

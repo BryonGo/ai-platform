@@ -38,6 +38,24 @@ async function load() {
   }
 }
 
+// 恢复自动封面（清除手动指定）
+const coverBusy = ref(false)
+const coverNote = ref('')
+
+async function resetCover() {
+  if (!character.value) return
+  coverBusy.value = true
+  coverNote.value = ''
+  try {
+    character.value = await api.setCharacterCover(character.value.id, 0)
+    coverNote.value = '已恢复为自动封面（取最近作品产物）'
+  } catch (e: unknown) {
+    coverNote.value = e instanceof Error ? e.message : '操作失败'
+  } finally {
+    coverBusy.value = false
+  }
+}
+
 onMounted(load)
 watch(characterId, load)
 </script>
@@ -84,7 +102,9 @@ watch(characterId, load)
 
       <div class="media-detail">
         <p class="detail-kicker">
-          角色设定
+          角色设定<template v-if="character.coverAssetId">
+            · 手动封面
+          </template>
         </p>
         <h1 class="detail-title">
           {{ character.name }}
@@ -102,7 +122,23 @@ watch(characterId, load)
             :to="`/characters/${character.id}/edit`"
             class="btn-ghost"
           >编辑档案</NuxtLink>
+          <button
+            v-if="character.coverAssetId"
+            type="button"
+            class="btn-ghost"
+            :disabled="coverBusy"
+            @click="resetCover"
+          >
+            恢复自动封面
+          </button>
         </div>
+
+        <p
+          v-if="coverNote"
+          class="empty-tip"
+        >
+          {{ coverNote }}
+        </p>
 
         <section class="panel-block">
           <h2>性格</h2>
