@@ -24,6 +24,29 @@ const nav = [
 
 const route = useRoute()
 const railCollapsed = ref(false)
+const accountOpen = ref(false)
+const accountWrapRef = ref<HTMLElement | null>(null)
+const session = useAuthSession()
+
+function onAccountToggle(e: MouseEvent) {
+  accountOpen.value = !accountOpen.value
+  e.stopPropagation()
+}
+
+function onDocClick(e: MouseEvent) {
+  if (accountWrapRef.value && !accountWrapRef.value.contains(e.target as Node)) {
+    accountOpen.value = false
+  }
+}
+
+function logout() {
+  session.clear()
+  accountOpen.value = false
+  navigateTo('/auth/login')
+}
+
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 // 顶栏：积分余额 + 未读通知角标（登录态下加载）
 const topCredits = ref(0)
@@ -122,16 +145,28 @@ function toggleRail() {
               class="bell-badge"
             >{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
           </NuxtLink>
-          <button
-            class="avatar"
-            type="button"
-            aria-label="打开账户菜单"
+          <div
+            ref="accountWrapRef"
+            class="account-menu-wrap"
           >
-            <img
-              src="/images/daji-three-tail-front-v1.webp"
-              alt=""
+            <button
+              class="avatar"
+              type="button"
+              aria-label="打开账户菜单"
+              :aria-expanded="accountOpen"
+              @click="onAccountToggle"
             >
-          </button>
+              <img
+                src="/images/daji-three-tail-front-v1.webp"
+                alt=""
+              >
+            </button>
+            <div v-if="accountOpen" class="account-menu">
+              <button type="button" @click="logout">
+                <span class="i-lucide-log-out" aria-hidden="true" />退出登录
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
