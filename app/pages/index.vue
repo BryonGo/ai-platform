@@ -20,10 +20,17 @@ const uploadFile = ref<File | null>(null)
 const catalog = ref<Catalog | null>(null)
 const cost = computed(() => {
   const rates = catalog.value?.rates
-  const table = mode.value === 'video' ? rates?.video : rates?.image
-  const quoted = table?.[ratio.value]
+  if (mode.value === 'video') {
+    // 与后端一致：后台配了 i2v:<画幅>:<秒> 则按时长计价，否则回落按画幅单档。
+    const byDuration = rates?.videoByDuration?.[ratio.value]?.[String(durationSeconds.value)]
+    if (typeof byDuration === 'number' && byDuration > 0) return byDuration
+    const base = rates?.video?.[ratio.value]
+    if (typeof base === 'number' && base > 0) return base
+    return 24
+  }
+  const quoted = rates?.image?.[ratio.value]
   if (typeof quoted === 'number' && quoted > 0) return quoted
-  return mode.value === 'video' ? 24 : 8
+  return 8
 })
 
 onMounted(async () => {

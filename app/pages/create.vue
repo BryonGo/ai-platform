@@ -463,10 +463,18 @@ const cost = computed(() => {
   // 价格来自后端报价表（billing_rate_version），必须与创建任务时的实际预占一致；
   // 取不到时回退默认值，仅作展示兜底。
   const rates = catalog.value?.rates
-  const table = mode.value === 'video' ? rates?.video : rates?.image
-  const quoted = table?.[ratio.value]
+  if (mode.value === 'video') {
+    // 按时长计价是可选维度：后台配了 i2v:<画幅>:<秒> 就用它，否则回落 i2v:<画幅>。
+    // 与后端 task/controller 的 QuoteFirst 顺序保持一致。
+    const byDuration = rates?.videoByDuration?.[ratio.value]?.[String(videoSeconds.value)]
+    if (typeof byDuration === 'number' && byDuration > 0) return byDuration
+    const base = rates?.video?.[ratio.value]
+    if (typeof base === 'number' && base > 0) return base
+    return 24
+  }
+  const quoted = rates?.image?.[ratio.value]
   if (typeof quoted === 'number' && quoted > 0) return quoted
-  return mode.value === 'video' ? 24 : 8
+  return 8
 })
 const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
 const running = computed(() => messages.value.some(m => m.role === 'assistant' && m.status === 'running'))

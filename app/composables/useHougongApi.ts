@@ -141,6 +141,12 @@ export interface CatalogRates {
   image: Record<string, number>
   video: Record<string, number>
   extend: Record<string, number>
+  /**
+   * 视频「按时长计价」的可选维度：画幅 → 秒数 → 积分。
+   * 仅当运营在后台配了 i2v:<画幅>:<秒> 报价才有条目；
+   * 该秒数没配时回落到 video[画幅]（按画幅单档）。
+   */
+  videoByDuration?: Record<string, Record<string, number>>
 }
 
 export interface Catalog {
