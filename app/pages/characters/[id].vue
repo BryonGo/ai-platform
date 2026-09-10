@@ -90,14 +90,10 @@ watch(characterId, load)
             :to="`/create?character=${character.id}`"
             class="btn-primary"
           >用她创作</NuxtLink>
-          <button
-            type="button"
+          <NuxtLink
+            :to="`/characters/${character.id}/edit`"
             class="btn-ghost"
-            disabled
-            title="造型生成待接入"
-          >
-            生成新造型
-          </button>
+          >编辑档案</NuxtLink>
         </div>
 
         <section class="panel-block">
@@ -148,10 +144,10 @@ watch(characterId, load)
             class="outfit-row"
           >
             <div
-              v-for="(o, i) in character.outfits"
+              v-for="o in character.outfits"
               :key="o.id"
               class="outfit-item"
-              :class="{ current: o.current || i === 0 }"
+              :class="{ current: o.current }"
             >
               <span
                 class="outfit-swatch"
@@ -161,9 +157,13 @@ watch(characterId, load)
               <strong>{{ o.name }}</strong>
               <small>{{ o.note }}</small>
               <span
-                v-if="o.current || i === 0"
+                v-if="o.current"
                 class="current-tag"
               >当前默认</span>
+              <span
+                v-else
+                class="history-tag"
+              >历史</span>
             </div>
           </div>
           <p
@@ -226,5 +226,12 @@ watch(characterId, load)
   color: var(--amber-soft);
   font-size: clamp(48px, 7vw, 96px);
   font-weight: 800;
+}
+</style>
+
+<style scoped>
+.history-tag {
+  color: var(--text-dim, #8a8f98);
+  font-size: 12px;
 }
 </style>

@@ -32,6 +32,18 @@ export interface CharacterItem {
   workCount: number
 }
 
+// CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）。
+export interface CharacterInput {
+  name: string
+  alias?: string
+  age?: string
+  ageVerified: boolean
+  tagline?: string
+  traits?: string[]
+  appearance?: AppearanceItem[]
+  outfits?: { name: string, note?: string, swatch?: string }[]
+}
+
 export interface WorkItem {
   id: number
   title: string
@@ -508,6 +520,15 @@ export function useHougongApi() {
     return apiRequest<CharacterItem>(`/hougong/characters/${id}`)
   }
 
+  // 角色创建/更新（字段对齐后端 CharacterInputData；更新时空字符串表示「不修改」）
+  async function createCharacter(input: CharacterInput): Promise<CharacterItem> {
+    return apiRequest<CharacterItem>('/hougong/characters', { method: 'POST', body: input })
+  }
+
+  async function updateCharacter(id: number | string, input: CharacterInput): Promise<CharacterItem> {
+    return apiRequest<CharacterItem>(`/hougong/characters/${id}`, { method: 'PUT', body: input })
+  }
+
   async function listWorks(): Promise<WorkItem[]> {
     const res = await apiRequest<{ list: WorkItem[] }>('/hougong/works')
     return res.list || []
@@ -788,6 +809,8 @@ export function useHougongApi() {
     logout,
     listCharacters,
     getCharacter,
+    createCharacter,
+    updateCharacter,
     listWorks,
     getHougongWork,
     favoriteHougongWork,

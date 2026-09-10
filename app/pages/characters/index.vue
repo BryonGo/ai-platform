@@ -35,7 +35,7 @@ onMounted(async () => {
         <p>每位角色都有独立的身份、外观、服装与故事线。生成时保持形象一致，改动保留历史版本。</p>
       </div>
       <NuxtLink
-        to="/create"
+        to="/characters/new"
         class="btn-primary"
       >+ 新角色</NuxtLink>
     </div>
