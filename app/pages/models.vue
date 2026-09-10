@@ -183,7 +183,9 @@ onMounted(() => {
         class="btn-primary"
         :disabled="newDraftBusy"
         @click="createDraft"
-      >+ 新建模型草稿</button>
+      >
+        + 新建模型草稿
+      </button>
     </div>
 
     <div class="filters">
@@ -194,7 +196,9 @@ onMounted(() => {
         class="filter-btn"
         :class="{ active: tab === t.key }"
         @click="switchTab(t.key)"
-      >{{ t.label }}</button>
+      >
+        {{ t.label }}
+      </button>
     </div>
 
     <p
@@ -214,7 +218,9 @@ onMounted(() => {
           class="filter-btn"
           :class="{ active: typeFilter === t.key }"
           @click="typeFilter = t.key; loadMarket()"
-        >{{ t.label }}</button>
+        >
+          {{ t.label }}
+        </button>
       </div>
       <div
         v-if="typeFilter !== 'video' && facets?.families.length"
@@ -225,7 +231,9 @@ onMounted(() => {
           class="filter-btn"
           :class="{ active: famFilter === '' }"
           @click="famFilter = ''; loadMarket()"
-        >全部底模族</button>
+        >
+          全部底模族
+        </button>
         <button
           v-for="f in facets.families"
           :key="f"
@@ -233,7 +241,9 @@ onMounted(() => {
           class="filter-btn"
           :class="{ active: famFilter === f }"
           @click="famFilter = f; loadMarket()"
-        >{{ f }}</button>
+        >
+          {{ f }}
+        </button>
       </div>
       <div class="model-grid">
         <button
@@ -257,7 +267,9 @@ onMounted(() => {
           <div
             v-else
             class="model-cover-placeholder"
-          >{{ m.name.slice(0, 1) }}</div>
+          >
+            {{ m.name.slice(0, 1) }}
+          </div>
           <div class="model-info">
             <small>{{ typeLabel(m) }}</small>
             <strong>{{ m.name }}</strong>
@@ -268,7 +280,9 @@ onMounted(() => {
       <p
         v-if="!loading && !models.length"
         class="empty-tip"
-      >{{ typeFilter === 'video' ? '暂无可用视频模型' : '暂无模型' }}</p>
+      >
+        {{ typeFilter === 'video' ? '暂无可用视频模型' : '暂无模型' }}
+      </p>
 
       <div
         v-if="detail"
@@ -280,10 +294,16 @@ onMounted(() => {
             type="button"
             class="composer2-btn-sm"
             @click="detail = null"
-          >关闭</button>
+          >
+            关闭
+          </button>
         </div>
-        <p class="muted">{{ detail.excerpt }}</p>
-        <p class="muted">{{ detail.description }}</p>
+        <p class="muted">
+          {{ detail.excerpt }}
+        </p>
+        <p class="muted">
+          {{ detail.description }}
+        </p>
         <div class="detail-tags">
           <span
             v-for="t in detail.tags"
@@ -297,7 +317,9 @@ onMounted(() => {
           v-if="detail.compatible?.length"
           class="lora-group"
         >
-          <div class="lora-group-title">LoRA · {{ detail.family || detail.name }}（{{ detail.compatible.length }}）</div>
+          <div class="lora-group-title">
+            LoRA · {{ detail.family || detail.name }}（{{ detail.compatible.length }}）
+          </div>
           <div class="lora-grid">
             <button
               v-for="l in detail.compatible"
@@ -305,7 +327,9 @@ onMounted(() => {
               type="button"
               class="lora-chip"
               @click="showDetail(l.id)"
-            >{{ l.name }}</button>
+            >
+              {{ l.name }}
+            </button>
           </div>
         </div>
       </div>
@@ -332,37 +356,49 @@ onMounted(() => {
               type="button"
               class="composer2-btn-sm"
               @click="openEditor(m)"
-            >编辑</button>
+            >
+              编辑
+            </button>
             <button
               v-if="m.viewer.submit"
               type="button"
               class="composer2-btn-sm"
               @click="act(m.id, 'submit')"
-            >提交发布</button>
+            >
+              提交发布
+            </button>
             <button
               v-if="m.viewer.withdraw"
               type="button"
               class="composer2-btn-sm"
               @click="act(m.id, 'withdraw')"
-            >撤回</button>
+            >
+              撤回
+            </button>
             <button
               v-if="m.viewer.hide"
               type="button"
               class="composer2-btn-sm"
               @click="act(m.id, m.state === 'hidden' ? 'unhide' : 'hide')"
-            >{{ m.state === 'hidden' ? '取消隐藏' : '隐藏' }}</button>
+            >
+              {{ m.state === 'hidden' ? '取消隐藏' : '隐藏' }}
+            </button>
             <button
               v-if="m.viewer.remove"
               type="button"
               class="composer2-btn-sm danger"
               @click="act(m.id, 'remove')"
-            >删除</button>
+            >
+              删除
+            </button>
           </div>
         </div>
         <p
           v-if="!loading && !mine.length"
           class="empty-tip"
-        >还没有模型草稿，点「新建模型草稿」开始。</p>
+        >
+          还没有模型草稿，点「新建模型草稿」开始。
+        </p>
       </div>
     </template>
 
@@ -462,19 +498,25 @@ onMounted(() => {
         <p
           v-if="editorErr"
           class="error-text"
-        >{{ editorErr }}</p>
+        >
+          {{ editorErr }}
+        </p>
         <div class="modal-actions">
           <button
             type="button"
             class="btn-ghost"
             @click="editorOpen = false"
-          >取消</button>
+          >
+            取消
+          </button>
           <button
             type="button"
             class="btn-primary"
             :disabled="editorBusy"
             @click="saveDraft"
-          >{{ editorBusy ? '保存中…' : '保存草稿' }}</button>
+          >
+            {{ editorBusy ? '保存中…' : '保存草稿' }}
+          </button>
         </div>
       </div>
     </div>

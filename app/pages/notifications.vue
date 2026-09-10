@@ -7,7 +7,6 @@ const loading = ref(true)
 const error = ref('')
 const unread = ref(0)
 const page = ref(1)
-const total = ref(0)
 const marking = ref(false)
 
 const kindText: Record<string, string> = {
@@ -88,7 +87,9 @@ onMounted(() => {
         class="btn-ghost"
         :disabled="marking || !unread"
         @click="markAll"
-      >全部标为已读（{{ unread }}）</button>
+      >
+        全部标为已读（{{ unread }}）
+      </button>
     </div>
 
     <p
@@ -124,11 +125,15 @@ onMounted(() => {
       <p
         v-if="!loading && !items.length"
         class="empty-tip"
-      >暂无通知</p>
+      >
+        暂无通知
+      </p>
       <p
         v-if="loading"
         class="empty-tip"
-      >加载中…</p>
+      >
+        加载中…
+      </p>
     </section>
   </div>
 </template>

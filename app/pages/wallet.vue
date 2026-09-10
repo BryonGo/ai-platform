@@ -88,7 +88,9 @@ async function copyInvite() {
   try {
     await navigator.clipboard.writeText(invite.value.code)
     copied.value = true
-    setTimeout(() => { copied.value = false }, 1500)
+    setTimeout(() => {
+      copied.value = false
+    }, 1500)
   } catch { /* 忽略剪贴板权限 */ }
 }
 
@@ -174,7 +176,9 @@ onMounted(() => {
         class="btn-primary"
         :disabled="claiming"
         @click="claim"
-      >{{ claiming ? '领取中…' : '每日领取' }}</button>
+      >
+        {{ claiming ? '领取中…' : '每日领取' }}
+      </button>
     </div>
 
     <p
@@ -210,7 +214,9 @@ onMounted(() => {
             type="button"
             class="composer2-btn-sm"
             @click="copyInvite"
-          >{{ copied ? '已复制 ✓' : '复制' }}</button>
+          >
+            {{ copied ? '已复制 ✓' : '复制' }}
+          </button>
         </div>
         <small>每成功邀请一位好友，双方各得 {{ fmtCredits(invite?.rewardCredits) }} 积分</small>
       </div>
@@ -219,7 +225,9 @@ onMounted(() => {
     <div class="wallet-grid">
       <!-- 充值 -->
       <section class="panel-block">
-        <h3 class="section-title">充值积分</h3>
+        <h3 class="section-title">
+          充值积分
+        </h3>
         <p class="muted">
           10 元 = 100,000 积分（{{ fmtCredits(invite?.rewardCredits) }} 奖励另计）
         </p>
@@ -231,18 +239,24 @@ onMounted(() => {
             class="filter-btn"
             :class="{ active: rechargeAmt === a }"
             @click="rechargeAmt = a"
-          >{{ a }} 元</button>
+          >
+            {{ a }} 元
+          </button>
         </div>
         <button
           type="button"
           class="btn-primary"
           :disabled="checkoutBusy"
           @click="doCheckout('credit')"
-        >{{ checkoutBusy ? '下单中…' : `充值 ${rechargeAmt} 元` }}</button>
+        >
+          {{ checkoutBusy ? '下单中…' : `充值 ${rechargeAmt} 元` }}
+        </button>
         <p
           v-if="checkoutErr"
           class="error-text"
-        >{{ checkoutErr }}</p>
+        >
+          {{ checkoutErr }}
+        </p>
         <div
           v-if="checkoutRes"
           class="checkout-result"
@@ -259,9 +273,13 @@ onMounted(() => {
 
       <!-- 会员 -->
       <section class="panel-block">
-        <h3 class="section-title">会员</h3>
+        <h3 class="section-title">
+          会员
+        </h3>
         <template v-if="membership?.tier">
-          <p class="member-tier">{{ tierLabel[membership.tier] || membership.tier }}</p>
+          <p class="member-tier">
+            {{ tierLabel[membership.tier] || membership.tier }}
+          </p>
           <p class="muted">
             生效至 {{ membership.expiresAt ? new Date(membership.expiresAt).toLocaleDateString() : '—' }}
           </p>
@@ -269,24 +287,32 @@ onMounted(() => {
         <p
           v-else
           class="muted"
-        >当前未开通会员</p>
+        >
+          当前未开通会员
+        </p>
         <div class="member-offers">
           <button
             type="button"
             class="btn-ghost"
             :disabled="checkoutBusy"
             @click="doCheckout('member')"
-          >开通标准版（¥69）</button>
+          >
+            开通标准版（¥69）
+          </button>
         </div>
       </section>
     </div>
 
     <!-- 创作者认证 -->
     <section class="panel-block creator-apply">
-      <h3 class="section-title">创作者认证</h3>
+      <h3 class="section-title">
+        创作者认证
+      </h3>
       <div class="apply-cols">
         <div>
-          <p class="apply-title">视觉创作者</p>
+          <p class="apply-title">
+            视觉创作者
+          </p>
           <p class="muted">
             状态：{{ creatorInfo?.state ? creatorInfo.state : '未申请' }}
           </p>
@@ -301,7 +327,9 @@ onMounted(() => {
             type="button"
             class="btn-ghost"
             @click="applyCreatorOpen = !applyCreatorOpen"
-          >{{ applyCreatorOpen ? '收起' : '申请认证' }}</button>
+          >
+            {{ applyCreatorOpen ? '收起' : '申请认证' }}
+          </button>
           <div
             v-if="applyCreatorOpen"
             class="apply-form"
@@ -318,17 +346,23 @@ onMounted(() => {
               rows="2"
               placeholder="创作说明"
             />
-            <p class="muted">提交后由运营审核，审核通过后解锁发布奖励。</p>
+            <p class="muted">
+              提交后由运营审核，审核通过后解锁发布奖励。
+            </p>
             <button
               type="button"
               class="btn-primary"
               :disabled="applyBusy"
               @click="submitCreator"
-            >提交申请</button>
+            >
+              提交申请
+            </button>
           </div>
         </div>
         <div>
-          <p class="apply-title">模型创作者</p>
+          <p class="apply-title">
+            模型创作者
+          </p>
           <p class="muted">
             状态：{{ mcInfo?.state ? mcInfo.state : '未申请' }}
           </p>
@@ -336,7 +370,9 @@ onMounted(() => {
             type="button"
             class="btn-ghost"
             @click="applyMcOpen = !applyMcOpen"
-          >{{ applyMcOpen ? '收起' : '申请认证' }}</button>
+          >
+            {{ applyMcOpen ? '收起' : '申请认证' }}
+          </button>
           <div
             v-if="applyMcOpen"
             class="apply-form"
@@ -365,7 +401,9 @@ onMounted(() => {
                 type="button"
                 class="composer2-btn-sm"
                 @click="addResourceUrl"
-              >添加</button>
+              >
+                添加
+              </button>
             </div>
             <ul
               v-if="mcForm.resourceUrls.length"
@@ -379,7 +417,9 @@ onMounted(() => {
                 <button
                   type="button"
                   @click="mcForm.resourceUrls.splice(i, 1)"
-                >×</button>
+                >
+                  ×
+                </button>
               </li>
             </ul>
             <button
@@ -387,14 +427,18 @@ onMounted(() => {
               class="btn-primary"
               :disabled="applyBusy"
               @click="submitModelCreator"
-            >提交申请</button>
+            >
+              提交申请
+            </button>
           </div>
         </div>
       </div>
       <p
         v-if="applyErr"
         class="error-text"
-      >{{ applyErr }}</p>
+      >
+        {{ applyErr }}
+      </p>
     </section>
 
     <!-- 流水 -->
@@ -407,7 +451,9 @@ onMounted(() => {
           class="filter-btn"
           :class="{ active: tab === t.key }"
           @click="tab = t.key"
-        >{{ t.label }}</button>
+        >
+          {{ t.label }}
+        </button>
       </div>
 
       <template v-if="tab === 'transactions'">
@@ -427,7 +473,9 @@ onMounted(() => {
         <p
           v-if="!transactions.length"
           class="empty-tip"
-        >暂无交易记录</p>
+        >
+          暂无交易记录
+        </p>
       </template>
       <template v-else>
         <div
@@ -444,7 +492,9 @@ onMounted(() => {
         <p
           v-if="!ledger.length"
           class="empty-tip"
-        >暂无积分流水</p>
+        >
+          暂无积分流水
+        </p>
       </template>
     </section>
   </div>

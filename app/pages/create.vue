@@ -541,11 +541,10 @@ async function openHistorySession(id: string) {
     const rebuiltArtifacts: Artifact[] = []
     const newest = [...rows].reverse()
     for (const t of newest) {
-      const raw = (t.snapshot || {}) as Record<string, any>
-      const inner = raw.input && typeof raw.input === 'object' ? raw.input as Record<string, any> : raw
+      const raw = (t.snapshot || {}) as Record<string, unknown>
+      const inner = raw.input && typeof raw.input === 'object' ? raw.input as Record<string, unknown> : raw
       const prompt = typeof inner.prompt === 'string' ? inner.prompt : ''
       const ratio = typeof inner.ratio === 'string' ? inner.ratio : ''
-      const kind: Mode = t.type === 'i2v' ? 'video' : 'image'
       const runId = Number(t.id) || null
       const time = t.createdAt
         ? new Date(t.createdAt * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -1004,22 +1003,53 @@ function handleUpload(event: Event) {
     :class="{ 'has-artifact': !!activeArtifact() }"
   >
     <!-- 历史会话抽拉侧栏 -->
-    <div v-if="railOpen" class="session-rail-backdrop" @click="railOpen = false" />
-    <aside v-if="railOpen" class="session-rail" aria-label="历史会话">
+    <div
+      v-if="railOpen"
+      class="session-rail-backdrop"
+      @click="railOpen = false"
+    />
+    <aside
+      v-if="railOpen"
+      class="session-rail"
+      aria-label="历史会话"
+    >
       <div class="session-rail__head">
         <div>
           <strong>历史会话</strong>
           <small v-if="!sessionLoading">共 {{ sessions.length }} 个</small>
         </div>
-        <button type="button" aria-label="关闭" @click="railOpen = false">
-          <span class="i-lucide-x" aria-hidden="true" />
+        <button
+          type="button"
+          aria-label="关闭"
+          @click="railOpen = false"
+        >
+          <span
+            class="i-lucide-x"
+            aria-hidden="true"
+          />
         </button>
       </div>
       <div class="session-rail__body">
-        <p v-if="sessionLoading" class="session-rail__empty">加载中…</p>
-        <p v-else-if="!sessions.length" class="session-rail__empty">还没有历史会话<br>发送一条创作后即可在这里看到</p>
-        <ul v-else class="session-rail__list">
-          <li v-for="s in sessions" :key="s.id">
+        <p
+          v-if="sessionLoading"
+          class="session-rail__empty"
+        >
+          加载中…
+        </p>
+        <p
+          v-else-if="!sessions.length"
+          class="session-rail__empty"
+        >
+          还没有历史会话<br>发送一条创作后即可在这里看到
+        </p>
+        <ul
+          v-else
+          class="session-rail__list"
+        >
+          <li
+            v-for="s in sessions"
+            :key="s.id"
+          >
             <button
               type="button"
               class="session-row"
@@ -1050,8 +1080,15 @@ function handleUpload(event: Event) {
           aria-hidden="true"
         />
         <strong>创作台 · SSE 会话</strong>
-        <button type="button" class="history-toggle" @click="openRail">
-          <span class="i-lucide-history" aria-hidden="true" />历史{{ sessions.length ? ` ${sessions.length}` : '' }}
+        <button
+          type="button"
+          class="history-toggle"
+          @click="openRail"
+        >
+          <span
+            class="i-lucide-history"
+            aria-hidden="true"
+          />历史{{ sessions.length ? ` ${sessions.length}` : '' }}
         </button>
         <small>{{ running ? '有任务进行中' : '空闲' }}</small>
       </div>
@@ -1379,7 +1416,9 @@ function handleUpload(event: Event) {
                       <span class="duration-value">{{ videoSecondsDraft }} 秒</span>
                     </div>
                     <p class="duration-hint">
-                      模型按 {{ activeVideoModel?.frameRate || 24 }}fps 生成<template v-if="durationOption">，实际约 {{ durationOption.actualSeconds.toFixed(1) }} 秒（{{ durationOption.frames }} 帧）</template>
+                      模型按 {{ activeVideoModel?.frameRate || 24 }}fps 生成<template v-if="durationOption">
+                        ，实际约 {{ durationOption.actualSeconds.toFixed(1) }} 秒（{{ durationOption.frames }} 帧）
+                      </template>
                     </p>
                   </section>
                   <div class="duration-actions">
@@ -1387,12 +1426,16 @@ function handleUpload(event: Event) {
                       type="button"
                       class="duration-cancel"
                       @click="cancelDuration"
-                    >取消</button>
+                    >
+                      取消
+                    </button>
                     <button
                       type="button"
                       class="duration-confirm"
                       @click="confirmDuration"
-                    >确认</button>
+                    >
+                      确认
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1510,7 +1553,9 @@ function handleUpload(event: Event) {
                         type="button"
                         :class="{ selected: cloudQuality === q }"
                         @click="cloudQuality = q"
-                      >{{ q }}</button>
+                      >
+                        {{ q }}
+                      </button>
                     </div>
                   </section>
                   <section class="params-section">
@@ -1523,7 +1568,9 @@ function handleUpload(event: Event) {
                         :disabled="n > countMax"
                         :class="{ selected: count === n }"
                         @click="setCount(n)"
-                      >{{ n }}</button>
+                      >
+                        {{ n }}
+                      </button>
                     </div>
                   </section>
                   <section
@@ -1536,7 +1583,9 @@ function handleUpload(event: Event) {
                         type="button"
                         class="params-reset"
                         @click="resetSampling"
-                      >恢复默认</button>
+                      >
+                        恢复默认
+                      </button>
                     </div>
                     <div class="params-size-fields">
                       <label>
@@ -1799,21 +1848,51 @@ function handleUpload(event: Event) {
       </div>
     </aside>
 
-    <div v-if="cloudPickerOpen" class="cloud-picker">
-      <div class="cloud-picker__mask" @click="cloudPickerOpen = false" />
-      <div class="cloud-picker__dialog" role="dialog" aria-modal="true" aria-label="选择云端模型">
+    <div
+      v-if="cloudPickerOpen"
+      class="cloud-picker"
+    >
+      <div
+        class="cloud-picker__mask"
+        @click="cloudPickerOpen = false"
+      />
+      <div
+        class="cloud-picker__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="选择云端模型"
+      >
         <div class="cloud-picker__head">
           <div>
             <strong>选择云端模型</strong>
             <small>按张扣减余额，失败自动退回</small>
           </div>
-          <button type="button" aria-label="关闭" class="cloud-picker__close" @click="cloudPickerOpen = false">
-            <span class="i-lucide-x" aria-hidden="true" />
+          <button
+            type="button"
+            aria-label="关闭"
+            class="cloud-picker__close"
+            @click="cloudPickerOpen = false"
+          >
+            <span
+              class="i-lucide-x"
+              aria-hidden="true"
+            />
           </button>
         </div>
-        <p v-if="!availableCloudModels.length" class="cloud-picker__empty">暂无可用云端模型</p>
-        <ul v-else class="cloud-picker__list">
-          <li v-for="m in availableCloudModels" :key="m.id">
+        <p
+          v-if="!availableCloudModels.length"
+          class="cloud-picker__empty"
+        >
+          暂无可用云端模型
+        </p>
+        <ul
+          v-else
+          class="cloud-picker__list"
+        >
+          <li
+            v-for="m in availableCloudModels"
+            :key="m.id"
+          >
             <button
               type="button"
               class="cloud-picker__row"
@@ -1825,8 +1904,14 @@ function handleUpload(event: Event) {
                 <b>{{ m.name }}</b>
                 <small>{{ m.engine }} · {{ m.capabilities?.parameters?.[0]?.quality || '默认' }} · {{ m.pricing?.qualities?.[0]?.balance || '—' }} 余额/张</small>
               </span>
-              <span v-if="activeCloudModel?.id === m.id" class="cloud-picker__check">
-                <span class="i-lucide-check" aria-hidden="true" />
+              <span
+                v-if="activeCloudModel?.id === m.id"
+                class="cloud-picker__check"
+              >
+                <span
+                  class="i-lucide-check"
+                  aria-hidden="true"
+                />
               </span>
             </button>
           </li>

@@ -161,9 +161,18 @@ function toggleRail() {
                 alt=""
               >
             </button>
-            <div v-if="accountOpen" class="account-menu">
-              <button type="button" @click="logout">
-                <span class="i-lucide-log-out" aria-hidden="true" />退出登录
+            <div
+              v-if="accountOpen"
+              class="account-menu"
+            >
+              <button
+                type="button"
+                @click="logout"
+              >
+                <span
+                  class="i-lucide-log-out"
+                  aria-hidden="true"
+                />退出登录
               </button>
             </div>
           </div>

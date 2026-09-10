@@ -78,7 +78,9 @@ onMounted(() => {
         type="button"
         class="btn-ghost"
         @click="showHidden = !showHidden; load()"
-      >{{ showHidden ? '查看可用素材' : '查看已隐藏' }}</button>
+      >
+        {{ showHidden ? '查看可用素材' : '查看已隐藏' }}
+      </button>
     </div>
 
     <p
@@ -110,24 +112,32 @@ onMounted(() => {
             class="composer2-btn-sm"
             :disabled="busy === a.id"
             @click="toggleHidden(a)"
-          >{{ a.hidden ? '取消隐藏' : '隐藏' }}</button>
+          >
+            {{ a.hidden ? '取消隐藏' : '隐藏' }}
+          </button>
           <button
             type="button"
             class="composer2-btn-sm danger"
             :disabled="busy === a.id"
             @click="remove(a)"
-          >删除</button>
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
     <p
       v-if="!loading && !items.length"
       class="empty-tip"
-    >{{ showHidden ? '没有已隐藏的素材' : '还没有素材。去创作页上传参考图或生成作品吧。' }}</p>
+    >
+      {{ showHidden ? '没有已隐藏的素材' : '还没有素材。去创作页上传参考图或生成作品吧。' }}
+    </p>
     <p
       v-if="loading"
       class="empty-tip"
-    >加载中…</p>
+    >
+      加载中…
+    </p>
   </div>
 </template>
 
