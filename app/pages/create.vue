@@ -895,6 +895,70 @@ function hint(text: string) {
 // ---- 带入 ----
 const { takeDraft } = useComposerDraft()
 
+// 从视频产物抽取首帧（浏览器端 canvas，不需要服务端 ffmpeg）。
+// 依据：MinIO/CDN 已配置 CORS —— 预检返回 204 + Access-Control-Allow-Origin，
+// 因此 crossOrigin="anonymous" 下 canvas 不会被污染，可以直接 toBlob 上传。
+function grabFirstFrame(url: string, timeoutMs = 20000): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto'
+
+    let done = false
+    const cleanup = () => {
+      clearTimeout(timer)
+      video.removeAttribute('src')
+      video.load()
+    }
+    const fail = (msg: string) => {
+      if (done) return
+      done = true
+      cleanup()
+      reject(new Error(msg))
+    }
+    const timer = setTimeout(() => fail('抽帧超时'), timeoutMs)
+
+    const draw = () => {
+      if (done) return
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        if (!canvas.width || !canvas.height) return fail('视频尺寸未知')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return fail('无法创建画布')
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob((blob) => {
+          if (done) return
+          done = true
+          cleanup()
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('首帧编码失败'))
+          }
+        }, 'image/png')
+      } catch (e: unknown) {
+        fail(e instanceof Error ? e.message : '抽帧失败')
+      }
+    }
+
+    video.addEventListener('loadeddata', () => {
+      // 部分编码首帧时间戳不为 0，先回到 0 秒再画
+      if (video.currentTime > 0.01) {
+        video.addEventListener('seeked', draw, { once: true })
+        video.currentTime = 0
+      } else {
+        draw()
+      }
+    }, { once: true })
+    video.addEventListener('error', () => fail('视频加载失败'), { once: true })
+    video.src = url
+  })
+}
+
 onMounted(async () => {
   messages.value.push(welcomeMessage())
   loadCatalog()
@@ -942,8 +1006,23 @@ onMounted(async () => {
         uploadName.value = w.title || `作品 ${String(w.id).slice(-6)}`
         if (mode.value !== 'video') mode.value = 'video'
         messages.value.push(assistText(`已带入作品《${w.title}》作为首帧，写下一幕即可生成视频。`))
+      } else if (w.kind === 'video' && w.imageUrl) {
+        // 视频产物是 mp4，不能直接当首帧：先在浏览器抽首帧再上传成新的图片素材。
+        messages.value.push(assistText(`正在从视频作品《${w.title}》抽取首帧…`))
+        try {
+          const blob = await grabFirstFrame(w.imageUrl)
+          const up = await hgApi.uploadMedia(new File([blob], `firstframe-${w.id}.png`, { type: 'image/png' }))
+          selectedAssetId.value = up.mediaAssetId
+          if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
+          uploadPreview.value = URL.createObjectURL(blob)
+          uploadName.value = `${w.title} · 首帧`
+          if (mode.value !== 'video') mode.value = 'video'
+          messages.value.push(assistText(`已用视频《${w.title}》的首帧作为续作首帧，写下一幕即可继续生成。`))
+        } catch (e: unknown) {
+          messages.value.push(assistText(`抽取首帧失败（${e instanceof Error ? e.message : '未知错误'}），请手动上传一张图片作为首帧。`))
+        }
       } else {
-        messages.value.push(assistText(`已带入作品《${w.title}》。视频产物不能直接当首帧，请重新上传一张图片再生成。`))
+        messages.value.push(assistText(`已带入作品《${w.title}》，但它没有可用的产物文件，请手动上传一张图片作为首帧。`))
       }
     } catch {
       /* 作品不可读时忽略，不阻断创作页 */
