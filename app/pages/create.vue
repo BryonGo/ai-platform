@@ -781,6 +781,11 @@ async function send() {
       characterId: characterId || undefined,
       refAssetIds: referenceAssetId ? [referenceAssetId] : []
     })
+    // 任务已创建 = 消息已送出，清空输入框，与聊天一致。
+    // 正文在上方已捕获为 text，后续轮询/入库不读输入框；promptModel 是编辑器唯一数据源，
+    // 清它会经 watch → syncFromModel 把 prompt 一并置空。
+    // 参考图/素材刻意保留：i2v 常用同一首帧换提示词连续出片，清掉会逼用户重复上传。
+    promptModel.value = { parts: [] }
     const msg = () => messages.value.find(m => m.runId === runId)
     const taskId = task.id
     let status = task.status
@@ -1123,6 +1128,19 @@ function clearReferenceUpload() {
   selectedAssetId.value = ''
 }
 
+// switchMode 切换创作模式（图片 / 视频）。两者能力集不同（视频不走 LoRA、模型、采样参数），
+// 而输入区里的结构化提示词会把上一模式留下的 @ 超级标签节点原样带过去，切完看着像「凭空多了一堆 @」。
+// 因此切换时清空输入区。刻意保留的：参考图与素材库选中项——图片转视频时它就是首帧，
+// 清掉会逼用户重复上传；模式各自的参数（比例/时长/清晰度）也各自独立保存，不受影响。
+function switchMode(next: Mode) {
+  if (mode.value === next) {
+    return
+  }
+  mode.value = next
+  promptModel.value = { parts: [] }
+  negative.value = ''
+}
+
 function handleUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -1374,7 +1392,7 @@ function handleUpload(event: Event) {
               role="tab"
               :aria-selected="mode === 'image'"
               :class="{ active: mode === 'image' }"
-              @click="mode = 'image'"
+              @click="switchMode('image')"
             >
               <span
                 class="i-lucide-image"
@@ -1386,7 +1404,7 @@ function handleUpload(event: Event) {
               role="tab"
               :aria-selected="mode === 'video'"
               :class="{ active: mode === 'video' }"
-              @click="mode = 'video'"
+              @click="switchMode('video')"
             >
               <span
                 class="i-lucide-video"
