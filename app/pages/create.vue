@@ -898,6 +898,43 @@ onMounted(async () => {
   if (characterId && myCharacters.value.some(c => String(c.id) === characterId)) {
     selected.value = characterId
   }
+  // 作品页「继续创作」：把该作品的产物当作参考图/首帧带入（产物本身就是 MediaAsset）。
+  // 注意视频产物是 mp4，不能当首帧，只带入角色与说明。
+  const workId = typeof route.query.work === 'string' ? route.query.work : ''
+  if (workId) {
+    try {
+      const w = await hgApi.getHougongWork(workId)
+      if (w.characterId && myCharacters.value.some(c => String(c.id) === String(w.characterId))) {
+        selected.value = String(w.characterId)
+      }
+      if (w.kind === 'image' && w.assetId) {
+        selectedAssetId.value = String(w.assetId)
+        if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
+        uploadPreview.value = w.imageUrl || ''
+        uploadName.value = w.title || `作品 ${String(w.id).slice(-6)}`
+        if (mode.value !== 'video') mode.value = 'video'
+        messages.value.push(assistText(`已带入作品《${w.title}》作为首帧，写下一幕即可生成视频。`))
+      } else {
+        messages.value.push(assistText(`已带入作品《${w.title}》。视频产物不能直接当首帧，请重新上传一张图片再生成。`))
+      }
+    } catch {
+      /* 作品不可读时忽略，不阻断创作页 */
+    }
+  }
+  // 故事页「继续创作」：带入故事的首个角色。
+  const storyId = typeof route.query.story === 'string' ? route.query.story : ''
+  if (storyId) {
+    try {
+      const st = await hgApi.getHougongStory(storyId)
+      const first = (st.characterIds || [])[0]
+      if (first && myCharacters.value.some(c => String(c.id) === String(first))) {
+        selected.value = String(first)
+      }
+      messages.value.push(assistText(`已在故事《${st.title}》下继续创作${selectedCharacter.value ? `，当前角色：${selectedCharacter.value.name}` : ''}。`))
+    } catch {
+      /* 故事不可读时忽略 */
+    }
+  }
 })
 
 function onKeydown(event: KeyboardEvent) {
