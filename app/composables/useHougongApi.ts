@@ -573,6 +573,11 @@ export function useHougongApi() {
     return apiRequest<StoryItem>(`/hougong/stories/${id}`)
   }
 
+  // 整理片段：全量替换（按数组顺序重排 order；空数组 = 清空片段）
+  async function updateStoryClips(id: string | number, clips: { workId: number, order: number, note: string }[]): Promise<StoryItem> {
+    return apiRequest<StoryItem>(`/hougong/stories/${id}/clips`, { method: 'PUT', body: { clips } })
+  }
+
   async function listTasks(): Promise<HougongTask[]> {
     const res = await apiRequest<{ list: HougongTask[] }>('/hougong/tasks')
     return res.list || []
@@ -840,6 +845,7 @@ export function useHougongApi() {
     deleteHougongWork,
     listStories,
     getHougongStory,
+    updateStoryClips,
     listTasks,
     wallet,
     uploadMedia,
