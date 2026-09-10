@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 展示型卡片：角色信息由调用方传入（真实接口的角色名/头像），本组件不再依赖 mock 数据。
+// 展示型卡片：角色信息由调用方传入（真实接口的角色名/头像）。
 export interface WorkCardItem {
   id: string | number
   title: string

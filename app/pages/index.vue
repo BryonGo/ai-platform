@@ -34,6 +34,7 @@ const cost = computed(() => {
 })
 
 onMounted(async () => {
+  void loadShowcase()
   try {
     catalog.value = await hgApi.getCatalog()
   } catch {
@@ -42,14 +43,50 @@ onMounted(async () => {
 })
 
 const { setDraft } = useComposerDraft()
+const session = useAuthSession()
 
-const stories = [
-  { title: '夜色来信', type: '视频', meta: '00:12', image: '/images/daji-three-tail-front-v1.webp', tone: 'cool', character: '妲己 · 狐影朱门', recommended: true },
-  { title: '第二次相遇', type: '图集', meta: '6 张', image: '/images/daji-approved-direction-v1.webp', tone: 'warm', character: '妲己 · 狐影朱门' },
-  { title: '未完的对白', type: '视频', meta: '00:08', image: '/images/daji-three-tail-front-v1.webp', tone: 'jade', character: '妲己 · 狐影朱门' },
-  { title: '午夜加班', type: '图集', meta: '8 张', image: '/images/office-lady-gold-glasses-v1.webp', tone: 'office', character: 'Office Lady · 深夜来函' },
-  { title: '晨间问候', type: '视频', meta: '00:10', image: '/images/nurse-sweet-adult25-v1.webp', tone: 'ivory', character: '甜美护士 · 晨光值班' }
-]
+// 「继续你的故事」= 真实作品（最近 6 部），不再用硬编码假数据。
+interface ShowcaseWork { id: number, title: string, kind: string, image: string, character: string, recommended: boolean, tone: string }
+const showcaseWorks = ref<ShowcaseWork[]>([])
+const showcaseLoading = ref(true)
+const myCharacters = ref<CharacterItem[]>([])
+const activeCharacter = computed(() => myCharacters.value[0])
+const characterCount = computed(() => myCharacters.value.length)
+
+const TONES = ['cool', 'warm', 'jade', 'office', 'ivory']
+
+async function loadShowcase() {
+  showcaseLoading.value = true
+  session.load()
+  if (!session.token.value) {
+    showcaseWorks.value = []
+    myCharacters.value = []
+    showcaseLoading.value = false
+    return
+  }
+  try {
+    const [works, chars] = await Promise.all([
+      hgApi.listWorks(),
+      hgApi.listCharacters().catch(() => [] as CharacterItem[])
+    ])
+    myCharacters.value = chars
+    const nameOf = (id: number) => chars.find(c => c.id === id)?.name || ''
+    showcaseWorks.value = works.slice(0, 6).map((w, i) => ({
+      id: w.id,
+      title: w.title || `作品 ${String(w.id).slice(-6)}`,
+      kind: w.kind === 'video' ? '视频' : '图集',
+      image: w.imageUrl || '',
+      character: nameOf(w.characterId) || `角色 ${String(w.characterId).slice(-4)}`,
+      recommended: !!w.favorite,
+      tone: TONES[i % TONES.length] ?? 'cool'
+    }))
+  } catch {
+    showcaseWorks.value = []
+    myCharacters.value = []
+  } finally {
+    showcaseLoading.value = false
+  }
+}
 
 function inspire() {
   prompt.value = '雨夜的落地窗前，妲己缓缓回眸，三条白色狐尾随风舒展，镜头从侧后方轻轻靠近。'
@@ -140,7 +177,7 @@ onBeforeUnmount(() => {
           src="/images/daji-three-tail-cutout-v2.webp"
           alt="妲己，24 岁成年三尾狐灵"
         >
-        <span class="universe-count">当前宇宙 · 3 位角色</span>
+        <span class="universe-count">{{ characterCount > 0 ? `当前宇宙 · ${characterCount} 位角色` : '你的私人影像宇宙' }}</span>
         <div class="daji-label">
           <small>首位角色</small>
           <strong>妲己</strong>
@@ -250,24 +287,24 @@ onBeforeUnmount(() => {
 
         <div class="composer-footer">
           <div class="parameters">
-            <button type="button">
+            <NuxtLink
+              to="/characters"
+              class="chip-link"
+            >
               <span
                 class="i-lucide-user-round"
                 aria-hidden="true"
-              />妲己
-            </button>
-            <button type="button">
+              />{{ activeCharacter?.name || '选择角色' }}
+            </NuxtLink>
+            <NuxtLink
+              to="/assets"
+              class="chip-link"
+            >
               <span
                 class="i-lucide-image-plus"
                 aria-hidden="true"
-              />参考素材
-            </button>
-            <button type="button">
-              <span
-                class="i-lucide-box"
-                aria-hidden="true"
-              />智能匹配
-            </button>
+              />素材库
+            </NuxtLink>
             <button
               type="button"
               @click="ratio = ratio === '16:9' ? '9:16' : '16:9'"
@@ -368,47 +405,95 @@ onBeforeUnmount(() => {
           </h2>
           <p>角色、场景与影像设定都已为你保留。</p>
         </div>
-        <a href="#works">查看全部 <span
+        <NuxtLink to="/works">查看全部 <span
           class="i-lucide-chevron-right"
           aria-hidden="true"
-        /></a>
+        /></NuxtLink>
       </header>
 
+      <p
+        v-if="showcaseLoading"
+        class="empty-tip"
+      >
+        正在加载你的作品…
+      </p>
+      <p
+        v-else-if="!showcaseWorks.length"
+        class="empty-tip"
+      >
+        <template v-if="session.token.value">
+          还没有作品。在上面写下第一幕，生成完成后会出现在这里。
+        </template>
+        <template v-else>
+          <NuxtLink to="/auth/login">
+            登录
+          </NuxtLink> 后这里会列出你的作品。
+        </template>
+      </p>
       <div
+        v-else
         id="works"
         class="story-grid"
       >
-        <article
-          v-for="(story, index) in stories"
-          :key="story.title"
+        <NuxtLink
+          v-for="(work, index) in showcaseWorks"
+          :key="work.id"
+          :to="`/works/${work.id}`"
           class="story-card"
-          :class="[story.tone, { recommended: story.recommended }]"
+          :class="[work.tone, { recommended: work.recommended }]"
         >
           <img
-            :src="story.image"
-            :alt="story.title"
+            v-if="work.image"
+            :src="work.image"
+            :alt="work.title"
           >
+          <div
+            v-else
+            class="work-placeholder"
+            aria-hidden="true"
+          >
+            <span>{{ work.title.slice(0, 1) }}</span>
+          </div>
           <span
             class="story-wash"
             aria-hidden="true"
           />
           <span class="story-index">0{{ index + 1 }}</span>
           <span
-            v-if="story.recommended"
+            v-if="work.recommended"
             class="story-recommended"
-          >推荐</span>
+          >收藏</span>
           <div class="story-info">
-            <small>{{ story.type }} · {{ story.meta }}</small>
-            <h3>{{ story.title }}</h3>
-            <div>
-              <img
-                src="/images/daji-three-tail-front-v1.webp"
-                alt=""
-              ><span>{{ story.character }}</span>
-            </div>
+            <small>{{ work.kind }}</small>
+            <h3>{{ work.title }}</h3>
+            <div><span>{{ work.character }}</span></div>
           </div>
-        </article>
+        </NuxtLink>
       </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+.chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.chip-link:hover {
+  color: var(--amber-soft, #e0b070);
+}
+.work-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(160deg, #26272c, #17181b);
+  color: var(--amber-soft, #e0b070);
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 800;
+}
+</style>

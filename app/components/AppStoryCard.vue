@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 故事卡片：数据全部来自真实接口，角色名与封面由调用方传入（不再依赖 mock）。
+// 故事卡片：数据全部来自真实接口，角色名与封面由调用方传入。
 defineProps<{
   story: StoryItem
   index: number

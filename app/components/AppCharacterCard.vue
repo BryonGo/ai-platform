@@ -1,19 +1,21 @@
 <script setup lang="ts">
-// 结构属性：同时兼容 mock Character（useHougong）与真实 API CharacterItem（无封面字段）。
-// 后端角色暂无封面资产域，image 缺省时展示首字符占位。
+// 角色卡片：封面取后端返回的 coverUrl（该角色最近一部作品的产物），无作品时用首字占位。
 export interface CharacterCardItem {
   id: string | number
   name: string
   alias: string
   age: string
   image?: string
+  coverUrl?: string
   workCount: number
 }
 
-defineProps<{
+const props = defineProps<{
   character: CharacterCardItem
   index: number
 }>()
+
+const cover = computed(() => props.character.coverUrl || props.character.image || '')
 </script>
 
 <template>
@@ -22,8 +24,8 @@ defineProps<{
     class="story-card character-card"
   >
     <img
-      v-if="character.image"
-      :src="character.image"
+      v-if="cover"
+      :src="cover"
       :alt="character.name"
     >
     <div

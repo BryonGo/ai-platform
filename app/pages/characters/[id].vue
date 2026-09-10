@@ -59,7 +59,15 @@ watch(characterId, load)
     <div class="detail-grid">
       <div>
         <div class="media-frame portrait">
-          <div class="portrait-placeholder">
+          <img
+            v-if="character.coverUrl"
+            :src="character.coverUrl"
+            :alt="character.name"
+          >
+          <div
+            v-else
+            class="portrait-placeholder"
+          >
             <span>{{ character.name.slice(0, 1) }}</span>
           </div>
           <span
