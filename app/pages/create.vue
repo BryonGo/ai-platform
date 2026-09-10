@@ -518,6 +518,34 @@ function openRail() {
 // 直接读 snap.prompt 会拿到空值——这正是「点了历史会话没反应」的原因。
 const sessionLoadingId = ref<string | null>(null)
 
+// 会话管理：重命名 / 归档（后端接口早已存在，此前前端没有入口）
+async function renameHistorySession(s: SessionItem) {
+  const currentTitle = s.title || `会话 ${String(s.id).slice(-6)}`
+  const next = window.prompt('重命名会话', currentTitle)
+  if (next === null) return
+  const title = next.trim()
+  if (!title || title === currentTitle) return
+  try {
+    const updated = await hgApi.renameSession(s.id, title)
+    s.title = updated?.title || title
+  } catch (e: unknown) {
+    messages.value.push(assistText(`重命名失败：${e instanceof Error ? e.message : '未知错误'}`))
+  }
+}
+
+async function archiveHistorySession(s: SessionItem) {
+  const label = s.title || `会话 ${String(s.id).slice(-6)}`
+  if (!window.confirm(`归档会话「${label}」？归档后不再出现在历史列表。`)) return
+  try {
+    await hgApi.archiveSession(s.id)
+    if (activeSessionId.value === s.id) activeSessionId.value = null
+    // 归档当前会话时后端 EnsureActive 会新建一个 active 会话，重新拉列表才能看到
+    await loadSessions()
+  } catch (e: unknown) {
+    messages.value.push(assistText(`归档失败：${e instanceof Error ? e.message : '未知错误'}`))
+  }
+}
+
 async function openHistorySession(id: string) {
   activeSessionId.value = id
   sessionLoadingId.value = id
@@ -1101,6 +1129,28 @@ function handleUpload(event: Event) {
                 <span v-else>{{ s.latestTask?.status || '无任务' }}</span>
               </span>
             </button>
+            <div class="session-row__actions">
+              <button
+                type="button"
+                title="重命名"
+                @click.stop="renameHistorySession(s)"
+              >
+                <span
+                  class="i-lucide-pencil"
+                  aria-hidden="true"
+                />重命名
+              </button>
+              <button
+                type="button"
+                title="归档（归档当前会话会开启一个新会话）"
+                @click.stop="archiveHistorySession(s)"
+              >
+                <span
+                  class="i-lucide-archive"
+                  aria-hidden="true"
+                />归档
+              </button>
+            </div>
           </li>
         </ul>
       </div>
@@ -2599,6 +2649,31 @@ function handleUpload(event: Event) {
 .session-row.active {
   border-color: rgb(251 191 36 / 0.4);
   background: rgb(251 191 36 / 0.08);
+}
+.session-row__actions {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0 6px 4px;
+}
+.session-row__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-dim, #9aa0a6);
+  font-size: 11px;
+  cursor: pointer;
+}
+.session-row__actions button:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: rgb(251 191 36 / 0.45);
+}
+.session-row__actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .session-row__name {
   overflow: hidden;
