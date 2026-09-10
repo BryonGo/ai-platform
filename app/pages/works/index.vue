@@ -4,6 +4,7 @@ import AppWorkCard from '~/components/AppWorkCard.vue'
 const api = useHougongApi()
 const session = useAuthSession()
 const works = ref<(WorkItem & Record<string, unknown>)[]>([])
+const charNames = ref<Record<number, string>>({})
 const loading = ref(false)
 const error = ref('')
 const filter = ref<'全部' | '视频' | '图集'>('全部')
@@ -23,7 +24,11 @@ onMounted(async () => {
   }
   loading.value = true
   try {
-    const list = await api.listWorks()
+    const [list, chars] = await Promise.all([
+      api.listWorks(),
+      api.listCharacters().catch(() => [] as CharacterItem[])
+    ])
+    charNames.value = Object.fromEntries(chars.map(c => [c.id, c.name]))
     // 映射组件所需字段（image/meta/status/recommended）。
     works.value = list.map(w => ({ ...w, image: w.imageUrl || '', meta: w.kind === 'video' ? '视频' : '图片', status: 'done', recommended: false }) as WorkItem & Record<string, unknown>)
   } catch (e: unknown) {
@@ -86,6 +91,7 @@ onMounted(async () => {
         :key="w.id"
         :work="w"
         :index="i"
+        :character-name="charNames[w.characterId]"
       />
     </div>
   </div>

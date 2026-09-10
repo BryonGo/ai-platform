@@ -36,11 +36,14 @@ export interface WorkItem {
   id: number
   title: string
   characterId: number
+  sessionId?: number
+  taskId?: number
   assetId: number
   imageUrl?: string
   kind: string
   status: string
   favorite: boolean
+  published?: boolean
   createdAt: number
 }
 
@@ -510,9 +513,22 @@ export function useHougongApi() {
     return res.list || []
   }
 
+  // 后宫作品详情/收藏（与 /platform/work 的发布作品区分开）
+  async function getHougongWork(id: string | number): Promise<WorkItem> {
+    return apiRequest<WorkItem>(`/hougong/works/${id}`)
+  }
+
+  async function favoriteHougongWork(id: string | number, favorite: boolean): Promise<WorkItem> {
+    return apiRequest<WorkItem>(`/hougong/works/${id}/favorite`, { method: 'POST', body: { favorite } })
+  }
+
   async function listStories(): Promise<StoryItem[]> {
     const res = await apiRequest<{ list: StoryItem[] }>('/hougong/stories')
     return res.list || []
+  }
+
+  async function getHougongStory(id: string | number): Promise<StoryItem> {
+    return apiRequest<StoryItem>(`/hougong/stories/${id}`)
   }
 
   async function listTasks(): Promise<HougongTask[]> {
@@ -773,7 +789,10 @@ export function useHougongApi() {
     listCharacters,
     getCharacter,
     listWorks,
+    getHougongWork,
+    favoriteHougongWork,
     listStories,
+    getHougongStory,
     listTasks,
     wallet,
     uploadMedia,

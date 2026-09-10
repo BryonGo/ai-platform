@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { characterOf } from '~/composables/useHougong'
-
-// 结构属性：同时兼容 mock Work（useHougong）与真实 API WorkItem（listWorks 映射后补齐展示字段）。
+// 展示型卡片：角色信息由调用方传入（真实接口的角色名/头像），本组件不再依赖 mock 数据。
 export interface WorkCardItem {
   id: string | number
   title: string
@@ -17,6 +15,8 @@ export interface WorkCardItem {
 defineProps<{
   work: WorkCardItem
   index: number
+  characterName?: string
+  characterImage?: string
 }>()
 </script>
 
@@ -54,12 +54,13 @@ defineProps<{
       <small>{{ work.kind }}<template v-if="work.meta"> · {{ work.meta }}</template></small>
       <h3>{{ work.title }}</h3>
       <div>
-        <template v-if="characterOf(String(work.characterId))">
+        <template v-if="characterName">
           <img
-            :src="characterOf(String(work.characterId))?.image"
-            :alt="characterOf(String(work.characterId))?.name"
+            v-if="characterImage"
+            :src="characterImage"
+            :alt="characterName"
           >
-          <span>{{ characterOf(String(work.characterId))?.name }}</span>
+          <span>{{ characterName }}</span>
         </template><span
           v-else
           class="story-role-fallback"

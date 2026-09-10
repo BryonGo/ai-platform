@@ -1,32 +1,75 @@
 <script setup lang="ts">
-import { characterOf, worksOf } from '~/composables/useHougong'
 import AppWorkCard from '~/components/AppWorkCard.vue'
 
+const api = useHougongApi()
+const session = useAuthSession()
 const route = useRoute()
-const c = computed(() => characterOf(String(route.params.id)))
-const works = computed(() => worksOf(String(route.params.id)))
+
+const character = ref<CharacterItem | null>(null)
+const works = ref<WorkItem[]>([])
+const loading = ref(true)
+const error = ref('')
+
+const characterId = computed(() => String(route.params.id))
+
+function toCard(w: WorkItem) {
+  return { ...w, image: w.imageUrl || '', meta: w.kind === 'video' ? '视频' : '图片', status: 'done' }
+}
+
+async function load() {
+  session.load()
+  if (!session.token.value) {
+    await navigateTo('/auth/login')
+    return
+  }
+  loading.value = true
+  error.value = ''
+  character.value = null
+  works.value = []
+  try {
+    const c = await api.getCharacter(Number(characterId.value))
+    character.value = c
+    const list = await api.listWorks()
+    works.value = list.filter(w => String(w.characterId) === characterId.value)
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
+watch(characterId, load)
 </script>
 
 <template>
   <div
-    v-if="c"
+    v-if="loading"
+    class="page-body"
+  >
+    <p class="empty-tip">
+      正在加载角色…
+    </p>
+  </div>
+
+  <div
+    v-else-if="character"
     class="page-body"
   >
     <div class="detail-grid">
       <div>
         <div class="media-frame portrait">
-          <img
-            :src="c.image"
-            :alt="c.name"
-          >
+          <div class="portrait-placeholder">
+            <span>{{ character.name.slice(0, 1) }}</span>
+          </div>
           <span
             class="story-wash"
             aria-hidden="true"
           />
           <div class="story-info">
-            <small>{{ c.age }}</small>
-            <h3>{{ c.name }}</h3>
-            <div><span>{{ c.alias }}</span></div>
+            <small>{{ character.age }}</small>
+            <h3>{{ character.name }}</h3>
+            <div><span>{{ character.alias }}</span></div>
           </div>
         </div>
       </div>
@@ -36,20 +79,22 @@ const works = computed(() => worksOf(String(route.params.id)))
           角色设定
         </p>
         <h1 class="detail-title">
-          {{ c.name }}
+          {{ character.name }}
         </h1>
         <p class="detail-desc">
-          {{ c.tagline }}
+          {{ character.tagline }}
         </p>
 
         <div class="detail-actions">
           <NuxtLink
-            :to="`/create?character=${c.id}`"
+            :to="`/create?character=${character.id}`"
             class="btn-primary"
           >用她创作</NuxtLink>
           <button
             type="button"
             class="btn-ghost"
+            disabled
+            title="造型生成待接入"
           >
             生成新造型
           </button>
@@ -59,7 +104,7 @@ const works = computed(() => worksOf(String(route.params.id)))
           <h2>性格</h2>
           <div class="tag-row">
             <span
-              v-for="t in c.traits"
+              v-for="t in character.traits"
               :key="t"
               class="chip"
             >{{ t }}</span>
@@ -73,7 +118,7 @@ const works = computed(() => worksOf(String(route.params.id)))
           </p>
           <dl class="spec-list">
             <div
-              v-for="item in c.appearance"
+              v-for="item in character.appearance"
               :key="item.label"
               class="spec-row"
             >
@@ -84,6 +129,12 @@ const works = computed(() => worksOf(String(route.params.id)))
                 {{ item.value }}
               </dd>
             </div>
+            <p
+              v-if="!character.appearance.length"
+              class="hint"
+            >
+              还没有外观锚点。
+            </p>
           </dl>
         </section>
 
@@ -92,12 +143,15 @@ const works = computed(() => worksOf(String(route.params.id)))
           <p class="hint">
             本次出演造型与档案分离，历史任务保留当时快照
           </p>
-          <div class="outfit-row">
+          <div
+            v-if="character.outfits.length"
+            class="outfit-row"
+          >
             <div
-              v-for="(o, i) in c.outfits"
-              :key="o.name"
+              v-for="(o, i) in character.outfits"
+              :key="o.id"
               class="outfit-item"
-              :class="{ current: i === 0 }"
+              :class="{ current: o.current || i === 0 }"
             >
               <span
                 class="outfit-swatch"
@@ -107,11 +161,17 @@ const works = computed(() => worksOf(String(route.params.id)))
               <strong>{{ o.name }}</strong>
               <small>{{ o.note }}</small>
               <span
-                v-if="i === 0"
+                v-if="o.current || i === 0"
                 class="current-tag"
               >当前默认</span>
             </div>
           </div>
+          <p
+            v-else
+            class="hint"
+          >
+            还没有服装预设。
+          </p>
         </section>
       </div>
     </div>
@@ -125,12 +185,19 @@ const works = computed(() => worksOf(String(route.params.id)))
           <p>{{ works.length }} 部 · 每次任务保存实际配置快照</p>
         </div>
       </div>
+      <p
+        v-if="!works.length"
+        class="empty-tip"
+      >
+        还没有作品。用她创作一次，产物会自动入库并归到这个角色下。
+      </p>
       <div class="story-grid">
         <AppWorkCard
           v-for="(w, i) in works"
           :key="w.id"
-          :work="w"
+          :work="toCard(w)"
           :index="i"
+          :character-name="character.name"
         />
       </div>
     </section>
@@ -140,7 +207,7 @@ const works = computed(() => worksOf(String(route.params.id)))
     v-else
     class="empty-state"
   >
-    <p>没有找到这位角色</p>
+    <p>{{ error ? `加载失败：${error}` : '没有找到这位角色' }}</p>
     <NuxtLink
       to="/characters"
       class="btn-ghost small"
@@ -148,3 +215,16 @@ const works = computed(() => worksOf(String(route.params.id)))
     >返回角色</NuxtLink>
   </div>
 </template>
+
+<style scoped>
+.portrait-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: linear-gradient(160deg, #2b2b31, #17181b);
+  color: var(--amber-soft);
+  font-size: clamp(48px, 7vw, 96px);
+  font-weight: 800;
+}
+</style>

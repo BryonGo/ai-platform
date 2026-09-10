@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { characters } from '~/composables/useHougong'
 import { useComposerDraft } from '~/composables/useComposerDraft'
 import PromptEditor from '~/components/prompt/promptEditor.vue'
 import { promptText, type Prompt, type SnippetSnapshot } from '~/components/prompt/enhancement-mark'
@@ -38,7 +37,9 @@ const ratio = ref('16:9')
 const notice = ref('')
 const uploadPreview = ref('')
 const uploadName = ref('')
-const selected = ref('daji')
+// 选中角色：存真实角色的数字 id 字符串（由 /hougong/characters 加载后回落到第一个）。
+const selected = ref('')
+const myCharacters = ref<CharacterItem[]>([])
 const prompt = ref('')
 // 结构化提示词（TipTap：@ 超级标签节点 + 润色增强），与纯文本 prompt 双向同步。
 const promptModel = ref<Prompt>({ parts: [] })
@@ -476,7 +477,7 @@ const cost = computed(() => {
   if (typeof quoted === 'number' && quoted > 0) return quoted
   return 8
 })
-const selectedCharacter = computed(() => characters.find(c => c.id === selected.value))
+const selectedCharacter = computed(() => myCharacters.value.find(c => String(c.id) === selected.value))
 const running = computed(() => messages.value.some(m => m.role === 'assistant' && m.status === 'running'))
 const canSend = computed(() => !running.value && (promptText(promptModel.value).trim().length > 0 || !!uploadPreview.value))
 
@@ -662,6 +663,21 @@ function msgText(kind: Mode, characterName: string, ratioNow: string, credits: n
   return `${characterName} · ${kind === 'video' ? '视频' : '图片'} · ${ratioNow} · 预占 ${credits} ${unit}`
 }
 
+// 加载当前账号的真实角色（未登录或失败时为空列表，生成时不带角色）。
+async function loadMyCharacters() {
+  session.load()
+  if (!session.token.value) return
+  try {
+    myCharacters.value = await hgApi.listCharacters()
+    const first = myCharacters.value[0]
+    if (!selected.value && first) {
+      selected.value = String(first.id)
+    }
+  } catch {
+    myCharacters.value = []
+  }
+}
+
 async function send() {
   if (!canSend.value) {
     if (!promptText(promptModel.value).trim() && !uploadPreview.value) {
@@ -735,7 +751,7 @@ async function send() {
       engine: kind === 'video' ? undefined : (useCloud.value ? (activeCloudModel.value?.engine || undefined) : undefined),
       sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
       loras: kind === 'video' || useCloud.value ? undefined : (selectedLoraItems.length ? selectedLoraItems : undefined),
-      characterId: characterId === 'daji' ? '' : characterId,
+      characterId: characterId || undefined,
       refAssetIds: referenceAssetId ? [referenceAssetId] : []
     })
     const msg = () => messages.value.find(m => m.runId === runId)
@@ -765,7 +781,7 @@ async function send() {
             assetId: outAssets[0],
             kind: kind === 'video' ? 'video' : 'image',
             title: text.slice(0, 40),
-            characterId: 0
+            characterId: Number(selected.value) || 0
           })
           const latestWorks = await hgApi.listWorks()
           const latest = latestWorks[0]
@@ -852,9 +868,10 @@ function hint(text: string) {
 // ---- 带入 ----
 const { takeDraft } = useComposerDraft()
 
-onMounted(() => {
+onMounted(async () => {
   messages.value.push(welcomeMessage())
   loadCatalog()
+  await loadMyCharacters()
 
   const draft = takeDraft()
   if (draft) {
@@ -879,7 +896,7 @@ onMounted(() => {
 
   const route = useRoute()
   const characterId = typeof route.query.character === 'string' ? route.query.character : ''
-  if (characterId && characters.some(c => c.id === characterId)) {
+  if (characterId && myCharacters.value.some(c => String(c.id) === characterId)) {
     selected.value = characterId
   }
 })
