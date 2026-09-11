@@ -1,5 +1,5 @@
 // 后宫真实后端 API（go-sdk /api/v1/hougong + account/credit）。
-import { apiRequest, useAuthSession } from './useApi'
+import { apiBase, apiRequest, useAuthSession } from './useApi'
 
 export interface AuthResult {
   user_id: number
@@ -735,6 +735,13 @@ export function useHougongApi() {
     const res = await apiRequest<{ items: AssetChoice[] }>('/platform/asset/selectByIds', { method: 'POST', body: { ids } })
     return res.items || []
   }
+  /**
+   * assetDownloadUrl 取资产的原图下载地址（签发限时 URL）。
+   * 与列表里的 url 区别：列表 url 是展示用（可能已转码），这里是原图下载入口。
+   */
+  async function assetDownloadUrl(id: string): Promise<{ url: string, expiresAt: string }> {
+    return apiRequest(`/platform/asset/${id}/download`)
+  }
 
   // ── 导出（工程包）──
   // 把一组资产按 relPath 打成 ZIP，**异步**执行：创建后轮询 getExport 到 succeeded，
@@ -781,6 +788,10 @@ export function useHougongApi() {
   }
   async function searchTags(query: string): Promise<PlatformTag[]> {
     return apiRequest(`/platform/tag/search?query=${encodeURIComponent(query)}`)
+  }
+  /** 创建标签（POST /platform/tag）。同名标签后端按既有实现幂等返回。 */
+  async function createTag(name: string): Promise<PlatformTag> {
+    return apiRequest<PlatformTag>('/platform/tag', { method: 'POST', body: { name } })
   }
   async function report(input: { targetKind: string, targetId: string, reason: string, detail?: string }): Promise<void> {
     await apiRequest('/platform/report', { method: 'POST', body: input })
@@ -885,6 +896,54 @@ export function useHougongApi() {
   async function removeModel(id: string): Promise<void> {
     await apiRequest(`/platform/model/remove?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
+  /** 模型目录（公开，按类型/族/分类过滤）。与 modelList 的区别：这是目录视图，非市场列表。 */
+  async function modelCatalog(input: { type?: string, family?: string, category?: string } = {}): Promise<{ items: ModelListItem[] }> {
+    const q = new URLSearchParams()
+    if (input.type) q.set('type', input.type)
+    if (input.family) q.set('family', input.family)
+    if (input.category) q.set('category', input.category)
+    return apiRequest(`/platform/model/catalog?${q.toString()}`)
+  }
+  /**
+   * prepareModelFile 模型文件上传第一步：后端签发限时 PUT 地址。
+   * 键名是 `bytes`（不是 size），必填且 >=1；第二步用 completeModelFile 收尾。
+   */
+  async function prepareModelFile(modelId: string, name: string, bytes: number): Promise<{ id: string, url: string, expiresAt: string }> {
+    return apiRequest('/platform/model/file/prepare', { method: 'POST', body: { modelId, name, bytes } })
+  }
+  /** completeModelFile 模型文件上传收尾（后端校验对象确实落地后置 ok）。 */
+  async function completeModelFile(modelId: string): Promise<{ ok: boolean }> {
+    return apiRequest('/platform/model/file/complete', { method: 'POST', body: { modelId } })
+  }
+
+  /**
+   * subscribeTaskEvents 订阅平台任务事件流（GET /api/v1/platform/events，产品中立 SSE）。
+   *
+   * 浏览器 EventSource 不能自定义 header，因此鉴权走 `?token=`（后端 GetRequestToken
+   * 同时接受 Authorization 与 query token）。事件帧的 data 里带十进制字符串 taskId。
+   *
+   * ⚠ 定位是**加速**而非替代：调用方必须保留轮询兜底 —— EventSource 不可用、断线或
+   * 丢事件时行为要与没有它时完全一致（与 gamelora-web 的用法一致）。返回值是关闭函数。
+   */
+  function subscribeTaskEvents(onEvent: (event: string, data: Record<string, unknown>) => void): () => void {
+    if (!import.meta.client || typeof EventSource === 'undefined') return () => {}
+    if (!session.token.value) return () => {}
+    const url = `${apiBase()}/platform/events?token=${encodeURIComponent(session.token.value)}`
+    const es = new EventSource(url)
+    const handler = (e: MessageEvent) => {
+      let data: Record<string, unknown> = {}
+      try {
+        data = JSON.parse(e.data || '{}') as Record<string, unknown>
+      } catch {
+        /* 坏帧忽略，不影响后续事件 */
+      }
+      onEvent(e.type, data)
+    }
+    for (const name of ['task.queued', 'task.started', 'task.progress', 'task.completed', 'task.failed', 'task.cancelled', 'error']) {
+      es.addEventListener(name, handler as EventListener)
+    }
+    return () => es.close()
+  }
 
   return {
     login,
@@ -928,6 +987,7 @@ export function useHougongApi() {
     setAssetHidden,
     assetSelect,
     assetSelectByIds,
+    assetDownloadUrl,
     createExport,
     getExport,
     listExports,
@@ -938,6 +998,7 @@ export function useHougongApi() {
     createComment,
     react,
     searchTags,
+    createTag,
     report,
     walletBalance,
     claimDaily,
@@ -964,6 +1025,10 @@ export function useHougongApi() {
     submitModel,
     withdrawModel,
     setModelHidden,
-    removeModel
+    removeModel,
+    modelCatalog,
+    prepareModelFile,
+    completeModelFile,
+    subscribeTaskEvents
   }
 }
