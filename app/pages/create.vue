@@ -20,6 +20,15 @@ interface Artifact {
   createdAt: string
 }
 
+/** 一次生成的展示参数。重试时复用同一份——后端重试是新建任务、snapshot 沿用旧任务。 */
+interface RunMeta {
+  kind: Mode
+  characterName: string
+  ratioNow: string
+  credits: number
+  text: string
+}
+
 interface ChatMessage {
   id: number
   role: 'user' | 'assistant'
@@ -30,6 +39,10 @@ interface ChatMessage {
   text: string
   attachment?: { name: string, url: string }
   time: string
+  /** 关联任务 id（助手消息）。重试要用它调 POST /hougong/tasks/{id}/retry。 */
+  taskId?: number | string | null
+  /** 生成本次的展示参数，重试时复用。 */
+  meta?: RunMeta
 }
 
 const mode = ref<Mode>('image')
@@ -705,6 +718,121 @@ async function loadMyCharacters() {
   }
 }
 
+// settleRun 轮询任务至终态并落账：成功则入库作品 + 生成产物卡片，失败/取消则标记并提示。
+//
+// 从 send() 抽出，供「重试」复用 —— 后端重试语义是**新建任务**（新 clientKey、重新计费、
+// snapshot 沿用旧任务），收敛流程与首次完全一致，差别只是任务 id 来自 retryTask。
+async function settleRun(runId: number, taskId: number | string, meta: RunMeta, initialStatus = 'queued') {
+  const { kind, characterName, ratioNow, credits, text } = meta
+  const msg = () => messages.value.find(m => m.runId === runId)
+  let status = initialStatus
+  // 轮询至终态
+  while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
+    await sleep(2500)
+    const t = await hgApi.getTask(taskId)
+    status = t.status
+    const cur = msg()
+    if (cur) {
+      cur.progress = t.progress || cur.progress
+      cur.event = `${t.status} · ${cur.progress}%`
+    }
+  }
+  const finalMsg = msg()
+  if (status === 'succeeded') {
+    // 取产物 asset → 自动入库作品 → 取封面
+    const detail = await hgApi.getTask(taskId)
+    const outAssets: string[] = detail.outputAssets || []
+    let imageUrl = ''
+    if (outAssets.length) {
+      try {
+        await hgApi.createWork({
+          taskId: String(taskId),
+          assetId: outAssets[0],
+          kind: kind === 'video' ? 'video' : 'image',
+          title: text.slice(0, 40),
+          characterId: Number(selected.value) || 0
+        })
+        const latestWorks = await hgApi.listWorks()
+        const latest = latestWorks[0]
+        if (latest) {
+          imageUrl = latest.imageUrl || ''
+        }
+      } catch {
+        /* 入库失败仍显示任务完成 */
+      }
+    }
+    if (finalMsg) {
+      finalMsg.progress = 100
+      finalMsg.status = 'done'
+      finalMsg.event = 'task.completed · 已结算 ' + credits + ' 积分，作品已入库'
+      finalMsg.text = msgText(kind, characterName, ratioNow, credits)
+    }
+    artifacts.value.push({
+      runId,
+      kind,
+      prompt: text,
+      character: characterName,
+      ratio: ratioNow,
+      credits,
+      poster: imageUrl,
+      createdAt: now()
+    })
+  } else {
+    if (finalMsg) {
+      finalMsg.status = 'cancelled'
+      finalMsg.event = `task.${status} · 未产生结算`
+      finalMsg.text = `${msgText(kind, characterName, ratioNow, credits)} → ${status}（积分已退回）`
+    }
+    notice.value = status === 'failed'
+      ? '生成失败，积分已退回；可在该条消息下点「重试」'
+      : '任务已取消'
+  }
+}
+
+// retryRun 重试失败/取消的任务。
+//
+// 后端语义（internal/addon/hougong/controller/task.go Retry）：**新建任务并重新计费** ——
+// clientKey 必填（幂等键），snapshot 沿用旧任务，只允许终态任务重试（否则 409）。
+// 因此要用**返回的新 id** 去轮询，而不是继续轮询旧 id。
+async function retryRun(from: ChatMessage) {
+  if (running.value || !from.taskId || !from.meta) {
+    return
+  }
+  const meta = from.meta
+  const runId = ++runSeq
+  messages.value.push({
+    id: ++msgSeq,
+    role: 'assistant',
+    runId,
+    status: 'queued',
+    progress: 0,
+    taskId: null,
+    meta,
+    event: 'task.created · 正在重试（新建任务并重新计费）',
+    text: msgText(meta.kind, meta.characterName, meta.ratioNow, meta.credits),
+    time: now()
+  })
+  notice.value = ''
+  try {
+    const created = await hgApi.retryTask(from.taskId, `hg-web-retry-${Date.now()}-${runId}`)
+    const cur = messages.value.find(m => m.runId === runId)
+    if (cur) {
+      cur.taskId = created.id
+    }
+    await settleRun(runId, created.id, meta, created.status)
+  } catch (e: unknown) {
+    const cur = messages.value.find(m => m.runId === runId)
+    const reason = e instanceof Error ? e.message : '重试失败'
+    if (cur) {
+      cur.status = 'cancelled'
+      cur.progress = 0
+      cur.event = 'task.failed · ' + reason
+      cur.text = `${msgText(meta.kind, meta.characterName, meta.ratioNow, meta.credits)} → 重试失败`
+    }
+    notice.value = reason
+  }
+}
+
 async function send() {
   if (!canSend.value) {
     if (!promptText(promptModel.value).trim() && !uploadPreview.value) {
@@ -752,8 +880,8 @@ async function send() {
     if (selectedAssetId.value) {
       referenceAssetId = selectedAssetId.value
     } else if (rawFile.value) {
-      const up = await hgApi.uploadMedia(rawFile.value)
-      referenceAssetId = up.mediaAssetId
+      const up = await hgApi.uploadAsset(rawFile.value)
+      referenceAssetId = up.assetId
     }
     if (kind === 'video' && !referenceAssetId) {
       throw new Error('视频生成请先上传首帧图片或从素材库选择')
@@ -786,68 +914,14 @@ async function send() {
     // 清它会经 watch → syncFromModel 把 prompt 一并置空。
     // 参考图/素材刻意保留：i2v 常用同一首帧换提示词连续出片，清掉会逼用户重复上传。
     promptModel.value = { parts: [] }
-    const msg = () => messages.value.find(m => m.runId === runId)
-    const taskId = task.id
-    let status = task.status
-    // 轮询至终态
-    while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
-      await sleep(2500)
-      const t = await hgApi.getTask(taskId)
-      status = t.status
-      const cur = msg()
-      if (cur) {
-        cur.progress = t.progress || cur.progress
-        cur.event = `${t.status} · ${cur.progress}%`
-      }
+    // 把任务 id 与展示参数记到助手消息上：失败后重试要用（见 retryRun）。
+    const meta: RunMeta = { kind, characterName, ratioNow, credits, text }
+    const assistantMsg = messages.value.find(m => m.runId === runId)
+    if (assistantMsg) {
+      assistantMsg.taskId = task.id
+      assistantMsg.meta = meta
     }
-    const finalMsg = msg()
-    if (status === 'succeeded') {
-      // 取产物 asset → 自动入库作品 → 取封面
-      const detail = await hgApi.getTask(taskId)
-      const outAssets: string[] = detail.outputAssets || []
-      let imageUrl = ''
-      if (outAssets.length) {
-        try {
-          await hgApi.createWork({
-            taskId: String(taskId),
-            assetId: outAssets[0],
-            kind: kind === 'video' ? 'video' : 'image',
-            title: text.slice(0, 40),
-            characterId: Number(selected.value) || 0
-          })
-          const latestWorks = await hgApi.listWorks()
-          const latest = latestWorks[0]
-          if (latest) {
-            imageUrl = latest.imageUrl || ''
-          }
-        } catch {
-          /* 入库失败仍显示任务完成 */
-        }
-      }
-      if (finalMsg) {
-        finalMsg.progress = 100
-        finalMsg.status = 'done'
-        finalMsg.event = 'task.completed · 已结算 ' + credits + ' 积分，作品已入库'
-        finalMsg.text = msgText(kind, characterName, ratioNow, credits)
-      }
-      artifacts.value.push({
-        runId,
-        kind,
-        prompt: text,
-        character: characterName,
-        ratio: ratioNow,
-        credits,
-        poster: imageUrl,
-        createdAt: now()
-      })
-    } else {
-      if (finalMsg) {
-        finalMsg.status = 'cancelled'
-        finalMsg.event = `task.${status} · 未产生结算`
-        finalMsg.text = `${msgText(kind, characterName, ratioNow, credits)} → ${status}（积分已退回）`
-      }
-      notice.value = status === 'failed' ? '生成失败，积分已退回，可在任务中心重试' : '任务已取消'
-    }
+    await settleRun(runId, task.id, meta, task.status)
   } catch (e: unknown) {
     const cur = messages.value.find(m => m.runId === runId)
     const reason = e instanceof Error ? e.message : '生成失败'
@@ -1016,8 +1090,8 @@ onMounted(async () => {
         messages.value.push(assistText(`正在从视频作品《${w.title}》抽取首帧…`))
         try {
           const blob = await grabFirstFrame(w.imageUrl)
-          const up = await hgApi.uploadMedia(new File([blob], `firstframe-${w.id}.png`, { type: 'image/png' }))
-          selectedAssetId.value = up.mediaAssetId
+          const up = await hgApi.uploadAsset(new File([blob], `firstframe-${w.id}.png`, { type: 'image/png' }))
+          selectedAssetId.value = up.assetId
           if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
           uploadPreview.value = URL.createObjectURL(blob)
           uploadName.value = `${w.title} · 首帧`
@@ -1364,6 +1438,22 @@ function handleUpload(event: Event) {
                   取消任务
                 </button>
                 <span class="refund-hint inline">取消后预占积分自动退回</span>
+              </div>
+
+              <!-- 失败/取消后可重试。后端重试是**新建任务并重新计费**，故文案要写明。 -->
+              <div
+                v-if="m.status === 'cancelled' && m.taskId"
+                class="run-actions"
+              >
+                <button
+                  type="button"
+                  class="btn-ghost small"
+                  :disabled="running"
+                  @click="retryRun(m)"
+                >
+                  重试
+                </button>
+                <span class="refund-hint inline">重试会新建任务并重新预占积分</span>
               </div>
 
               <button
