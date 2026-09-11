@@ -59,7 +59,6 @@ export interface WorkItem {
   kind: string
   status: string
   favorite: boolean
-  published?: boolean
   createdAt: number
 }
 
