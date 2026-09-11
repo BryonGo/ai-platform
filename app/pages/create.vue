@@ -4,6 +4,7 @@ import PromptEditor from '~/components/prompt/promptEditor.vue'
 import { promptText, type Prompt, type SnippetSnapshot } from '~/components/prompt/enhancement-mark'
 import SnippetPicker from '~/components/prompt/snippetPicker.vue'
 import ModelPicker from '~/components/selection/modelPicker.vue'
+import ComposerModelPicker, { type ComposerModelOption } from '~/components/selection/composerModelPicker.vue'
 import LoraPicker, { type LoraSelection } from '~/components/selection/loraPicker.vue'
 
 type Mode = 'image' | 'video'
@@ -214,7 +215,6 @@ const activeModel = computed(() => (catalog.value?.models || []).find(m => m.id 
 // 用户可显式选择，未选时回落到第一个可用项。
 const videoModels = computed(() => catalog.value?.videoModels || [])
 const videoModelId = ref('')
-const videoPickerOpen = ref(false)
 const activeVideoModel = computed(() => {
   const list = videoModels.value
   return list.find(m => m.id === videoModelId.value)
@@ -227,12 +227,11 @@ const activeVideoModel = computed(() => {
 // 时长默认值交给 watch(activeVideoModel) —— 它会尊重 durationTouched，用户显式调过就不覆盖；
 // 这里只保证落在新模型的 min/max 内，避免带着越界值去建任务。
 function pickVideoModel(id: string) {
-  videoPickerOpen.value = false
   const m = videoModels.value.find(x => x.id === id)
   if (!m) return
   videoModelId.value = id
   if (m.resolutions?.length && !m.resolutions.some(r => r.ratio === ratio.value)) {
-    ratio.value = m.resolutions[0].ratio
+    ratio.value = m.resolutions[0]!.ratio
   }
   const min = m.minSeconds || 1
   const max = m.maxSeconds || videoSeconds.value
@@ -316,6 +315,9 @@ const familyLoras = computed(() => {
 })
 
 function pickModel(id: string) {
+  const candidate = catalog.value?.models.find(m => m.id === id)
+  if (!candidate?.available || !candidate.selectable) return
+  clearCloudModel()
   modelId.value = id
   selectedLoras.value = []
   modelPickerOpen.value = false
@@ -330,7 +332,6 @@ function pickModel(id: string) {
 
 // ── 云端模型（seedream/xiaoyi，balance 计费）选择 ──
 const cloudModels = computed(() => catalog.value?.cloudModels || [])
-const cloudPickerOpen = ref(false)
 const cloudModelId = ref('')
 const cloudQuality = ref('')
 
@@ -344,11 +345,6 @@ const activeCloudModel = computed(() => cloudModels.value.find(m => m.id === clo
 // 只选云端（balance）或本地 comfy；云端模型仅图片（t2i），视频仍走 comfy i2v。
 const useCloud = computed(() => mode.value === 'image' && !!activeCloudModel.value)
 
-function openCloudPicker() {
-  // 云端缺省但目录里只有已占用 server? 尽力拉取。
-  cloudPickerOpen.value = true
-}
-
 function pickCloudModel(id: string) {
   const m = cloudModels.value.find(x => x.id === id && x.state === 'available')
   if (!m) return
@@ -357,12 +353,25 @@ function pickCloudModel(id: string) {
   sampling.value = null
   cloudModelId.value = m.id
   cloudQuality.value = m.capabilities?.default?.quality || m.capabilities?.parameters?.[0]?.quality || ''
-  cloudPickerOpen.value = false
 }
 
 function clearCloudModel() {
   cloudModelId.value = ''
   cloudQuality.value = ''
+}
+
+// 图片与视频共享快速选择器；打开菜单不会改变当前引擎。
+const composerModels = computed<ComposerModelOption[]>(() => mode.value === 'video'
+  ? videoModels.value.map(m => ({ key: `video:${m.id}`, name: m.name, source: m.engine === 'comfy' ? 'local' : 'cloud', detail: m.note || (m.engine === 'comfy' ? `${m.frameRate}fps · ${m.minSeconds}–${m.maxSeconds} 秒` : `${m.provider || m.engine} · ${m.resolution || '视频生成'}`), disabled: !m.available || !m.selectable }))
+  : [
+      ...(catalog.value?.models || []).map(m => ({ key: `local:${m.id}`, name: m.name, source: 'local' as const, detail: m.family, cover: m.cover, disabled: !m.available || !m.selectable })),
+      ...availableCloudModels.value.map(m => ({ key: `cloud:${m.id}`, name: m.name, source: 'cloud' as const, detail: `${m.author || m.engine} · ${m.pricing.qualities[0]?.balance ?? '—'} 余额/张起` }))
+    ])
+const composerModelKey = computed(() => mode.value === 'video' ? `video:${activeVideoModel.value?.id}` : useCloud.value ? `cloud:${cloudModelId.value}` : `local:${modelId.value}`)
+function selectComposerModel(key: string) {
+  if (key.startsWith('video:')) pickVideoModel(key.slice(6))
+  else if (key.startsWith('cloud:')) pickCloudModel(key.slice(6))
+  else pickModel(key.slice(6))
 }
 
 // 参考图仅两种合法场景：云端图生图（t2i；comfy base = 纯文生图）或 i2v 视频首帧。
@@ -1555,6 +1564,24 @@ function handleUpload(event: Event) {
             </button>
           </div>
 
+          <div class="composer-secondary">
+            <button
+              type="button"
+              :class="{ active: assetOpen }"
+              @click="openAssets"
+            >
+              ＋ 素材库
+            </button>
+            <button
+              v-if="mode === 'image' && !useCloud"
+              type="button"
+              :aria-expanded="showNegative"
+              @click="showNegative = !showNegative"
+            >
+              高级设置{{ showNegative ? ' −' : ' ＋' }}
+            </button>
+          </div>
+
           <div class="prompt-area">
             <label
               v-if="useCloud || mode === 'video'"
@@ -1579,7 +1606,7 @@ function handleUpload(event: Event) {
                   class="i-lucide-plus"
                   aria-hidden="true"
                 />
-                <strong>上传图片</strong>
+                <strong>＋ 参考图</strong>
                 <small>用于画面对比</small>
               </span>
               <span
@@ -1600,68 +1627,14 @@ function handleUpload(event: Event) {
 
           <div class="composer-footer">
             <div class="parameters">
-              <button
-                type="button"
-                :class="{ active: showNegative }"
-                @click="showNegative = !showNegative"
-              >
-                <span
-                  class="i-lucide-minus-circle"
-                  aria-hidden="true"
-                />负面词
-              </button>
-              <button
-                type="button"
-                :class="{ active: assetOpen }"
-                @click="openAssets"
-              >
-                <span
-                  class="i-lucide-library"
-                  aria-hidden="true"
-                />素材库
-              </button>
-              <div
-                v-if="mode === 'image' && (catalog?.models || []).length"
-                class="model-selector"
-              >
-                <button
-                  type="button"
-                  class="model-btn"
-                  :class="{ active: !useCloud }"
-                  @click="clearCloudModel(); modelPickerOpen = true"
-                >
-                  <img
-                    v-if="activeModel?.cover"
-                    :src="activeModel.cover"
-                    :alt="activeModel.name"
-                    class="model-thumb"
-                  >
-                  <span
-                    v-else
-                    class="model-thumb model-thumb-fallback"
-                  >{{ (activeModel?.name || '模')[0] }}</span>
-                  <span class="model-name">{{ activeModel?.name || '底模' }}</span>
-                  <small class="fam">{{ activeModel?.family || '' }}</small>
-                </button>
-              </div>
-              <!-- 视频模式：显示并**可选择**后端实际使用的视频模型（comfy 本地 / 云端 Seedance） -->
-              <div
-                v-else-if="mode === 'video' && activeVideoModel"
-                class="model-selector"
-              >
-                <button
-                  type="button"
-                  class="model-btn video-model active"
-                  :title="activeVideoModel.engine === 'comfy'
-                    ? `${activeVideoModel.workflow} · ${activeVideoModel.steps} 步 · ${activeVideoModel.frameRate}fps`
-                    : `云端 ${activeVideoModel.provider || ''} · ${activeVideoModel.resolution || ''}`"
-                  @click="videoPickerOpen = true"
-                >
-                  <span class="model-thumb model-thumb-fallback">{{ activeVideoModel.name[0] }}</span>
-                  <span class="model-name">{{ activeVideoModel.name }}</span>
-                  <small class="fam">{{ activeVideoModel.engine === 'comfy' ? '本地' : '云端' }} · 切换</small>
-                </button>
-              </div>
+              <ComposerModelPicker
+                :options="composerModels"
+                :selected-key="composerModelKey"
+                :mode="mode"
+                @select="selectComposerModel"
+                @browse="modelPickerOpen = true"
+                @open="paramsOpen = false; ratioOpen = false; durationOpen = false"
+              />
               <!-- 视频画幅：尺寸来自后端（ResolutionSelector 实测），与图片档画幅不同 -->
               <div
                 v-if="mode === 'video' && videoResolutions.length"
@@ -1779,17 +1752,6 @@ function handleUpload(event: Event) {
                   class="i-lucide-layers"
                   aria-hidden="true"
                 />效果包 <b>{{ selectedLoras.length }}</b>/8
-              </button>
-              <button
-                v-if="availableCloudModels.length && mode === 'image'"
-                type="button"
-                :class="{ active: useCloud }"
-                @click="openCloudPicker"
-              >
-                <span
-                  class="i-lucide-cloud"
-                  aria-hidden="true"
-                />{{ useCloud ? activeCloudModel?.name : '云端' }}
               </button>
               <div
                 v-if="mode === 'image'"
@@ -2040,7 +2002,7 @@ function handleUpload(event: Event) {
             </button>
           </div>
           <textarea
-            v-if="showNegative"
+            v-if="showNegative && mode === 'image' && !useCloud"
             v-model="negative"
             rows="2"
             class="negative-input"
@@ -2178,141 +2140,6 @@ function handleUpload(event: Event) {
       </div>
     </aside>
 
-    <div
-      v-if="cloudPickerOpen"
-      class="cloud-picker"
-    >
-      <div
-        class="cloud-picker__mask"
-        @click="cloudPickerOpen = false"
-      />
-      <div
-        class="cloud-picker__dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="选择云端模型"
-      >
-        <div class="cloud-picker__head">
-          <div>
-            <strong>选择云端模型</strong>
-            <small>按张扣减余额，失败自动退回</small>
-          </div>
-          <button
-            type="button"
-            aria-label="关闭"
-            class="cloud-picker__close"
-            @click="cloudPickerOpen = false"
-          >
-            <span
-              class="i-lucide-x"
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        <p
-          v-if="!availableCloudModels.length"
-          class="cloud-picker__empty"
-        >
-          暂无可用云端模型
-        </p>
-        <ul
-          v-else
-          class="cloud-picker__list"
-        >
-          <li
-            v-for="m in availableCloudModels"
-            :key="m.id"
-          >
-            <button
-              type="button"
-              class="cloud-picker__row"
-              :class="{ current: activeCloudModel?.id === m.id }"
-              @click="pickCloudModel(m.id)"
-            >
-              <span class="cloud-picker__thumb">{{ (m.name || '云')[0] }}</span>
-              <span class="cloud-picker__meta">
-                <b>{{ m.name }}</b>
-                <small>{{ m.engine }} · {{ m.capabilities?.parameters?.[0]?.quality || '默认' }} · {{ m.pricing?.qualities?.[0]?.balance || '—' }} 余额/张</small>
-              </span>
-              <span
-                v-if="activeCloudModel?.id === m.id"
-                class="cloud-picker__check"
-              >
-                <span
-                  class="i-lucide-check"
-                  aria-hidden="true"
-                />
-              </span>
-            </button>
-          </li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- 视频模型选择：comfy（本地）与云端（Seedance 等）混列，标注来源便于判断计费方式 -->
-    <div
-      v-if="videoPickerOpen"
-      class="cloud-picker"
-    >
-      <div
-        class="cloud-picker__mask"
-        @click="videoPickerOpen = false"
-      />
-      <div
-        class="cloud-picker__dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="选择视频模型"
-      >
-        <div class="cloud-picker__head">
-          <div>
-            <strong>选择视频模型</strong>
-            <small>本地走自有算力，云端按量计费</small>
-          </div>
-          <button
-            type="button"
-            aria-label="关闭"
-            class="cloud-picker__close"
-            @click="videoPickerOpen = false"
-          >
-            <span
-              class="i-lucide-x"
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        <ul class="cloud-picker__list">
-          <li
-            v-for="m in videoModels"
-            :key="m.id"
-          >
-            <button
-              type="button"
-              class="cloud-picker__row"
-              :class="{ current: activeVideoModel?.id === m.id }"
-              @click="pickVideoModel(m.id)"
-            >
-              <span class="cloud-picker__thumb">{{ (m.name || '视')[0] }}</span>
-              <span class="cloud-picker__meta">
-                <b>{{ m.name }}</b>
-                <small v-if="m.engine === 'comfy'">本地 · {{ m.frameRate }}fps · {{ m.steps }} 步</small>
-                <small v-else>云端 {{ m.provider || '' }}<template v-if="m.resolution"> · {{ m.resolution }}</template></small>
-              </span>
-              <span
-                v-if="activeVideoModel?.id === m.id"
-                class="cloud-picker__check"
-              >
-                <span
-                  class="i-lucide-check"
-                  aria-hidden="true"
-                />
-              </span>
-            </button>
-          </li>
-        </ul>
-      </div>
-    </div>
-
     <ModelPicker
       :open="modelPickerOpen"
       :models="catalog?.models || []"
@@ -2337,6 +2164,29 @@ function handleUpload(event: Event) {
 </template>
 
 <style scoped>
+.composer { border-radius: 16px; }
+.composer::after { animation: none; background: linear-gradient(135deg, #e8ce7730, transparent 55%); }
+.mode-tabs { display: inline-flex; margin: 14px 0 0 16px; padding: 3px; border: 1px solid #ffffff0d; border-radius: 9px; background: #0003; }
+.mode-tabs button { height: 32px; padding: 0 14px; border: 0; border-radius: 6px; font-size: 13px; }
+.mode-tabs button.active { background: #e8ce771a; }
+.composer-secondary { float: right; display: flex; gap: 12px; margin: 20px 18px 0 8px; }
+.composer-secondary button { background: transparent; border: 0; color: #aaa8a1; font-size: 12px; cursor: pointer; }
+.composer-secondary button:hover { color: var(--amber-soft); }
+.upload-placeholder strong { display: block; font-size: 10px; font-weight: 500; }
+.composer-footer { background: transparent; border-color: #ffffff09; }
+.parameters { gap: 8px; }
+.parameters > button, .parameters .params-trigger { background: #ffffff05; border-color: #ffffff0a; }
+@media (max-width: 760px) {
+  .chat-panel { height: calc(100dvh - var(--topbar-h) - 88px); }
+}
+@media (max-width: 560px) {
+  .prompt-area { flex-direction: row; gap: 10px; }
+  .upload-box { flex: 0 0 56px; width: 56px; height: 56px; min-height: 56px; }
+  .chat-composer { padding: 8px; }
+  .composer-secondary { margin: 12px 16px 0; float: none; }
+  .parameters { width: 100%; }
+}
+
 .negative-input {
   width: 100%;
   margin-top: 10px;
