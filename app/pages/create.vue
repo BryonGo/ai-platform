@@ -865,26 +865,35 @@ async function retryRun(from: ChatMessage) {
     progress: 0,
     taskId: null,
     meta,
-    event: 'task.created · 正在重试（新建任务并重新计费）',
+    event: 'task.creating · 正在重试（新建任务并重新计费）',
     text: msgText(meta.kind, meta.characterName, meta.ratioNow, meta.credits),
     time: now()
   })
   notice.value = ''
+  // 与 send() 同一条判据：重试也是「新建任务」，被拒时任务并不存在（见 catch）。
+  let createdTaskId: ChatMessage['taskId'] = null
   try {
     const created = await hgApi.retryTask(from.taskId, `hg-web-retry-${Date.now()}-${runId}`)
+    createdTaskId = created.id
     const cur = messages.value.find(m => m.runId === runId)
     if (cur) {
       cur.taskId = created.id
     }
     await settleRun(runId, created.id, meta, created.status)
   } catch (e: unknown) {
-    const cur = messages.value.find(m => m.runId === runId)
     const reason = e instanceof Error ? e.message : '重试失败'
-    if (cur) {
-      cur.status = 'cancelled'
-      cur.progress = 0
-      cur.event = 'task.failed · ' + reason
-      cur.text = `${msgText(meta.kind, meta.characterName, meta.ratioNow, meta.credits)} → 重试失败`
+    if (createdTaskId === null) {
+      // 重试被拒（余额不足等）：任务没有新建，不能留「→ 重试失败」的任务卡片。
+      messages.value = messages.value.filter(m => m.runId !== runId)
+      messages.value.push(assistText(`重试失败：${reason}`))
+    } else {
+      const cur = messages.value.find(m => m.runId === runId)
+      if (cur) {
+        cur.status = 'cancelled'
+        cur.progress = 0
+        cur.event = 'task.failed · ' + reason
+        cur.text = `${msgText(meta.kind, meta.characterName, meta.ratioNow, meta.credits)} → 重试失败`
+      }
     }
     notice.value = reason
   }
@@ -925,10 +934,14 @@ async function send() {
     runId,
     status: 'queued',
     progress: 0,
-    event: 'task.created · 正在创建任务并预占积分',
+    event: 'task.creating · 正在创建任务',
     text: msgText(kind, characterName, ratioNow, credits),
     time: now()
   })
+  // 创建是否成功：决定失败时该不该留这张任务卡片（见 catch）。
+  // 类型跟随 ChatMessage.taskId —— 后端为防雪花 ID 精度丢失会把 id 作为字符串返回，
+  // 写成 number 会类型不匹配（vue-tsc 实测报 TS2322）。
+  let createdTaskId: ChatMessage['taskId'] = null
   try {
     if (!session.token.value) {
       throw new Error('请先登录')
@@ -982,15 +995,25 @@ async function send() {
       assistantMsg.taskId = task.id
       assistantMsg.meta = meta
     }
+    createdTaskId = task.id
     await settleRun(runId, task.id, meta, task.status)
   } catch (e: unknown) {
-    const cur = messages.value.find(m => m.runId === runId)
     const reason = e instanceof Error ? e.message : '生成失败'
-    if (cur) {
-      cur.status = 'cancelled'
-      cur.progress = 0
-      cur.event = 'task.failed · ' + reason
-      cur.text = `${msgText(kind, characterName, ratioNow, credits)} → 失败（积分未扣）`
+    if (createdTaskId === null) {
+      // **任务从未创建**（余额不足 / 参数不受支持 / 未登录等创建即被拒）。
+      // 此时不能留一张「预占 N → 失败（积分未扣）」的任务卡片：那会让人以为
+      // 已经预占过积分、任务跑过又失败了。移除乐观消息，用一条助手文本说明原因。
+      messages.value = messages.value.filter(m => m.runId !== runId)
+      messages.value.push(assistText(`创建任务失败：${reason}`))
+    } else {
+      // 任务确实已创建，后续环节（收敛/轮询）出问题：保留卡片并标记失败。
+      const cur = messages.value.find(m => m.runId === runId)
+      if (cur) {
+        cur.status = 'cancelled'
+        cur.progress = 0
+        cur.event = 'task.failed · ' + reason
+        cur.text = `${msgText(kind, characterName, ratioNow, credits)} → 失败（积分未扣）`
+      }
     }
     notice.value = reason
     // 登录过期：稍候跳转登录页（游客一键登录恢复）。
