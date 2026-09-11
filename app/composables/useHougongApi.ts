@@ -244,6 +244,30 @@ export interface AssetChoice {
   generation: { taskId: string } | null
 }
 
+/** 导出任务（对齐 api/v1/platform/export.go 的 ExportTaskItem）。 */
+export interface ExportTask {
+  id: string
+  kind: string
+  /** queued / running / succeeded / failed */
+  status: string
+  sourceKind: string
+  sourceId: string
+  total: number
+  done: number
+  failed: number
+  /** 产物 ZIP 的资产 id；未成功时为空 */
+  resultAssetId: string
+  /** 产物限时下载地址；未成功时为空 */
+  downloadUrl: string
+  errorCode: string
+  errorMessage: string
+  startedAt: number
+  finishedAt: number
+  createdAt: number
+  /** 未能进入包内的条目（路径与原因）——必须展示，避免「少了文件没人知道」 */
+  failures?: { path: string, assetId?: string, reason: string }[]
+}
+
 export interface PublicationWork {
   id: string
   title: string
@@ -601,10 +625,16 @@ export function useHougongApi() {
     return r.prompt
   }
 
-  async function uploadMedia(file: File): Promise<{ mediaAssetId: string, width: number, height: number, mime: string }> {
+  // 上传资产。权威入口是 POST /platform/asset（媒体域唯一权威）；
+  // /hougong/media 已降级为兼容别名，两侧共用同一份实现，但**响应字段不同**：
+  // 权威返回 id / mimeType，别名返回 mediaAssetId / mime，故这里统一成 assetId 给调用方。
+  async function uploadAsset(file: File): Promise<{ assetId: string, width: number, height: number, mimeType: string }> {
     const form = new FormData()
     form.append('file', file)
-    return apiRequest('/hougong/media', { method: 'POST', form })
+    const r = await apiRequest<{ id: string, width: number, height: number, mimeType: string }>(
+      '/platform/asset', { method: 'POST', form }
+    )
+    return { assetId: r.id, width: r.width, height: r.height, mimeType: r.mimeType }
   }
 
   async function createTask(input: {
@@ -635,6 +665,13 @@ export function useHougongApi() {
 
   async function cancelTask(id: number | string): Promise<{ status: string }> {
     return apiRequest(`/hougong/tasks/${id}/cancel`, { method: 'POST' })
+  }
+
+  // 重试任务。后端语义是「**新建一个任务并重新计费**」，不是原地重跑：
+  // 传新 clientKey 做幂等，snapshot 沿用旧任务；只有终态任务可重试（否则 409）。
+  // 返回的是**新任务**的 id，调用方要拿它去轮询，而不是继续轮询旧 id。
+  async function retryTask(id: number | string, clientKey: string): Promise<{ id: number, status: string }> {
+    return apiRequest(`/hougong/tasks/${id}/retry`, { method: 'POST', body: { clientKey } })
   }
 
   async function createWork(input: WorkCreateInput): Promise<WorkItem> {
@@ -697,6 +734,27 @@ export function useHougongApi() {
   async function assetSelectByIds(ids: string[]): Promise<AssetChoice[]> {
     const res = await apiRequest<{ items: AssetChoice[] }>('/platform/asset/selectByIds', { method: 'POST', body: { ids } })
     return res.items || []
+  }
+
+  // ── 导出（工程包）──
+  // 把一组资产按 relPath 打成 ZIP，**异步**执行：创建后轮询 getExport 到 succeeded，
+  // 再取 downloadUrl。failures 必须展示——工程回填最怕「少了一个文件但没人知道」。
+  async function createExport(
+    items: { assetId: string, relPath?: string }[],
+    sourceKind?: string,
+    sourceId?: string
+  ): Promise<{ exportId: string }> {
+    return apiRequest('/platform/export', {
+      method: 'POST',
+      body: { items, ...(sourceKind ? { sourceKind } : {}), ...(sourceId ? { sourceId } : {}) }
+    })
+  }
+  async function getExport(id: string): Promise<{ found: boolean, task?: ExportTask }> {
+    return apiRequest(`/platform/export/${id}`)
+  }
+  async function listExports(page = 1, pageSize = 20): Promise<ExportTask[]> {
+    const res = await apiRequest<{ list: ExportTask[] }>(`/platform/export?page=${page}&pageSize=${pageSize}`)
+    return res.list || []
   }
 
   // ── 发布（work/post/comment/tag/report）──
@@ -848,10 +906,11 @@ export function useHougongApi() {
     updateStoryClips,
     listTasks,
     wallet,
-    uploadMedia,
+    uploadAsset,
     createTask,
     getTask,
     cancelTask,
+    retryTask,
     createWork,
     getCatalog,
     optimizePrompt,
@@ -869,6 +928,9 @@ export function useHougongApi() {
     setAssetHidden,
     assetSelect,
     assetSelectByIds,
+    createExport,
+    getExport,
+    listExports,
     listWorksFeed,
     getWork,
     listPosts,
