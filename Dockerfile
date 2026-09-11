@@ -12,7 +12,12 @@ FROM node:22-alpine AS build
 WORKDIR /app
 # 先只拷贝依赖清单，让依赖层可缓存
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# 用 npm install 而非 npm ci：本仓库的 package-lock 与依赖树不一致
+# （cac 锁里是 7.0.0，树里要 6.7.14；npm ci 会以 EUSAGE 直接拒绝），
+# 且本地 npm 与 node:22-alpine 自带 npm 版本不同、--package-lock-only 也修不齐。
+# 取舍：构建可复现性下降，但能稳定出镜像；若要严格锁版本，需用同一 npm 版本
+# 重新生成锁文件后改回 npm ci。
+RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
