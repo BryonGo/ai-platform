@@ -36,9 +36,18 @@ export function useAuthSession() {
   return { token, uid, load, save, clear }
 }
 
+// apiBase 返回 API 前缀。
+//
+// SSR 与浏览器刻意分开：服务端内部请求走**内网**（apiBaseInternal，容器内直连，
+// 不必绕公网域名再回来）；浏览器走 public.apiBase —— 留空即同源 '/api/v1'，
+// 由 nuxt.config 的 routeRules 代理到内网，因此天然无跨域。
 export function apiBase(): string {
   const config = useRuntimeConfig()
-  return (config.public.apiBase as string || '') + '/api/v1'
+  if (import.meta.server) {
+    const internal = (config.apiBaseInternal as string || '').replace(/\/+$/, '')
+    if (internal) return internal + '/api/v1'
+  }
+  return ((config.public.apiBase as string) || '') + '/api/v1'
 }
 
 export function siteCode(): string {
