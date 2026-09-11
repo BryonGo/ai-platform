@@ -103,6 +103,27 @@ async function remove(a: AssetItem) {
   }
 }
 
+// download 取原图下载地址（后端签发限时 URL）后直接打开。
+// 与列表里的 a.url 区别：列表 url 是展示用的（可能已转码/压缩），这里是原图。
+const downloading = ref('')
+
+async function download(a: AssetItem) {
+  downloading.value = a.id
+  error.value = ''
+  try {
+    const { url } = await api.assetDownloadUrl(a.id)
+    if (!url) {
+      error.value = '后端未返回下载地址'
+      return
+    }
+    window.open(url, '_blank', 'noopener')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '获取下载地址失败'
+  } finally {
+    downloading.value = ''
+  }
+}
+
 function originLabel(o: string) {
   return o === 'generated' ? '生成' : '上传'
 }
@@ -233,6 +254,14 @@ onMounted(() => {
           <small class="muted">{{ sizeText(a.bytes) }} · {{ new Date(a.createdAt * 1000).toLocaleDateString() }}</small>
         </div>
         <div class="asset-cell-actions">
+          <button
+            type="button"
+            class="composer2-btn-sm"
+            :disabled="downloading === a.id"
+            @click="download(a)"
+          >
+            {{ downloading === a.id ? '获取中…' : '下载原图' }}
+          </button>
           <button
             type="button"
             class="composer2-btn-sm"
