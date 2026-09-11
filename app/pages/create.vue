@@ -726,16 +726,40 @@ async function settleRun(runId: number, taskId: number | string, meta: RunMeta, 
   const { kind, characterName, ratioNow, credits, text } = meta
   const msg = () => messages.value.find(m => m.runId === runId)
   let status = initialStatus
-  // 轮询至终态
-  while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
-    await sleep(2500)
-    const t = await hgApi.getTask(taskId)
-    status = t.status
-    const cur = msg()
-    if (cur) {
-      cur.progress = t.progress || cur.progress
-      cur.event = `${t.status} · ${cur.progress}%`
+  // 事件驱动 + 轮询兜底：终态事件到达时立即唤醒，把收敛延迟从最多 2.5s 压到近实时。
+  // EventSource 不可用 / 未登录 / 断线时 subscribeTaskEvents 返回空关闭函数，
+  // 行为与纯轮询**完全一致** —— 它是加速，不是替代。
+  let wake: (() => void) | null = null
+  const closeEvents = hgApi.subscribeTaskEvents((event, data) => {
+    // 进度类事件不打断轮询（进度本来就靠轮询回写）；只认本任务的终态事件。
+    if (event === 'task.queued' || event === 'task.started' || event === 'task.progress') return
+    if (String(data.taskId ?? '') !== String(taskId)) return
+    const w = wake
+    wake = null
+    w?.()
+  })
+  try {
+    while (status !== 'succeeded' && status !== 'failed' && status !== 'cancelled' && status !== 'reconciling') {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          wake = null
+          resolve()
+        }, 2500)
+        wake = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      const t = await hgApi.getTask(taskId)
+      status = t.status
+      const cur = msg()
+      if (cur) {
+        cur.progress = t.progress || cur.progress
+        cur.event = `${t.status} · ${cur.progress}%`
+      }
     }
+  } finally {
+    closeEvents()
   }
   const finalMsg = msg()
   if (status === 'succeeded') {
