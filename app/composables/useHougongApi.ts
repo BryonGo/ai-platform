@@ -138,6 +138,10 @@ export interface CatalogVideoModel {
   name: string
   engine: string
   workflow: string
+  /** 云端 provider 名（comfy 模型为空）。engine 决定执行器，provider 决定接入点。 */
+  provider?: string
+  /** 云端分辨率档（如 720p）；comfy 模型为空（它用 width/height）。 */
+  resolution?: string
   steps: number
   frameRate: number
   length: number

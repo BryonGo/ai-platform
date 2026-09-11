@@ -209,13 +209,37 @@ const selectedLoras = ref<LoraSelection[]>([])
 
 const activeModel = computed(() => (catalog.value?.models || []).find(m => m.id === modelId.value) || null)
 
-// ── 视频模型（图生视频）：来自 catalog.videoModels（后端 task/workflow 冻结常量投影）──
-// i2v 后端固定走 MiniMax H3 fl2va + 官方 turbo 4 步，无 modelId 分支，
-// 所以视频模式不再展示图片底模，而是显示真正在跑的模型。
+// ── 视频模型：来自 catalog.videoModels ──
+// 目录里可能有多个引擎：comfy（本地 MiniMax H3）与云端（Seedance 等，配了 key 才下发）。
+// 用户可显式选择，未选时回落到第一个可用项。
 const videoModels = computed(() => catalog.value?.videoModels || [])
-const activeVideoModel = computed(
-  () => videoModels.value.find(m => m.available) || videoModels.value[0] || null
-)
+const videoModelId = ref('')
+const videoPickerOpen = ref(false)
+const activeVideoModel = computed(() => {
+  const list = videoModels.value
+  return list.find(m => m.id === videoModelId.value)
+    || list.find(m => m.available)
+    || list[0]
+    || null
+})
+// pickVideoModel 切换视频模型。
+// 只处理**模型相关的档位**：画幅（云端走分辨率档、comfy 走像素画幅，两者不通用）与时长夹取。
+// 时长默认值交给 watch(activeVideoModel) —— 它会尊重 durationTouched，用户显式调过就不覆盖；
+// 这里只保证落在新模型的 min/max 内，避免带着越界值去建任务。
+function pickVideoModel(id: string) {
+  videoPickerOpen.value = false
+  const m = videoModels.value.find(x => x.id === id)
+  if (!m) return
+  videoModelId.value = id
+  if (m.resolutions?.length && !m.resolutions.some(r => r.ratio === ratio.value)) {
+    ratio.value = m.resolutions[0].ratio
+  }
+  const min = m.minSeconds || 1
+  const max = m.maxSeconds || videoSeconds.value
+  const clamped = Math.min(Math.max(videoSeconds.value, min), max)
+  videoSeconds.value = clamped
+  videoSecondsDraft.value = clamped
+}
 // ── 视频时长：默认 5 秒，点击出拖动条，确认后生效 ──
 // 档位表由后端给出（模型按 24fps + 17k+5 网格吸附，5s→124 帧≈5.2s），前端不重复算。
 const videoSeconds = ref(5)
@@ -925,7 +949,11 @@ async function send() {
       height: kind === 'video' || useCloud.value ? undefined : height.value,
       count: kind === 'image' ? count.value : undefined,
       // i2v 走 MiniMax H3 专用工作流，不传文生图模型/采样参数（否则用错模型卡死）
-      modelId: kind === 'video' ? undefined : (useCloud.value ? cloudModelId.value : (modelId.value || undefined)),
+      // 视频：显式传当前视频模型 id —— 后端据此解析引擎（comfy 本地 / seedance 云端）。
+      // 图片：云端传云端模型 id，本地底模传目录底模 id。
+      modelId: kind === 'video'
+        ? (activeVideoModel.value?.id || undefined)
+        : (useCloud.value ? cloudModelId.value : (modelId.value || undefined)),
       quality: kind === 'video' ? undefined : (useCloud.value ? (cloudQuality.value || undefined) : undefined),
       engine: kind === 'video' ? undefined : (useCloud.value ? (activeCloudModel.value?.engine || undefined) : undefined),
       sampling: kind === 'video' || useCloud.value ? undefined : (sampling.value || undefined),
@@ -1616,19 +1644,23 @@ function handleUpload(event: Event) {
                   <small class="fam">{{ activeModel?.family || '' }}</small>
                 </button>
               </div>
-              <!-- 视频模式：显示后端实际使用的视频模型（当前仅 MiniMax H3，无选择分支） -->
+              <!-- 视频模式：显示并**可选择**后端实际使用的视频模型（comfy 本地 / 云端 Seedance） -->
               <div
                 v-else-if="mode === 'video' && activeVideoModel"
                 class="model-selector"
               >
-                <span
+                <button
+                  type="button"
                   class="model-btn video-model active"
-                  :title="`${activeVideoModel.workflow} · ${activeVideoModel.steps} 步 · ${activeVideoModel.frameRate}fps`"
+                  :title="activeVideoModel.engine === 'comfy'
+                    ? `${activeVideoModel.workflow} · ${activeVideoModel.steps} 步 · ${activeVideoModel.frameRate}fps`
+                    : `云端 ${activeVideoModel.provider || ''} · ${activeVideoModel.resolution || ''}`"
+                  @click="videoPickerOpen = true"
                 >
                   <span class="model-thumb model-thumb-fallback">{{ activeVideoModel.name[0] }}</span>
                   <span class="model-name">{{ activeVideoModel.name }}</span>
-                  <small class="fam">{{ activeVideoModel.note || '图生视频' }}</small>
-                </span>
+                  <small class="fam">{{ activeVideoModel.engine === 'comfy' ? '本地' : '云端' }} · 切换</small>
+                </button>
               </div>
               <!-- 视频画幅：尺寸来自后端（ResolutionSelector 实测），与图片档画幅不同 -->
               <div
@@ -2204,6 +2236,70 @@ function handleUpload(event: Event) {
               </span>
               <span
                 v-if="activeCloudModel?.id === m.id"
+                class="cloud-picker__check"
+              >
+                <span
+                  class="i-lucide-check"
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 视频模型选择：comfy（本地）与云端（Seedance 等）混列，标注来源便于判断计费方式 -->
+    <div
+      v-if="videoPickerOpen"
+      class="cloud-picker"
+    >
+      <div
+        class="cloud-picker__mask"
+        @click="videoPickerOpen = false"
+      />
+      <div
+        class="cloud-picker__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="选择视频模型"
+      >
+        <div class="cloud-picker__head">
+          <div>
+            <strong>选择视频模型</strong>
+            <small>本地走自有算力，云端按量计费</small>
+          </div>
+          <button
+            type="button"
+            aria-label="关闭"
+            class="cloud-picker__close"
+            @click="videoPickerOpen = false"
+          >
+            <span
+              class="i-lucide-x"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <ul class="cloud-picker__list">
+          <li
+            v-for="m in videoModels"
+            :key="m.id"
+          >
+            <button
+              type="button"
+              class="cloud-picker__row"
+              :class="{ current: activeVideoModel?.id === m.id }"
+              @click="pickVideoModel(m.id)"
+            >
+              <span class="cloud-picker__thumb">{{ (m.name || '视')[0] }}</span>
+              <span class="cloud-picker__meta">
+                <b>{{ m.name }}</b>
+                <small v-if="m.engine === 'comfy'">本地 · {{ m.frameRate }}fps · {{ m.steps }} 步</small>
+                <small v-else>云端 {{ m.provider || '' }}<template v-if="m.resolution"> · {{ m.resolution }}</template></small>
+              </span>
+              <span
+                v-if="activeVideoModel?.id === m.id"
                 class="cloud-picker__check"
               >
                 <span
