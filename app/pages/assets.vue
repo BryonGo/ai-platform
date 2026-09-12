@@ -144,13 +144,13 @@ onMounted(() => {
 
 <template>
   <div class="page-body">
+    <AssetSectionNav />
     <div class="page-head">
       <div>
         <p class="detail-kicker">
-          素材库
+          我的资产
         </p>
-        <h1>我的素材</h1>
-        <p>上传的参考图与生成产物都在这里；隐藏后可避免出现在创作台素材选择器中。</p>
+        <h1>素材</h1>
       </div>
       <div class="asset-actions">
         <button

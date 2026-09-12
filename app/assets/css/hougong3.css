@@ -1,0 +1,615 @@
+/* 后宫 v3 设计系统（首页 / 对话创作页）
+ *
+ * 取值来源，全部可追溯：
+ * - 底色 / 侧栏 / 卡片 / 圆角：docs/design/hougong-homepage-spec-2026-09-12.md 第 9 节建议值
+ * - 图标彩色值、卡片几何、角标尺寸：参考图逐像素实测（docs/design/references/reference-extract.md）
+ * - 交互态（悬停放大 1.04x / 180ms / 描边 / 蒙版）：参考图 homepage-interactions 面板 01
+ *
+ * 只作用于 .hg-app 子树，历史页面（钱包 / 模型 / 资产等）在本轮不被牵连。
+ */
+
+.hg-app {
+  /* 底色与容器 */
+  --hg3-canvas: #101114;
+  --hg3-rail: #25272c;
+  --hg3-rail-active: #141518;
+  --hg3-rail-hover: #2c2f35;
+  --hg3-card: #30333a;
+  --hg3-card-soft: #363940;
+  --hg3-tile: #3b3f47;
+  --hg3-well: #17181b;
+
+  /* 文字 */
+  --hg3-ink: #f2f0ec;
+  --hg3-muted: #9a9791;
+  --hg3-faint: #6e6b66;
+
+  /* 铜橘主操作 */
+  --hg3-accent: #d9834d;
+  --hg3-accent-hi: #f99749;
+  --hg3-accent-ink: #3a2412;
+  --hg3-accent-soft: rgb(217 131 77 / 14%);
+  --hg3-accent-line: rgb(217 131 77 / 38%);
+  --hg3-glow: rgb(233 150 84 / 45%);
+
+  /* 线性图标配色（参考图实测：同一功能保持同一颜色） */
+  --hg3-i-orange: #fdbb5d;
+  --hg3-i-coral: #ff707a;
+  --hg3-i-amber: #ffc10f;
+  --hg3-i-green: #22dda3;
+  --hg3-i-blue: #71b6e7;
+  --hg3-i-gray: #868493;
+
+  /* 状态色 */
+  --hg3-ok: #2edf9a;
+  --hg3-run: #65c6fb;
+  --hg3-warn: #ffb454;
+
+  --hg3-line: rgb(255 255 255 / 8%);
+  --hg3-line-strong: rgb(255 255 255 / 14%);
+
+  /* 参考图（1003px 视口）实测侧栏 173px ≈ 17vw，用流体宽度保持同一比例 */
+  --hg3-rail-w: clamp(200px, 17vw, 260px);
+  --hg3-topbar-h: 60px;
+  --hg3-radius-card: 16px;
+  --hg3-radius-input: 20px;
+
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+  background: var(--hg3-canvas);
+  color: var(--hg3-ink);
+}
+
+/* ---------- 侧栏 ---------- */
+
+.hg-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex: 0 0 var(--hg3-rail-w);
+  flex-direction: column;
+  width: var(--hg3-rail-w);
+  height: 100vh;
+  background: var(--hg3-rail);
+}
+
+.hg-rail-brand {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 18px 16px 14px;
+}
+.hg-rail-brand img {
+  grid-row: 1 / span 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+.hg-rail-brand b {
+  align-self: end;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  line-height: 1.1;
+  background: linear-gradient(180deg, #ffd79a, var(--hg3-accent));
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hg-rail-brand small {
+  align-self: start;
+  color: var(--hg3-faint);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+
+.hg-rail-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  margin: 0 14px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--hg3-accent-hi), var(--hg3-accent));
+  color: var(--hg3-accent-ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.hg-rail-cta:hover {
+  filter: brightness(1.06);
+}
+
+.hg-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px;
+  overscroll-behavior: contain;
+}
+
+.hg-nav {
+  display: grid;
+  gap: 2px;
+}
+.hg-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hg3-ink);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hg-nav-item:hover {
+  background: var(--hg3-rail-hover);
+}
+/* 选中：整行深黑（首页设计说明第 3 条批注：不是仅图标或字变色） */
+.hg-nav-item.active {
+  background: var(--hg3-rail-active);
+  font-weight: 600;
+}
+.hg-nav-item.active::before {
+  position: absolute;
+  top: 50%;
+  left: -10px;
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--hg3-accent);
+  content: '';
+  transform: translateY(-50%);
+}
+.hg-nav-item > .hg-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hg-nav-item.sub {
+  min-height: 34px;
+  padding-left: 42px;
+  color: var(--hg3-muted);
+  font-size: 13px;
+}
+.hg-nav-item.sub.active {
+  color: var(--hg3-ink);
+}
+.hg-nav-pill {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #2e3138;
+  color: var(--hg3-faint);
+  font-size: 10px;
+}
+.hg-nav-caret {
+  flex-shrink: 0;
+  color: var(--hg3-faint);
+  transition: transform 160ms ease;
+}
+.hg-nav-caret.open {
+  transform: rotate(180deg);
+}
+
+.hg-rail-divider {
+  height: 1px;
+  margin: 10px 12px;
+  background: var(--hg3-line);
+}
+
+.hg-rail-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--hg3-faint);
+  font-size: 11px;
+}
+
+.hg-rail-foot {
+  padding: 8px 10px 12px;
+}
+.hg-legal {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px 0;
+  color: var(--hg3-faint);
+  font-size: 11px;
+}
+.hg-legal a {
+  color: inherit;
+  text-decoration: none;
+}
+.hg-legal a:hover {
+  color: var(--hg3-muted);
+}
+
+/* ---------- 主列 ---------- */
+
+.hg-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hg-topbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--hg3-topbar-h);
+  padding: 0 24px;
+}
+.hg-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--hg3-faint);
+  font-size: 12px;
+}
+.hg-crumb b {
+  color: var(--hg3-ink);
+  font-weight: 500;
+}
+.hg-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hg-publish {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hg3-ink);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hg-publish:hover {
+  background: rgb(255 255 255 / 6%);
+}
+.hg-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 5%);
+  color: var(--hg3-ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+.hg-credits .hg3-coin {
+  color: var(--hg3-i-amber);
+}
+.hg-icon-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hg3-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+.hg-icon-btn:hover {
+  background: rgb(255 255 255 / 6%);
+  color: var(--hg3-ink);
+}
+.hg-dot {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--hg3-canvas);
+  border-radius: 999px;
+  background: var(--hg3-accent);
+}
+.hg-avatar {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #2b2e34;
+  overflow: hidden;
+  cursor: pointer;
+}
+.hg-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 12%;
+}
+
+.hg-content {
+  flex: 1;
+  min-width: 0;
+  padding: 0 24px 56px;
+}
+
+/* ---------- 通用件 ---------- */
+
+.hg-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.hg-section-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.hg-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--hg3-accent);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hg-more:hover {
+  color: var(--hg3-accent-hi);
+}
+
+.hg-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid transparent;
+  border-radius: var(--hg3-radius-card);
+  background: var(--hg3-card);
+  overflow: hidden;
+  transition: border-color 180ms ease;
+}
+/* 悬停：外框尺寸不变、仅内部图片放大（参考图面板 01） */
+.hg-card:hover {
+  border-color: var(--hg3-accent-line);
+}
+.hg-media {
+  position: relative;
+  overflow: hidden;
+  background: #1b1d21;
+}
+.hg-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 180ms ease;
+}
+.hg-card:hover .hg-media img {
+  transform: scale(1.04);
+}
+.hg-media.r16x9 {
+  aspect-ratio: 16 / 9;
+}
+.hg-media.r9x16 {
+  aspect-ratio: 9 / 16;
+}
+
+.hg-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #e8683b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.hg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--hg3-line);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 4%);
+  color: var(--hg3-ink);
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hg-chip:hover {
+  border-color: var(--hg3-line-strong);
+  background: rgb(255 255 255 / 7%);
+}
+.hg-chip .hg-chip-key {
+  color: var(--hg3-muted);
+}
+.hg-chip .hg-chevron {
+  color: var(--hg3-faint);
+}
+
+.hg-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--hg3-accent-hi), var(--hg3-accent));
+  color: var(--hg3-accent-ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.hg-btn-primary:disabled {
+  cursor: not-allowed;
+  filter: grayscale(.5) brightness(.75);
+}
+
+.hg-empty {
+  padding: 28px 0;
+  color: var(--hg3-faint);
+  font-size: 13px;
+}
+
+.hg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .hg-app {
+    --hg3-rail-w: 0px;
+  }
+  .hg-rail {
+    display: none;
+  }
+  .hg-content,
+  .hg-topbar {
+    padding-inline: 16px;
+  }
+}
+
+/* 全出血页面（对话创作）：主内容自己管滚动与内边距 */
+.hg-app.full-bleed .hg-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  min-height: 0;
+}
+.hg-app.full-bleed {
+  height: 100vh;
+  overflow: hidden;
+}
+.hg-app.full-bleed .hg-main {
+  min-height: 0;
+}
+
+/* ---------- 互动鎏光（交互标注 02 / 首页设计说明 §5.4）----------
+   悬停：亮点跟随指针（--mx/--my 由 useGlowPointer 写入）
+   聚焦：边缘缓慢流动
+   失焦：柔和收束
+   用户偏好减少动态效果时退化为静态描边。 */
+.hg-glow {
+  position: relative;
+}
+.hg-glow::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 0%), rgb(255 202 150 / 13%), transparent 62%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  content: '';
+}
+.hg-glow:hover::before,
+.hg-glow:focus-within::before {
+  opacity: 1;
+}
+/* 只画 1px 边框环，不盖内容 */
+.hg-glow::after {
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(115deg, transparent 18%, rgb(240 165 95 / 60%) 50%, transparent 82%);
+  background-size: 260% 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+  content: '';
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.hg-glow:focus-within::after {
+  opacity: 1;
+}
+.hg-glow:hover {
+  border-color: rgb(217 131 77 / 52%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hg-glow:focus-within::after {
+    animation: hg-flow 4.5s linear infinite;
+  }
+}
+@keyframes hg-flow {
+  from {
+    background-position: 130% 0;
+  }
+
+  to {
+    background-position: -130% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-glow::before,
+  .hg-glow::after {
+    transition: none;
+  }
+  .hg-glow:focus-within::after {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* ---------- 局部材质渐变（交互标注 06）----------
+   输入区＝石墨青；快捷入口＝暗流红；主按钮＝红金黄。
+   只做局部，不把整页变成高饱和渐变（首页设计说明 §9）。 */
+.hg-material-input {
+  background: linear-gradient(180deg, #1a2124 0%, #161a1c 58%, #141719 100%);
+}
+.hg-material-quick {
+  background: linear-gradient(135deg, #2b1b1d 0%, #201618 100%);
+}
+.hg-btn-primary {
+  background: linear-gradient(135deg, #f9a04e, #d9713d);
+}
+.hg-rail-cta {
+  background: linear-gradient(135deg, #f9a04e, #d9713d);
+}

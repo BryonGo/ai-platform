@@ -89,10 +89,14 @@ export interface CatalogItem {
   type: 'model' | 'lora'
   name: string
   family: string
+  /** 后台维护的一句话简介；未配置时后端不下发该字段 */
+  summary?: string
   fileName?: string
   cover?: string
   available: boolean
   selectable: boolean
+  /** 不可用原因（后台停用原文 / 文件未就绪 / 家族无工作流）；可用时后端不下发 */
+  unavailableReason?: string
   weight?: { default: number, min: number, max: number }
   sampling?: { steps: number, sampler: string, scheduler: string, cfg: number }
 }
@@ -101,9 +105,15 @@ export interface CloudModel {
   id: string
   name: string
   author: string
+  /** 一句话简介（后台可覆盖）；未配置时为空 */
+  excerpt?: string
+  /** 图标/封面（后台可覆盖）；未配置时为空 */
+  cover?: string
   state: string
   engine: 'seedream' | 'xiaoyi' | string
   endpoint: string
+  /** 不可用原因（未就绪 / 后台停用原文）；仅 includeUnavailable=1 口径下才有值 */
+  unavailableReason?: string
   capabilities: {
     parameters: { quality: string, ratios: { ratio: string, size: string }[] }[]
     default: { quality: string, ratio: string }
@@ -155,6 +165,8 @@ export interface CatalogVideoModel {
   note?: string
   available: boolean
   selectable: boolean
+  /** 不可用原因（未就绪 / 后台停用原文）；可用时后端不下发 */
+  unavailableReason?: string
 }
 
 /** 站点报价表：键为画幅（如 "1:1"），值为积分单价；来自 billing_rate_version 最新 revision */
@@ -614,8 +626,16 @@ export function useHougongApi() {
     return apiRequest('/account/credits')
   }
 
-  async function getCatalog(): Promise<Catalog> {
-    return apiRequest<Catalog>('/platform/catalog')
+  /**
+   * 能力目录。
+   *
+   * includeUnavailable=false（默认）：不可用条目**不下发**，模型面板只会看到能用的。
+   * true：不可用条目也下发并带 `unavailableReason`，由 UI 自己渲染灰态 +
+   * 「为什么不可用」。这是产品口径，切换前先确认前端面板能承载灰态列表。
+   */
+  async function getCatalog(includeUnavailable = false): Promise<Catalog> {
+    const q = includeUnavailable ? '?includeUnavailable=1' : ''
+    return apiRequest<Catalog>(`/platform/catalog${q}`)
   }
 
   async function optimizePrompt(prompt: string, modelId: string): Promise<string> {

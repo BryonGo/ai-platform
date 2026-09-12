@@ -1548,7 +1548,7 @@ textarea:focus-visible {
     z-index: 60;
     height: 66px;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     border-top: 1px solid var(--line);
     background: rgb(13 14 16 / 0.94);
     backdrop-filter: blur(18px);

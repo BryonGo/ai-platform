@@ -41,6 +41,7 @@ onMounted(async () => {
 
 <template>
   <div class="page-body">
+    <AssetSectionNav />
     <div class="page-head">
       <div>
         <p class="detail-kicker">

@@ -1,17 +1,23 @@
 # 后宫开发文档入口
 
-更新：2026-09-07。
+更新：2026-09-12。
 
-唯一开发主文档：[GameLora × 后宫完整开发交接手册](../../go-sdk/docs/AI-PLATFORM-DEVELOPMENT.md)。
+编码交接入口：[首页与对话创作页 Nuxt / Go 交接文档](./HANDOFF-HOME-CHAT-2026-09-12.md)。包含最新模型展示决策、前后端清单、代码核对、mock 边界、参考图、未提交改动与验收要求。本文档整理阶段不修改业务代码。
 
-本机绝对路径：D:/code/go-sdk/docs/AI-PLATFORM-DEVELOPMENT.md。
+当前首页设计：[后宫首页设计说明](./design/hougong-homepage-spec-2026-09-12.md)。汇总产品重新定义、效果图批注、交互规则和待细化参数；本阶段只整理设计文档，用户明确要求后才修改页面代码。
 
-接口契约初稿：[两产品接口契约](../../go-sdk/docs/contracts/platform-products.draft.yaml)。这是规范初稿，不表示功能已实现。
+旧 [前台功能清单](./frontend-function-map.md) 已标记为撤销草稿，不是实施基线。历史设计中的“保持原首页不动”和旧角色／故事定位不约束本次重新设计。
 
-给其他 AI 交接时优先发送开发手册；若只带走文件而没有本机仓库，同时附上契约初稿和所需代码。
+跨项目开发资料：[GameLora × 后宫平台开发主文档](../../aicodcms/docs/AI-PLATFORM-DEVELOPMENT.md)。用于核对现有能力和历史实现，产品定位与首页设计以最新用户要求为准；实现程度需核对代码。
+
+当前工作区主文档位于 `aicodcms/docs/AI-PLATFORM-DEVELOPMENT.md`，历史 `D:/code/go-sdk` 路径不适用于本机。
+
+接口契约初稿：[两产品接口契约](../../aicodcms/docs/contracts/platform-products.draft.yaml)。这是规范初稿，不表示功能已实现。
+
+交接首页设计时先看首页设计说明，再按需要查开发主文档、契约与代码。文档内的效果图为本机预览路径，跨机器交接时需要同时提供对应图片。
 
 旧交接、旧共用架构、旧固定 SDXL 切片、PeachArt 映射、早期品牌讨论已合并删除，不再维护平行版本。
 保留 design/ 中角色规范与 WebP 资产；初始化说明仅供环境参考，当前版本与命令以 package.json 和代码为准。
 
-后端：D:/code/go-sdk。后宫前端：D:/code/ai-platform。GameLora 前端：D:/code/gamelora-web。
-保持当前首页设计和目录名，优先完成真实生成业务接线。
+当前工作区：后端 `aicodcms`，后宫前端 `ai-platform`，GameLora 前端 `gamelora-web`。
+后续实施优先复用现有功能和接口，但不要用旧页面结构限制新版整体设计。本次文档整理不代表授权实施。

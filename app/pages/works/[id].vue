@@ -94,6 +94,13 @@ async function toggleFavorite() {
 
 onMounted(load)
 watch(workId, load)
+
+// 素材方向：竖图铺满 9:16 竖框（微裁），横图 contain 上下留黑
+function markOrientation(event: Event) {
+  const el = event.target as HTMLImageElement | null
+  const host = el?.closest('.media-frame')
+  if (host) host.classList.toggle('is-landscape', (el?.naturalWidth ?? 0) > (el?.naturalHeight ?? 0))
+}
 </script>
 
 <template>
@@ -117,6 +124,7 @@ watch(workId, load)
             v-if="work.imageUrl"
             :src="work.imageUrl"
             :alt="work.title"
+            @load="markOrientation"
           >
           <div
             v-else
@@ -269,6 +277,19 @@ watch(workId, load)
 </template>
 
 <style scoped>
+/* 竖屏为主：容器按 9:16，图片等比 contain。
+   横屏素材按通用手机短视频处理——上下留黑，不裁切、不拉伸。 */
+.media-frame.wide {
+  aspect-ratio: 9 / 16;
+  background: #000;
+}
+.media-frame img {
+  object-fit: cover;
+}
+.media-frame.is-landscape img {
+  object-fit: contain;
+}
+
 .media-placeholder {
   display: grid;
   place-items: center;

@@ -26,13 +26,13 @@ onMounted(async () => {
 
 <template>
   <div class="page-body">
+    <AssetSectionNav />
     <div class="page-head">
       <div>
         <p class="detail-kicker">
-          角色档案
+          我的资产
         </p>
-        <h1>她们属于你的宇宙</h1>
-        <p>每位角色都有独立的身份、外观、服装与故事线。生成时保持形象一致，改动保留历史版本。</p>
+        <h1>角色资产</h1>
       </div>
       <NuxtLink
         to="/characters/new"
@@ -50,7 +50,7 @@ onMounted(async () => {
       v-else-if="!loading && !characters.length"
       class="empty-tip"
     >
-      还没有角色。去创作页生成第一位角色吧——形象一致，历史版本可回溯。
+      暂无角色资产
     </p>
     <div class="char-grid">
       <AppCharacterCard

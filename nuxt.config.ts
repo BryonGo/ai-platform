@@ -9,12 +9,7 @@ export default defineNuxtConfig({
     enabled: true
   },
 
-  css: ['~/assets/css/main.css'],
-
-  routeRules: {
-    '/': { prerender: true },
-    '/api/v1/**': { proxy: (process.env.API_PROXY || 'http://127.0.0.1:8201') + '/api/v1/**' }
-  },
+  css: ['~/assets/css/main.css', '~/assets/css/hougong3.css'],
 
   runtimeConfig: {
     // 私有项：只在服务端可见，不会下发浏览器。
@@ -28,6 +23,11 @@ export default defineNuxtConfig({
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
       siteCode: process.env.NUXT_PUBLIC_SITE_CODE || 'default'
     }
+  },
+
+  routeRules: {
+    '/': { prerender: true },
+    '/api/v1/**': { proxy: (process.env.API_PROXY || 'http://127.0.0.1:8201') + '/api/v1/**' }
   },
 
   devServer: {
