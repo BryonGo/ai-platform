@@ -1,48 +1,24 @@
 <script setup lang="ts">
-// 站点 18+ 年龄门遮罩。
+// 18+ 确认弹窗。
 //
-// 只在服务端说"需要过门且本浏览器还没过"时出现（gateRequired），
-// 并且**挡住整页**：它是合规拦截，不是一个可以点掉的提示条。
-// 未满 18 岁的输入由服务端拒绝，这里把拒绝原因原样显示出来。
+// 只在服务端说"需要弹窗且本浏览器还没确认过"时出现（gateRequired），
+// 并且挡住整页 —— 它是入口提示，不是可以点掉的通知条。
+//
+// 刻意做成**一键确认**，不收集出生日期：
+// 产品口径是"弹窗提示即可"；而一个自己填的生日并不产生可核验的事实，
+// 那就不该顺手把用户的生日存下来。站点开关默认关闭（site.compliance.ageGate=0），
+// 所以默认情况下这个弹窗根本不会出现。
 const gate = useAdultGate()
-const session = useAuthSession()
-
-const birthDate = ref('')
-const alsoAdultMode = ref(true)
-const localError = ref('')
-
-// 日期选择器的上限就是今天：未来日期在服务端会被拒，但没必要让用户先试一次。
-const today = new Date().toISOString().slice(0, 10)
 
 const visible = computed(() => gate.status.value.gateRequired)
 
-const canSubmit = computed(() => /^\d{4}-\d{2}-\d{2}$/.test(birthDate.value) && !gate.pending.value)
-
 onMounted(() => {
-  session.load()
   // 首次进入时拉一次服务端口径（SSR 阶段拿不到 cookie，必须放在客户端）。
   if (!gate.loaded.value) gate.refresh()
 })
 
-async function submit() {
-  localError.value = ''
-  if (!canSubmit.value) {
-    localError.value = '请填写完整的出生日期'
-    return
-  }
-  const ok = await gate.confirmBirthDate(birthDate.value)
-  if (!ok) {
-    localError.value = gate.error.value || '年龄确认失败'
-    return
-  }
-  // 登录用户顺手开启成人模式：年龄门已经过了，再让用户去设置里点一次是多余的一步。
-  if (alsoAdultMode.value && session.token.value && !gate.status.value.adultMode) {
-    await gate.setAdultMode(true)
-  }
-}
-
 function leave() {
-  // 不提供"继续浏览"的绕过路径：拒绝就是离开，这是年龄门的意义所在。
+  // 不提供"继续浏览"的绕过路径：拒绝就是离开，这是入口提示的意义所在。
   window.location.href = 'https://www.google.com/'
 }
 </script>
@@ -69,51 +45,26 @@ function leave() {
           本站包含成人内容
         </h1>
         <p class="age-gate__body">
-          本站面向 {{ gate.status.value.minAge }} 周岁及以上用户，包含成人向的 AI 生成内容。
-          请填写你的出生日期以确认年龄；未满 {{ gate.status.value.minAge }} 周岁请勿进入。
+          本站面向 {{ gate.status.value.minAge }} 周岁及以上用户，内容为成人向的
+          AI 生成影像。继续访问即表示你已确认自己已满 {{ gate.status.value.minAge }} 周岁。
         </p>
 
-        <label
-          class="age-gate__field"
-          for="age-gate-birth"
-        >
-          <span>出生日期</span>
-          <input
-            id="age-gate-birth"
-            v-model="birthDate"
-            type="date"
-            :max="today"
-            autocomplete="bday"
-          >
-        </label>
-
-        <label
-          v-if="session.token.value"
-          class="age-gate__check"
-        >
-          <input
-            v-model="alsoAdultMode"
-            type="checkbox"
-          >
-          <span>同时开启成人模式（显示成人内容与成人效果包）</span>
-        </label>
-
         <p
-          v-if="localError"
+          v-if="gate.error.value"
           class="age-gate__error"
           role="alert"
         >
-          {{ localError }}
+          {{ gate.error.value }}
         </p>
 
         <div class="age-gate__actions">
           <button
             type="button"
             class="age-gate__primary"
-            :disabled="!canSubmit"
-            @click="submit"
+            :disabled="gate.pending.value"
+            @click="gate.confirm()"
           >
-            {{ gate.pending.value ? '确认中…' : '确认并进入' }}
+            {{ gate.pending.value ? '确认中…' : `我已满 ${gate.status.value.minAge} 岁，进入` }}
           </button>
           <button
             type="button"
@@ -125,7 +76,7 @@ function leave() {
         </div>
 
         <p class="age-gate__note">
-          确认结果保存在本浏览器（默认 30 天），不会公开，也不会用于其他用途。
+          确认结果只保存在本浏览器（默认 30 天），用于免去每次访问重复确认，不会公开。
         </p>
       </div>
     </div>
@@ -175,42 +126,6 @@ function leave() {
   font-size: 14px;
   line-height: 1.75;
   color: var(--muted);
-}
-
-.age-gate__field {
-  display: block;
-  margin-bottom: 16px;
-}
-
-.age-gate__field span {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: var(--faint);
-}
-
-.age-gate__field input {
-  width: 100%;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--canvas);
-  color: var(--ink);
-  font-size: 15px;
-}
-
-.age-gate__check {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin-bottom: 18px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.age-gate__check input {
-  margin-top: 2px;
-  accent-color: var(--amber);
 }
 
 .age-gate__error {

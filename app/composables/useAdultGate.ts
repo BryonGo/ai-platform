@@ -1,24 +1,28 @@
-// 成人内容合规的**唯一前端入口**：站点年龄门 + 账号成人模式。
+// 成人内容口径的**唯一前端入口**：18+ 入口弹窗 + 账号成人偏好。
 //
-// 为什么合成一个 composable：这两件事在前端总是一起用（要不要弹门、能不能显示成人内容、
-// 要不要给成人 LoRA），而判定口径全部来自服务端 /platform/age/status ——
-// 前端不自己与运算 siteAdultContent && verified && adultMode，
-// 那种写法一旦服务端口径变化就会两边漂移（一边显示一边不显示，没人说得清谁对）。
+// 为什么合成一个 composable：这两件事在前端总是一起用（要不要弹窗、能不能显示成人内容、
+// 要不要列成人 LoRA），而判定口径全部来自服务端 /platform/age/status ——
+// 前端不自己与运算，那种写法一旦服务端口径变化就会两边漂移。
 //
-// canUseAdult 直接取服务端算好的结果，页面只消费。
+// 产品口径（后端定调，见 internal/platform/agegate）：
+//   成人内容**默认可用**（这是成人产品，全站按 18+ 处理）；
+//   入口弹窗**默认关闭**，站点开启时才弹一次一键确认；
+//   账号可以主动关掉成人内容（个人偏好，不是门槛）。
+//
+// canUseAdult 与 gateRequired 都直接取服务端算好的结果，页面只消费。
 
 export interface AdultGateStatus {
-  /** 本站是否提供成人内容（站点配置，与账号无关）。 */
+  /** 本站是否提供成人内容（站点配置，默认 true）。 */
   siteAdultContent: boolean
-  /** 需要年龄门且本浏览器尚未通过。 */
+  /** 需要弹 18+ 确认弹窗且本浏览器尚未确认。 */
   gateRequired: boolean
-  /** 本浏览器已通过本站 18+ 年龄门。 */
+  /** 本浏览器已确认过（弹窗不再出现）。 */
   verified: boolean
-  /** 年龄门要求的最低年龄。 */
+  /** 弹窗提到的最低年龄。 */
   minAge: number
-  /** 当前账号是否已开启成人模式（未登录恒 false）。 */
+  /** 账号是否显示成人内容（未登录按 true 处理）。 */
   adultMode: boolean
-  /** 最终口径：本站提供 + 已过门 + 已开启成人模式。前端只看这一个字段。 */
+  /** 最终口径：本站提供 + 账号未主动关闭。前端只看这一个字段。 */
   canUseAdult: boolean
 }
 
@@ -51,25 +55,22 @@ export function useAdultGate() {
     return status.value
   }
 
-  /** 提交出生日期完成年龄门确认。未满 18 岁由服务端拒绝，这里只负责把原因显示出来。 */
-  async function confirmBirthDate(birthDate: string) {
+  /** 一键确认已满 18 岁。站点未开启弹窗时服务端幂等返回，不报错。 */
+  async function confirm() {
     pending.value = true
     error.value = ''
     try {
-      status.value = await apiRequest<AdultGateStatus>('/platform/age/confirm', {
-        method: 'POST',
-        body: { birthDate }
-      })
+      status.value = await apiRequest<AdultGateStatus>('/platform/age/confirm', { method: 'POST' })
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '年龄确认失败'
+      error.value = e instanceof Error ? e.message : '确认失败'
       return false
     } finally {
       pending.value = false
     }
   }
 
-  /** 开启/关闭账号成人模式。开启前置（已过年龄门）由服务端强制。 */
+  /** 开启/关闭成人内容显示。关闭是个人偏好，随时可以再打开。 */
   async function setAdultMode(enabled: boolean) {
     pending.value = true
     error.value = ''
@@ -86,7 +87,7 @@ export function useAdultGate() {
     }
   }
 
-  /** 清除本浏览器的年龄确认（换人使用 / 排查问题）。 */
+  /** 清除本浏览器的入口确认（换人使用 / 排查问题）。 */
   async function reset() {
     try {
       status.value = await apiRequest<AdultGateStatus>('/platform/age/reset', { method: 'POST' })
@@ -96,5 +97,5 @@ export function useAdultGate() {
     return status.value
   }
 
-  return { status, loaded, pending, error, refresh, confirmBirthDate, setAdultMode, reset }
+  return { status, loaded, pending, error, refresh, confirm, setAdultMode, reset }
 }

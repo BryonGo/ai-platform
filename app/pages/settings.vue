@@ -1,9 +1,8 @@
 <script setup lang="ts">
-// 设置页：目前只放成人内容相关的偏好与合规状态。
+// 设置页：目前只放成人内容相关的偏好与入口确认状态。
 //
-// 为什么单独成页而不是塞进顶栏一个开关：成人模式是**账号级**偏好，
-// 需要说清它与年龄门的关系（必须先过门才能开），一句话的开关说不清；
-// 而且这一页同时是"我怎么关掉成人内容 / 怎么重置年龄确认"的入口。
+// 产品口径：全站按 18+ 处理，成人内容**默认显示**；这里提供的是
+// "我不想看成人内容"（随时可逆的个人偏好）与"清除本浏览器的入口确认"两个出口。
 const gate = useAdultGate()
 const session = useAuthSession()
 
@@ -22,7 +21,7 @@ async function toggleAdultMode(next: boolean) {
   errorText.value = ''
   const ok = await gate.setAdultMode(next)
   if (ok) {
-    message.value = next ? '已开启成人模式' : '已关闭成人模式'
+    message.value = next ? '已开启：显示成人内容' : '已关闭：隐藏成人内容'
   } else {
     errorText.value = gate.error.value || '设置失败'
   }
@@ -32,7 +31,7 @@ async function resetGate() {
   message.value = ''
   errorText.value = ''
   await gate.reset()
-  message.value = '已清除本浏览器的年龄确认，下次访问会重新询问'
+  message.value = '已清除本浏览器的入口确认；站点开启弹窗时下次访问会重新询问'
 }
 </script>
 
@@ -44,8 +43,8 @@ async function resetGate() {
       </p>
       <h1>成人内容</h1>
       <p class="settings-sub">
-        本站的成人内容需要同时满足三件事：站点开启成人内容、本浏览器通过 18+ 年龄确认、
-        账号开启成人模式。三者缺一，成人效果包与成人分级作品都不会出现。
+        本站按 18+ 处理，成人内容默认显示。这里的开关用于按自己的意愿隐藏成人内容
+        （效果包不再列成人条目、作品流中的 r18 作品恢复遮罩），随时可以再打开。
       </p>
     </header>
 
@@ -62,14 +61,14 @@ async function resetGate() {
       <p class="settings-card__hint">
         这是站点级配置，由运营在后台「合规与成人内容」里设置，用户无法自行更改。
         <template v-if="!gate.status.value.siteAdultContent">
-          本站当前未开启，因此不会出现成人内容，也不需要年龄确认。
+          本站当前未开启成人内容，因此不会出现成人条目与成人分级作品。
         </template>
       </p>
     </section>
 
     <section class="settings-card">
       <div class="settings-card__head">
-        <h2>年龄确认</h2>
+        <h2>入口确认</h2>
         <span
           class="settings-pill"
           :class="{ on: gate.status.value.verified }"
@@ -78,7 +77,11 @@ async function resetGate() {
         </span>
       </div>
       <p class="settings-card__hint">
-        确认结果保存在本浏览器，用于免去每次访问重复填写；换设备或换浏览器需要重新确认。
+        站点开启 18+ 入口弹窗时，确认结果保存在本浏览器（默认 30 天），
+        用于免去每次访问重复确认；换设备或换浏览器需要重新确认。
+        <template v-if="!gate.status.value.siteAdultContent">
+          本站未开启成人内容，因此不会弹出入口确认。
+        </template>
       </p>
       <button
         v-if="gate.status.value.verified"
@@ -86,13 +89,13 @@ async function resetGate() {
         class="settings-btn"
         @click="resetGate"
       >
-        清除本浏览器的年龄确认
+        清除本浏览器的入口确认
       </button>
     </section>
 
     <section class="settings-card">
       <div class="settings-card__head">
-        <h2>成人模式</h2>
+        <h2>显示成人内容</h2>
         <span
           class="settings-pill"
           :class="{ on: gate.status.value.adultMode }"
@@ -101,20 +104,14 @@ async function resetGate() {
         </span>
       </div>
       <p class="settings-card__hint">
-        开启后：模型/效果包选择器会列出成人条目，作品流不再遮罩你标注为 r18 的作品。
-        关闭随时可以；开启必须先通过年龄确认。
+        开启（默认）：效果包选择器列出成人条目，作品流正常显示你标注为 r18 的作品。
+        关闭：成人条目不再出现，r18 作品默认遮罩（可在作品详情页临时查看）。
       </p>
       <p
         v-if="!session.token.value"
         class="settings-card__hint"
       >
-        成人模式是账号偏好，请先登录（可用游客一键登录）。
-      </p>
-      <p
-        v-else-if="!gate.status.value.verified"
-        class="settings-card__hint"
-      >
-        请先完成年龄确认，再开启成人模式。
+        这是账号级偏好，请先登录（可用游客一键登录）。
       </p>
       <button
         v-else
@@ -123,7 +120,7 @@ async function resetGate() {
         :disabled="gate.pending.value"
         @click="toggleAdultMode(!gate.status.value.adultMode)"
       >
-        {{ gate.status.value.adultMode ? '关闭成人模式' : '开启成人模式' }}
+        {{ gate.status.value.adultMode ? '隐藏成人内容' : '显示成人内容' }}
       </button>
     </section>
 
