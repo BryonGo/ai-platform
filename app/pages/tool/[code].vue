@@ -22,15 +22,26 @@ const template = ref('')
 const toolMissing = computed(() => catalog.loaded.value && !tool.value)
 
 /* ---------------- 输入 ---------------- */
-const file = ref<File | null>(null)
-const preview = ref('')
-const assetId = ref('')
+// 输入槽位：单图工具只用 slots[0]，双图工具（image_pair）用两个。
+//
+// 顺序即语义，不能反：后端约定 refAssetIds[0] 是**目标图**（保留画面），
+// refAssetIds[1] 是**人脸图**（提供身份）。换脸类工具把两张图接反了，
+// 出来的是"把目标图的脸换到人脸图的身上"，用户会以为功能坏了。
+interface InputSlot { file: File | null, preview: string, assetId: string }
+function emptySlot(): InputSlot {
+  return { file: null, preview: '', assetId: '' }
+}
+const slots = reactive<InputSlot[]>([emptySlot(), emptySlot()])
 const uploading = ref(false)
 const prompt = ref('')
 const inputKind = computed(() => tool.value?.input || 'text')
 const needsImage = computed(() => ['image', 'image_pair', 'image_mask', 'image_audio'].includes(inputKind.value))
+const isPair = computed(() => inputKind.value === 'image_pair')
+/** 参与提交的槽位数：双图工具要求两张都齐。 */
+const slotCount = computed(() => (isPair.value ? 2 : 1))
+const filledSlots = computed(() => slots.slice(0, slotCount.value))
 const canSubmit = computed(() =>
-  !!tool.value && !busy.value && (!needsImage.value || !!assetId.value || !!file.value))
+  !!tool.value && !busy.value && (!needsImage.value || filledSlots.value.every(s => !!s.assetId || !!s.file)))
 
 /* ---------------- 任务与结果 ---------------- */
 interface ToolRun {
@@ -43,30 +54,55 @@ interface ToolRun {
 const runs = ref<ToolRun[]>([])
 const busy = ref(false)
 const notice = ref('')
-const sourceUrl = computed(() => preview.value)
+/** 对比用的"原图"：双图工具看目标图，单图工具看唯一那张。 */
+const sourceUrl = computed(() => slots[0]!.preview)
 /** 最近一次成功的产物（右侧主展示位）。 */
 const latest = computed(() => runs.value.find(r => r.outputs.length))
 
+/** 双图工具的槽位文案：目标图与参考脸各说清要传什么，避免传反。 */
+const SLOT_LABELS = [
+  { title: '目标图片', hint: '要保留的画面（人物 / 服装 / 场景）' },
+  { title: '人脸图片', hint: '提供五官的清晰正脸照，脸越大越准' }
+] as const
+
+function slotLabel(i: number) {
+  if (isPair.value) return SLOT_LABELS[i] ?? SLOT_LABELS[0]
+  return { title: '上传包含人物的图片', hint: '支持 PNG / JPG / WebP' }
+}
+
 const cost = ref(0)
 
-function onPick(e: Event) {
+function onPick(e: Event, index: number) {
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
-  if (f) setFile(f)
+  if (f) setFile(f, index)
+  // 允许重复选同一张：清空 value，否则第二次选同名文件不触发 change
+  input.value = ''
 }
 
-function setFile(f: File) {
-  if (preview.value) URL.revokeObjectURL(preview.value)
-  file.value = f
-  assetId.value = ''
-  preview.value = URL.createObjectURL(f)
+function setFile(f: File, index: number) {
+  const slot = slots[index]
+  if (!slot) return
+  if (slot.preview) URL.revokeObjectURL(slot.preview)
+  slot.file = f
+  slot.assetId = ''
+  slot.preview = URL.createObjectURL(f)
 }
 
-function clearFile() {
-  if (preview.value) URL.revokeObjectURL(preview.value)
-  file.value = null
-  preview.value = ''
-  assetId.value = ''
+function clearFile(index: number) {
+  const slot = slots[index]
+  if (!slot) return
+  if (slot.preview) URL.revokeObjectURL(slot.preview)
+  slot.file = null
+  slot.preview = ''
+  slot.assetId = ''
+}
+
+/** 交换目标图与人脸图：换脸类工具最常见的误操作就是传反。 */
+function swapSlots() {
+  const [a, b] = [slots[0]!, slots[1]!]
+  slots[0] = { ...b }
+  slots[1] = { ...a }
 }
 
 async function submit() {
@@ -74,13 +110,18 @@ async function submit() {
   busy.value = true
   notice.value = ''
   try {
-    let refId = assetId.value
-    if (!refId && file.value) {
-      uploading.value = true
-      const up = await api.uploadAsset(file.value)
-      refId = up.assetId
-      assetId.value = refId
-      uploading.value = false
+    // 逐槽上传并保持顺序：后端按 refAssetIds 的下标取图。
+    const refIds: string[] = []
+    for (const slot of filledSlots.value) {
+      let id = slot.assetId
+      if (!id && slot.file) {
+        uploading.value = true
+        const up = await api.uploadAsset(slot.file)
+        id = up.assetId
+        slot.assetId = id
+        uploading.value = false
+      }
+      if (id) refIds.push(id)
     }
     // 必须是 reactive：unshift 进 ref 数组后，若继续改这个原始对象，
     // 数据变了但视图不会更新（任务成功页面却一直显示"生成中 0%"）。
@@ -93,7 +134,7 @@ async function submit() {
       ratio: '1:1',
       tool: tool.value.code,
       template: template.value || undefined,
-      refAssetIds: refId ? [refId] : []
+      refAssetIds: refIds
     })
     run.id = String(created.id)
     run.status = String(created.status || 'queued')
@@ -209,36 +250,55 @@ watch(templates, (list) => {
         </header>
 
         <template v-if="needsImage">
-          <div class="field-label">
-            上传包含人物的图片
+          <div
+            class="slot-grid"
+            :class="{ pair: isPair }"
+          >
+            <div
+              v-for="i in slotCount"
+              :key="i"
+              class="slot"
+            >
+              <div class="field-label">
+                {{ slotLabel(i - 1).title }}
+              </div>
+              <label
+                class="drop"
+                :class="{ filled: !!slots[i - 1]!.preview }"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  @change="e => onPick(e, i - 1)"
+                >
+                <img
+                  v-if="slots[i - 1]!.preview"
+                  :src="slots[i - 1]!.preview"
+                  :alt="slotLabel(i - 1).title"
+                >
+                <template v-else>
+                  <UIcon name="i-lucide-image-plus" />
+                  <strong>点击或拖拽图片</strong>
+                  <small>{{ slotLabel(i - 1).hint }}</small>
+                </template>
+              </label>
+              <button
+                v-if="slots[i - 1]!.preview"
+                type="button"
+                class="link-btn"
+                @click="clearFile(i - 1)"
+              >
+                换一张
+              </button>
+            </div>
           </div>
-          <label
-            class="drop"
-            :class="{ filled: !!preview }"
-          >
-            <input
-              type="file"
-              accept="image/*"
-              @change="onPick"
-            >
-            <img
-              v-if="preview"
-              :src="preview"
-              alt="已选图片"
-            >
-            <template v-else>
-              <UIcon name="i-lucide-image-plus" />
-              <strong>点击或拖拽图片到此处</strong>
-              <small>支持 PNG / JPG / WebP</small>
-            </template>
-          </label>
           <button
-            v-if="preview"
+            v-if="isPair"
             type="button"
-            class="link-btn"
-            @click="clearFile"
+            class="link-btn swap-btn"
+            @click="swapSlots"
           >
-            换一张
+            <UIcon name="i-lucide-arrow-left-right" />交换目标图与人脸图
           </button>
         </template>
 
@@ -331,12 +391,20 @@ watch(templates, (list) => {
           <div
             v-if="sourceUrl"
             class="compare"
+            :class="{ three: isPair && slots[1]!.preview }"
           >
             <div>
-              <small>原图</small>
+              <small>{{ isPair ? '目标图' : '原图' }}</small>
               <img
                 :src="sourceUrl"
                 alt="原图"
+              >
+            </div>
+            <div v-if="isPair && slots[1]!.preview">
+              <small>人脸图</small>
+              <img
+                :src="slots[1]!.preview"
+                alt="人脸图"
               >
             </div>
             <div>
@@ -365,7 +433,7 @@ watch(templates, (list) => {
           <UIcon name="i-lucide-loader-circle" />
           <strong>正在生成…</strong>
           <small>{{ runs[0]!.status }} · {{ runs[0]!.progress }}%</small>
-          <p>放大与精修通常需要 30–90 秒，可以先去做别的。</p>
+          <p>大多需要 30–90 秒，可以先去做别的。</p>
         </div>
 
         <div
@@ -391,6 +459,14 @@ watch(templates, (list) => {
 .form-sub { margin: 6px 0 0; color: var(--hg-muted); font-size: 13px; line-height: 1.6; }
 .field-label { margin-bottom: 8px; font-size: 13px; color: var(--hg-muted); }
 .field-block { margin-top: 18px; }
+.slot-grid.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.slot { display: flex; flex-direction: column; align-items: flex-start; }
+.slot .drop { width: 100%; }
+.slot-grid.pair .drop { min-height: 150px; }
+.slot-grid.pair .drop strong { font-size: 13px; }
+.slot-grid.pair .drop small { font-size: 11px; line-height: 1.5; }
+.slot-grid.pair .drop img { max-height: 200px; }
+.swap-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; }
 .drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; padding: 16px; border: 1px dashed var(--hg-line); border-radius: 10px; background: #141416; color: var(--hg-muted); cursor: pointer; text-align: center; }
 .drop.filled { border-style: solid; padding: 0; overflow: hidden; }
 .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -416,6 +492,7 @@ watch(templates, (list) => {
 .result-actions { display: flex; align-items: center; gap: 14px; }
 .result-meta { font-size: 13px; color: var(--hg-muted); }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare.three { grid-template-columns: repeat(3, 1fr); }
 .compare > div { display: flex; flex-direction: column; gap: 6px; }
 .compare small { color: var(--hg-muted); font-size: 12px; }
 .compare img { width: 100%; border-radius: 8px; background: #141416; }
