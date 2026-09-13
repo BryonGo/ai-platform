@@ -383,6 +383,12 @@ function download(url: string) {
 onMounted(async () => {
   session.load()
   await catalog.ensure()
+  // 从效果列表点进来时带着玩法（?template=裸体姿势 对应的 code），要预选上；
+  // 否则用户点了"大字型"，进去看到的却是默认玩法。
+  const wanted = String(route.query.template || '')
+  if (wanted && catalog.templatesOf(code.value).some(t => t.code === wanted)) {
+    template.value = wanted
+  }
   // 角色延展工具需要角色清单：只在这个输入形态下拉取，避免每个工具页都请求一次
   if (isCharacter.value) {
     characters.value = await api.listCharacters().catch(() => [])

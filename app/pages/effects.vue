@@ -14,37 +14,76 @@ const activeTag = ref('all')
 
 const tools = computed(() => catalog.tools.value)
 
+/** 一个"效果"= 工具本身，或它下面的一个玩法（玩法卡点进去会带上该玩法）。
+ *  参考站的 All Effects 就是这个粒度：裸体姿势、大字型、深喉 各占一张卡。 */
+interface EffectCard {
+  key: string
+  code: string
+  template?: string
+  name: string
+  summary: string
+  icon: string
+  cover?: string
+  badge?: string
+  category: string
+  templateCount: number
+}
+
+const effects = computed<EffectCard[]>(() => {
+  const out: EffectCard[] = []
+  for (const t of tools.value) {
+    const base = {
+      code: t.code, icon: t.icon, cover: t.cover, badge: t.badge,
+      category: t.category, templateCount: (t.templates || []).length
+    }
+    out.push({ ...base, key: t.code, name: t.name, summary: t.summary })
+    for (const tpl of t.templates || []) {
+      out.push({
+        ...base, key: `${t.code}:${tpl.code}`, template: tpl.code,
+        name: tpl.name, summary: tpl.summary || t.summary
+      })
+    }
+  }
+  return out
+})
+
 /** 横幅按钮指向第一个可用工具（没有工具时按钮不渲染）。 */
-const firstTool = computed(() => tools.value[0])
+const firstTool = computed(() => effects.value[0])
 
 /** 角标为空的工具也需要展示，这里只取「有角标或排在前面的」做横排精选。 */
 const strip = computed(() => {
-  const withBadge = tools.value.filter(t => t.badge)
-  const rest = tools.value.filter(t => !t.badge)
+  const withBadge = effects.value.filter(e => e.badge)
+  const rest = effects.value.filter(e => !e.badge)
   return [...withBadge, ...rest].slice(0, 5)
 })
 
 const counts = computed(() => ({
-  image: tools.value.filter(t => t.category !== 'video').length,
-  video: tools.value.filter(t => t.category === 'video').length
+  image: effects.value.filter(e => e.category !== 'video').length,
+  video: effects.value.filter(e => e.category === 'video').length
 }))
 
 /** 标签行：全部 + 角标（新品/热门…）+ 模板名（点一下筛出带该模板的工具）。 */
 const tagList = computed(() => {
   const badges = [...new Set(tools.value.map(t => t.badge).filter(Boolean))] as string[]
-  const templates = [...new Set(tools.value.flatMap(t => (t.templates || []).map(x => x.name)))].slice(0, 14)
-  return [...badges.map(b => ({ kind: 'badge' as const, value: b })), ...templates.map(n => ({ kind: 'template' as const, value: n }))]
+  // 标签行给"玩法"用：只显示各工具的前几个，避免整行被 44 个动作铺满
+  const plays = tools.value
+    .filter(t => t.category === tab.value)
+    .flatMap(t => (t.templates || []).slice(0, 6).map(x => ({ tool: t.code, name: x.name })))
+    .slice(0, 14)
+  return [
+    ...badges.map(b => ({ kind: 'badge' as const, value: b, tool: '' })),
+    ...plays.map(p => ({ kind: 'play' as const, value: p.name, tool: p.tool }))
+  ]
 })
 
 const shown = computed(() => {
-  let list = tools.value.filter(t => (tab.value === 'video' ? t.category === 'video' : t.category !== 'video'))
+  let list = effects.value.filter(e => (tab.value === 'video' ? e.category === 'video' : e.category !== 'video'))
   const q = search.value.trim().toLowerCase()
-  if (q) list = list.filter(t => `${t.name} ${t.summary} ${t.code}`.toLowerCase().includes(q))
+  if (q) list = list.filter(e => `${e.name} ${e.summary} ${e.code}`.toLowerCase().includes(q))
   const tag = activeTag.value
   if (tag !== 'all') {
     const hit = tagList.value.find(t => t.value === tag)
-    if (hit?.kind === 'badge') list = list.filter(t => t.badge === tag)
-    else list = list.filter(t => (t.templates || []).some(x => x.name === tag))
+    list = hit?.kind === 'badge' ? list.filter(e => e.badge === tag) : list.filter(e => e.name === tag)
   }
   return list
 })
@@ -105,7 +144,7 @@ onMounted(() => {
           v-for="tool in strip"
           :key="tool.code"
           class="fx-strip-card"
-          :to="`/tool/${tool.code}`"
+          :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
         >
           <div class="fx-thumb fx-thumb--sm">
             <img
@@ -188,7 +227,7 @@ onMounted(() => {
         v-for="tool in shown"
         :key="tool.code"
         class="fx-card"
-        :to="`/tool/${tool.code}`"
+        :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
       >
         <div class="fx-thumb">
           <img
@@ -208,9 +247,9 @@ onMounted(() => {
             class="fx-badge"
           >{{ tool.badge }}</span>
           <span
-            v-if="tool.templates?.length"
+            v-if="!tool.template && tool.templateCount"
             class="fx-tpl"
-          >{{ tool.templates.length }} 个模板</span>
+          >{{ tool.templateCount }} 个玩法</span>
         </div>
         <div class="fx-name">
           {{ tool.name }}
