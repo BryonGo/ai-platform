@@ -76,11 +76,21 @@ const canSubmit = computed(() =>
   && (!isCharacter.value || !!characterId.value))
 
 /* ---------------- 任务与结果 ---------------- */
+interface ToolOutput {
+  id: string
+  url: string
+  width?: number
+  height?: number
+  /** MIME：**视频工具必须靠它决定用 <video> 还是 <img> 渲染**。
+   *  视频资产的 width/height 是 0，只判尺寸会把视频当成 0×0 的图片，
+   *  结果区一片空白（实测：文字转视频出片了，前台却看不到）。 */
+  mime: string
+}
 interface ToolRun {
   id: string
   status: string
   progress: number
-  outputs: { id: string, url: string, width?: number, height?: number }[]
+  outputs: ToolOutput[]
   error: string
 }
 const runs = ref<ToolRun[]>([])
@@ -340,11 +350,30 @@ async function resolveOutputs(ids: string[]) {
   try {
     const choices = await api.assetSelectByIds(ids)
     return choices
-      .map(({ asset }) => ({ id: asset.id, url: asset.url, width: asset.width, height: asset.height }))
+      .map(({ asset }) => ({
+        id: asset.id, url: asset.url, mime: String(asset.mimeType || ''),
+        width: asset.width, height: asset.height
+      }))
       .filter(a => !!a.url)
   } catch {
     return []
   }
+}
+
+/** isVideoUrl 判断产物是不是视频：优先看 MIME，兜底看扩展名。 */
+function isVideoUrl(out: ToolOutput) {
+  if (out.mime.startsWith('video/')) return true
+  return /\.(mp4|webm|mov|mkv)(\?|$)/i.test(out.url)
+}
+
+/** outputLabel 产物信息：视频没有宽高（资产表里是 0），显示格式而不是 0×0。 */
+function outputLabel(out: ToolOutput) {
+  if (isVideoUrl(out)) {
+    const kind = out.mime ? out.mime.replace('video/', '').toUpperCase() : '视频'
+    return `${kind} 视频`
+  }
+  if (out.width && out.height) return `${out.width}×${out.height}`
+  return '图片'
 }
 
 function download(url: string) {
@@ -611,14 +640,22 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           class="result-live"
         >
           <div class="result-media">
+            <video
+              v-if="isVideoUrl(latest.outputs[0]!)"
+              :src="latest.outputs[0]!.url"
+              class="result-video"
+              controls
+              playsinline
+            />
             <img
+              v-else
               :src="latest.outputs[0]!.url"
               :alt="tool?.name"
             >
           </div>
           <div class="result-actions">
             <span class="result-meta">
-              {{ latest.outputs[0]!.width }}×{{ latest.outputs[0]!.height }}
+              {{ outputLabel(latest.outputs[0]!) }}
             </span>
             <button
               type="button"
@@ -635,7 +672,7 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
             </NuxtLink>
           </div>
           <div
-            v-if="sourceUrl"
+            v-if="sourceUrl && !isVideoUrl(latest.outputs[0]!)"
             class="compare"
             :class="{ three: isPair && slots[1]!.preview }"
           >
@@ -744,6 +781,7 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
 .result-live { display: flex; flex-direction: column; gap: 14px; }
 .result-media { display: grid; place-items: center; background: #141416; border-radius: 10px; overflow: hidden; }
 .result-media img { display: block; max-width: 100%; max-height: 520px; object-fit: contain; }
+.result-video { display: block; width: 100%; max-height: 520px; background: #000; }
 .result-actions { display: flex; align-items: center; gap: 14px; }
 .result-meta { font-size: 13px; color: var(--hg-muted); }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
