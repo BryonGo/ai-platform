@@ -37,11 +37,35 @@ const prompt = ref('')
 const inputKind = computed(() => tool.value?.input || 'text')
 const needsImage = computed(() => ['image', 'image_pair', 'image_mask', 'image_audio'].includes(inputKind.value))
 const isPair = computed(() => inputKind.value === 'image_pair')
+/** 局部重绘：用户涂抹出要改的区域（image_mask 输入形态）。 */
+const isMask = computed(() => inputKind.value === 'image_mask')
 /** 参与提交的槽位数：双图工具要求两张都齐。 */
 const slotCount = computed(() => (isPair.value ? 2 : 1))
 const filledSlots = computed(() => slots.slice(0, slotCount.value))
+
+/* ---------------- 涂抹画布 ---------------- */
+// 蒙版是一张与源图同尺寸的黑白图（白 = 要重绘的区域），提交时作为第二个资产上传。
+// 为什么在前端画：后端没有可用的分割权重（见 workflow/undress.go 的说明），
+// 与其猜"哪里是衣服"，不如让用户直接刷 —— 刷出来的范围一定是对的。
+// 注意：画布在 v-for 里，`ref="maskCanvas"` 会收集成**数组**，
+// 那时 canvas.value 是数组，getContext 是 undefined —— 表现为"按钮亮了但一笔没画上"，
+// 最后提交时报"请先涂抹"。所以用函数式 ref 显式取单个元素。
+const maskCanvas = ref<HTMLCanvasElement | null>(null)
+
+function setMaskCanvas(el: Element | { $el?: Element } | null) {
+  const node = el && '$el' in el ? el.$el : el
+  maskCanvas.value = (node as HTMLCanvasElement | null) ?? null
+  if (maskCanvas.value) nextTick(syncMaskCanvas)
+}
+const brushSize = ref(40)
+const hasStroke = ref(false)
+let painting = false
+let lastPoint: { x: number, y: number } | null = null
+
 const canSubmit = computed(() =>
-  !!tool.value && !busy.value && (!needsImage.value || filledSlots.value.every(s => !!s.assetId || !!s.file)))
+  !!tool.value && !busy.value
+  && (!needsImage.value || filledSlots.value.every(s => !!s.assetId || !!s.file))
+  && (!isMask.value || hasStroke.value))
 
 /* ---------------- 任务与结果 ---------------- */
 interface ToolRun {
@@ -96,6 +120,111 @@ function clearFile(index: number) {
   slot.file = null
   slot.preview = ''
   slot.assetId = ''
+  if (index === 0) resetMask()
+}
+
+/* ---------------- 涂抹画布：绘制与导出 ---------------- */
+
+/** syncMaskCanvas 让画布尺寸与"显示中的图片"一致（保持同比例，导出时再放大到原图尺寸）。 */
+function syncMaskCanvas() {
+  const canvas = maskCanvas.value
+  const img = canvas?.parentElement?.querySelector('img')
+  if (!canvas || !img) return
+  const w = img.clientWidth
+  const h = img.clientHeight
+  if (!w || !h) return
+  if (canvas.width === w && canvas.height === h) return
+  // 尺寸变了要保留已有笔迹：先拷贝再重设尺寸
+  const snapshot = canvas.width && canvas.height ? canvas.toDataURL() : ''
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, w, h)
+  if (snapshot) {
+    const prev = new Image()
+    prev.onload = () => ctx.drawImage(prev, 0, 0, w, h)
+    prev.src = snapshot
+  }
+}
+
+function resetMask() {
+  const canvas = maskCanvas.value
+  const ctx = canvas?.getContext('2d')
+  if (!canvas || !ctx) return
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  hasStroke.value = false
+}
+
+function pointOf(e: PointerEvent) {
+  const canvas = maskCanvas.value!
+  const rect = canvas.getBoundingClientRect()
+  // 画布 CSS 尺寸与像素尺寸可能不同（响应式），换算回像素坐标
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+  }
+}
+
+function strokeTo(from: { x: number, y: number }, to: { x: number, y: number }) {
+  const ctx = maskCanvas.value?.getContext('2d')
+  if (!ctx) return
+  ctx.strokeStyle = '#fff'
+  ctx.fillStyle = '#fff'
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  // 笔刷宽度按显示尺寸给，换算到画布像素
+  const scale = maskCanvas.value ? maskCanvas.value.width / maskCanvas.value.clientWidth : 1
+  ctx.lineWidth = brushSize.value * scale
+  ctx.beginPath()
+  ctx.moveTo(from.x, from.y)
+  ctx.lineTo(to.x, to.y)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(to.x, to.y, (brushSize.value * scale) / 2, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function onMaskDown(e: PointerEvent) {
+  if (!maskCanvas.value) return
+  painting = true
+  hasStroke.value = true
+  const p = pointOf(e)
+  lastPoint = p
+  strokeTo(p, p)
+  ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+}
+
+function onMaskMove(e: PointerEvent) {
+  if (!painting || !lastPoint) return
+  const p = pointOf(e)
+  strokeTo(lastPoint, p)
+  lastPoint = p
+}
+
+function onMaskUp() {
+  painting = false
+  lastPoint = null
+}
+
+/** exportMask 导出与**原图同尺寸**的黑白蒙版。 */
+async function exportMask(): Promise<File | null> {
+  const canvas = maskCanvas.value
+  const img = canvas?.parentElement?.querySelector('img') as HTMLImageElement | null
+  if (!canvas || !img || !hasStroke.value) return null
+  const out = document.createElement('canvas')
+  out.width = img.naturalWidth || canvas.width
+  out.height = img.naturalHeight || canvas.height
+  const ctx = out.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, out.width, out.height)
+  ctx.drawImage(canvas, 0, 0, out.width, out.height)
+  const blob = await new Promise<Blob | null>(resolve => out.toBlob(resolve, 'image/png'))
+  if (!blob) return null
+  return new File([blob], 'mask.png', { type: 'image/png' })
 }
 
 /** 交换目标图与人脸图：换脸类工具最常见的误操作就是传反。 */
@@ -122,6 +251,15 @@ async function submit() {
         uploading.value = false
       }
       if (id) refIds.push(id)
+    }
+    // 涂抹工具：把画布导出成蒙版并作为第二个资产上传（后端约定 [图, 蒙版]）
+    if (isMask.value) {
+      const maskFile = await exportMask()
+      if (!maskFile) throw new Error('请先在图片上涂抹要修改的区域')
+      uploading.value = true
+      const up = await api.uploadAsset(maskFile)
+      uploading.value = false
+      refIds.push(up.assetId)
     }
     // 必须是 reactive：unshift 进 ref 数组后，若继续改这个原始对象，
     // 数据变了但视图不会更新（任务成功页面却一直显示"生成中 0%"）。
@@ -208,6 +346,11 @@ onMounted(async () => {
 watch(templates, (list) => {
   if (!template.value && list.length) template.value = list[0]!.code
 })
+
+// 图片加载/窗口尺寸变化后，涂抹画布要跟上显示尺寸（否则笔迹会错位）
+watch(() => slots[0]!.preview, () => nextTick(syncMaskCanvas))
+onMounted(() => window.addEventListener('resize', syncMaskCanvas))
+onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
 </script>
 
 <template>
@@ -275,7 +418,18 @@ watch(templates, (list) => {
                   v-if="slots[i - 1]!.preview"
                   :src="slots[i - 1]!.preview"
                   :alt="slotLabel(i - 1).title"
+                  @load="syncMaskCanvas"
                 >
+                <!-- 局部重绘：直接在图上涂抹要改的区域（白色笔迹 = 重绘范围） -->
+                <canvas
+                  v-if="isMask && slots[i - 1]!.preview"
+                  :ref="setMaskCanvas"
+                  class="mask-canvas"
+                  @pointerdown.prevent="onMaskDown"
+                  @pointermove.prevent="onMaskMove"
+                  @pointerup="onMaskUp"
+                  @pointercancel="onMaskUp"
+                />
                 <template v-else>
                   <UIcon name="i-lucide-image-plus" />
                   <strong>点击或拖拽图片</strong>
@@ -300,17 +454,54 @@ watch(templates, (list) => {
           >
             <UIcon name="i-lucide-arrow-left-right" />交换目标图与人脸图
           </button>
+
+          <!-- 涂抹工具：笔刷 + 清除 + 说明 -->
+          <div
+            v-if="isMask && slots[0]!.preview"
+            class="mask-tools"
+          >
+            <div class="field-label">
+              涂抹要修改的区域（只改涂到的地方）
+            </div>
+            <div class="mask-row">
+              <span class="mask-hint">笔刷</span>
+              <input
+                v-model.number="brushSize"
+                type="range"
+                min="8"
+                max="120"
+                step="2"
+              >
+              <span class="mask-hint">{{ brushSize }}px</span>
+              <button
+                type="button"
+                class="link-btn"
+                @click="resetMask"
+              >
+                清除涂抹
+              </button>
+            </div>
+            <p
+              v-if="!hasStroke"
+              class="mask-warn"
+            >
+              还没涂任何区域 —— 涂完才能开始生成。
+            </p>
+          </div>
         </template>
 
-        <template v-else>
-          <div class="field-label">
-            描述
+        <template v-if="!needsImage || isMask">
+          <div
+            class="field-label"
+            :class="{ 'mt-block': isMask }"
+          >
+            {{ isMask ? '想改成什么（描述涂抹区域的内容）' : '描述' }}
           </div>
           <textarea
             v-model="prompt"
             class="text-input"
             rows="3"
-            placeholder="描述你想要的画面"
+            :placeholder="isMask ? '例如：换成白色毛衣 / 加一副墨镜 / 背景换成海滩' : '描述你想要的画面'"
           />
         </template>
 
@@ -467,6 +658,14 @@ watch(templates, (list) => {
 .slot-grid.pair .drop small { font-size: 11px; line-height: 1.5; }
 .slot-grid.pair .drop img { max-height: 200px; }
 .swap-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; }
+.slot .drop { position: relative; }
+.mask-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; opacity: 0.45; touch-action: none; }
+.mask-tools { margin-top: 14px; }
+.mask-row { display: flex; align-items: center; gap: 10px; }
+.mask-row input[type="range"] { flex: 1; }
+.mask-hint { color: var(--hg-muted); font-size: 12px; }
+.mask-warn { margin: 8px 0 0; color: #f59e0b; font-size: 12px; }
+.mt-block { margin-top: 16px; }
 .drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; padding: 16px; border: 1px dashed var(--hg-line); border-radius: 10px; background: #141416; color: var(--hg-muted); cursor: pointer; text-align: center; }
 .drop.filled { border-style: solid; padding: 0; overflow: hidden; }
 .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
