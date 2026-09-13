@@ -61,7 +61,7 @@ onMounted(() => {
       <NuxtLink
         v-for="tool in filteredTools"
         :key="tool.code"
-        :to="`/create?tool=${tool.code}`"
+        :to="`/tool/${tool.code}`"
         class="effect-card"
       >
         <div class="effect-media">

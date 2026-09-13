@@ -79,7 +79,7 @@ interface ToolCard {
 const toolCards = computed<ToolCard[]>(() => {
   const fromCatalog: ToolCard[] = toolCatalog.tools.value.map(tool => ({
     key: `tool:${tool.code}`,
-    to: `/create?tool=${tool.code}`,
+    to: `/tool/${tool.code}`,
     label: tool.name,
     icon: tool.icon || 'i-lucide-sparkles',
     // 目录不下发封面图；先用首页统一底图，后续工具接入预览图再替换
