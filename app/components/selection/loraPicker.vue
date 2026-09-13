@@ -22,6 +22,18 @@ const filtered = computed(() => {
   return props.loras.filter(l => l.name.toLowerCase().includes(q) || (l.fileName || '').toLowerCase().includes(q))
 })
 
+// 分「常规 / 成人」两组。
+//
+// 注意：成人条目**是否出现在 props.loras 里由服务端决定**（未过年龄门或未开成人模式时
+// 目录里根本没有这些条目）。这里的分组只解决"翻到一半突然出现裸露封面"的观感问题，
+// 不承担任何权限判断 —— 权限判断放在前端就等于没有。
+const regularLoras = computed(() => filtered.value.filter(l => l.safety !== 'adult'))
+const adultLoras = computed(() => filtered.value.filter(l => l.safety === 'adult'))
+const groups = computed(() => [
+  { key: 'regular', label: '', items: regularLoras.value },
+  { key: 'adult', label: '成人效果包（仅你可见）', items: adultLoras.value }
+].filter(g => g.items.length > 0))
+
 function isSelected(id: string) {
   return props.selected.some(s => s.id === id)
 }
@@ -62,50 +74,62 @@ watch(() => props.open, (o) => {
         class="lora-picker__search"
         placeholder="搜索效果包名称、人物…"
       >
-      <div class="lora-picker__grid">
-        <div
-          v-for="l in filtered"
-          :key="l.id"
-          class="lora-card"
-          :class="{ selected: isSelected(l.id) }"
+      <template
+        v-for="group in groups"
+        :key="group.key"
+      >
+        <p
+          v-if="group.label"
+          class="lora-picker__group"
+          :class="{ 'lora-picker__group--adult': group.key === 'adult' }"
         >
-          <button
-            type="button"
-            class="lora-card__main"
-            @click="toggle(l)"
+          {{ group.label }}
+        </p>
+        <div class="lora-picker__grid">
+          <div
+            v-for="l in group.items"
+            :key="l.id"
+            class="lora-card"
+            :class="{ selected: isSelected(l.id), adult: l.safety === 'adult' }"
           >
-            <img
-              v-if="l.cover"
-              :src="l.cover"
-              :alt="l.name"
-              class="lora-card__img"
-              loading="lazy"
+            <button
+              type="button"
+              class="lora-card__main"
+              @click="toggle(l)"
             >
-            <div
-              v-else
-              class="lora-card__img lora-card__placeholder"
+              <img
+                v-if="l.cover"
+                :src="l.cover"
+                :alt="l.name"
+                class="lora-card__img"
+                loading="lazy"
+              >
+              <div
+                v-else
+                class="lora-card__img lora-card__placeholder"
+              >
+                {{ l.name.slice(0, 1) }}
+              </div>
+              <span class="lora-card__gradient" />
+              <span class="lora-card__name">{{ l.name }}</span>
+            </button>
+            <label
+              v-if="isSelected(l.id)"
+              class="lora-card__weight"
             >
-              {{ l.name.slice(0, 1) }}
-            </div>
-            <span class="lora-card__gradient" />
-            <span class="lora-card__name">{{ l.name }}</span>
-          </button>
-          <label
-            v-if="isSelected(l.id)"
-            class="lora-card__weight"
-          >
-            <span>权重</span>
-            <input
-              type="number"
-              :min="l.weight?.min ?? -4"
-              :max="l.weight?.max ?? 4"
-              step="0.05"
-              :value="weightOf(l.id, l.weight?.default ?? 1.0)"
-              @change="setWeight(l.id, Number(($event.target as HTMLInputElement).value))"
-            >
-          </label>
+              <span>权重</span>
+              <input
+                type="number"
+                :min="l.weight?.min ?? -4"
+                :max="l.weight?.max ?? 4"
+                step="0.05"
+                :value="weightOf(l.id, l.weight?.default ?? 1.0)"
+                @change="setWeight(l.id, Number(($event.target as HTMLInputElement).value))"
+              >
+            </label>
+          </div>
         </div>
-      </div>
+      </template>
       <p
         v-if="!filtered.length"
         class="lora-picker__empty"
@@ -117,6 +141,21 @@ watch(() => props.open, (o) => {
 </template>
 
 <style scoped>
+.lora-picker__group {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.lora-picker__group--adult {
+  color: var(--amber);
+}
+
+.lora-card.adult {
+  border-color: rgb(251 191 36 / 0.35);
+}
+
 .lora-picker { display: flex; flex-direction: column; gap: 12px; }
 .lora-picker__search {
   width: 100%; max-width: 360px; align-self: center;

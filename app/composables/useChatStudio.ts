@@ -41,6 +41,15 @@ export interface RunMeta {
   unit: '积分' | '余额'
   prompt: string
   characterName: string
+  /**
+   * 这一单的内容分级，**提交时定稿**。
+   *
+   * 不在结算时现算：任务落账是异步的（轮询/事件），期间用户可能改了效果包选择，
+   * 那时现算会把"用了成人 LoRA 的那一单"标成 sfw，属于错误标注。
+   * 判定口径：本单用到了 safety=adult 的 LoRA → r18，否则 sfw。
+   * 反向不自动升级（没用成人 LoRA 也可能是成人题材），由作者在作品详情里改。
+   */
+  contentRating: 'sfw' | 'r18'
 }
 
 export interface StudioMessage {
@@ -124,6 +133,17 @@ export function createChatStudio() {
     const family = catalog.value?.models?.find(item => item.id === modelId.value)?.family
     return family ? list.filter(item => item.family === family) : []
   })
+
+  /**
+   * 本单是否用到成人效果包。
+   *
+   * safety 由服务端下发：未过 18+ 年龄门或未开成人模式时，目录里根本没有 adult 条目，
+   * 所以这里不需要再判一次权限 —— 拿到 adult 就说明当前账号有资格用它。
+   */
+  const usedAdultLora = computed(() => selectedLoras.value.some((item) => {
+    const found = (catalog.value?.loras ?? []).find(l => l.id === item.id)
+    return found?.safety === 'adult'
+  }))
 
   /** 采样参数：只在所选模型真的支持时（catalog.models[].sampling）才有值 */
   const sampling = ref<{ steps: number, sampler: string, scheduler: string, cfg: number } | null>(null)
@@ -373,7 +393,10 @@ export function createChatStudio() {
             credits: task.billedCredits ?? null,
             unit: '积分',
             prompt: snap.prompt,
-            characterName: ''
+            characterName: '',
+            // 历史任务快照里没有分级信息（分级是**作品**属性，不是任务属性），
+            // 回看时按 sfw 兜底；真正的分级以入库作品上的 content_rating 为准。
+            contentRating: 'sfw'
           }
         })
       }
@@ -545,7 +568,10 @@ export function createChatStudio() {
           assetId: first.id,
           kind: message.meta?.mode === 'video' ? 'video' : 'image',
           title: (message.meta?.prompt || '未命名').slice(0, 40),
-          characterId: Number(characterId.value) || 0
+          characterId: Number(characterId.value) || 0,
+          // 用本单提交时定稿的分级（见 RunMeta.contentRating）——
+          // 用了成人效果包却标 sfw 是错误标注，会让作品流把它当普通内容展示。
+          contentRating: message.meta?.contentRating ?? 'sfw'
         }).catch(() => undefined)
       }
       if (message.assets.length) openPreview(message.id, 0)
@@ -646,7 +672,8 @@ export function createChatStudio() {
       credits: quote.value?.amount ?? null,
       unit: quote.value?.unit ?? '积分',
       prompt: text,
-      characterName: selectedCharacter.value?.name || ''
+      characterName: selectedCharacter.value?.name || '',
+      contentRating: usedAdultLora.value ? 'r18' : 'sfw'
     }
     // 第二层防重：同会话内相同生成意图先确认，未确认前不建任务、不预占、不扣款
     const dup = findDuplicate(meta)

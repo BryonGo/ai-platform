@@ -15,6 +15,32 @@ const coverBusy = ref(false)
 const coverNote = ref('')
 
 const workId = computed(() => String(route.params.id))
+const gate = useAdultGate()
+const visBusy = ref(false)
+const visNote = ref('')
+
+// 可见性文案：这三个值的语义由服务端 platform/rating 定义，
+// 这里只做展示，不作为权限判断（真正的可见性判定在服务端）。
+const visibilityOptions = [
+  { value: 'private', label: '私密（仅自己可见）' },
+  { value: 'unlisted', label: '不公开（持链接可见）' },
+  { value: 'public', label: '公开' }
+] as const
+
+async function saveVisibility(value: 'private' | 'unlisted' | 'public') {
+  if (!work.value || visBusy.value) return
+  visBusy.value = true
+  visNote.value = ''
+  try {
+    const updated = await api.setWorkVisibility(work.value.id, value)
+    work.value = { ...work.value, visibility: updated.visibility, contentRating: updated.contentRating }
+    visNote.value = '可见性已更新'
+  } catch (e: unknown) {
+    visNote.value = e instanceof Error ? e.message : '更新失败'
+  } finally {
+    visBusy.value = false
+  }
+}
 const kindLabel = computed(() => (work.value?.kind === 'video' ? '视频' : '图片'))
 const createdText = computed(() => {
   const ts = work.value?.createdAt || 0
@@ -32,6 +58,7 @@ async function load() {
     await navigateTo('/auth/login')
     return
   }
+  gate.refresh()
   loading.value = true
   error.value = ''
   work.value = null
@@ -144,6 +171,14 @@ function markOrientation(event: Event) {
             v-if="work.favorite"
             style="color: var(--amber-soft)"
           >· 已收藏</span>
+          <span
+            v-if="work.contentRating === 'r18'"
+            class="detail-rating"
+          >· R18 成人内容</span>
+          <span
+            v-else-if="work.contentRating === 'r15'"
+            class="detail-rating detail-rating--mild"
+          >· R15</span>
         </p>
         <h1 class="detail-title">
           {{ work.title }}
@@ -169,6 +204,32 @@ function markOrientation(event: Event) {
         >
           {{ coverNote }}
         </p>
+
+        <div class="visibility-row">
+          <span class="visibility-label">可见性</span>
+          <select
+            class="visibility-select"
+            :value="work.visibility || 'private'"
+            :disabled="visBusy"
+            @change="saveVisibility(($event.target as HTMLSelectElement).value as 'private' | 'unlisted' | 'public')"
+          >
+            <option
+              v-for="opt in visibilityOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
+          <span
+            v-if="work.contentRating === 'r18' && (work.visibility || 'private') !== 'private'"
+            class="visibility-hint"
+          >r18 作品对未开启成人模式的访客不可见（含公开链接）</span>
+          <span
+            v-if="visNote"
+            class="visibility-hint"
+          >{{ visNote }}</span>
+        </div>
 
         <div class="detail-actions">
           <a
@@ -306,5 +367,42 @@ function markOrientation(event: Event) {
 .btn-ghost.danger {
   color: #d9534f;
   border-color: rgba(217, 83, 79, 0.4);
+}
+</style>
+
+<style scoped>
+.detail-rating {
+  color: var(--amber);
+}
+
+.detail-rating--mild {
+  color: var(--faint);
+}
+
+.visibility-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 4px 0 18px;
+}
+
+.visibility-label {
+  font-size: 13px;
+  color: var(--faint);
+}
+
+.visibility-select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.visibility-hint {
+  font-size: 12px;
+  color: var(--muted);
 }
 </style>

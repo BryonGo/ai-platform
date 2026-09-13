@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
 import { HOME_TOOLS } from '~/data/hougong-home'
+import AppAgeGate from './components/AppAgeGate.vue'
 
 useHead({
   htmlAttrs: { lang: 'zh-CN' },
@@ -37,7 +38,7 @@ const navAssets = [
 const navBottom = [
   { to: '/models', label: '模型', icon: 'i-lucide-box', color: 'var(--hg3-i-blue)' },
   { to: '/notifications', label: '通知', icon: 'i-lucide-bell', color: 'var(--hg3-i-coral)' },
-  { to: '', label: '设置', icon: 'i-lucide-settings', color: 'var(--hg3-i-gray)' }
+  { to: '/settings', label: '设置', icon: 'i-lucide-settings', color: 'var(--hg3-i-gray)' }
 ]
 
 /* 未登录时的最近会话由 mock 兜底（后端 listSessions 需要登录态），
@@ -603,6 +604,10 @@ watch(() => route.fullPath, () => {
       </div>
 
       <HgAuthDialog v-model:open="authOpen" />
+
+      <!-- 站点 18+ 年龄门：服务端说需要过门且本浏览器未过时遮住整页。
+           挂在应用壳最外层，任何页面（含直接深链进入）都拦得住。 -->
+      <AppAgeGate />
     </div>
   </UApp>
 </template>

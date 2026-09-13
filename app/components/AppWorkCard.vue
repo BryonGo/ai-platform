@@ -10,6 +10,13 @@ export interface WorkCardItem {
   tone?: string
   recommended?: boolean
   status?: string
+  /** 内容分级 sfw/r15/r18。 */
+  contentRating?: string
+  /**
+   * 是否需要遮罩。由调用方按服务端口径算好（r18 且当前不可用成人内容），
+   * 卡片不自己判断 —— 权限判定只有一处。
+   */
+  masked?: boolean
 }
 
 defineProps<{
@@ -42,6 +49,21 @@ defineProps<{
       aria-hidden="true"
     />
     <span class="story-index">0{{ index + 1 }}</span>
+    <!-- r18 遮罩：成人分级作品在未开启成人模式时默认模糊，
+         标题留在下面（不遮标题是有意的：用户要能认出这是自己的哪张图）。 -->
+    <span
+      v-if="work.masked"
+      class="adult-mask"
+      aria-hidden="true"
+    />
+    <span
+      v-if="work.contentRating === 'r18'"
+      class="rating-pill"
+    >R18</span>
+    <span
+      v-else-if="work.contentRating === 'r15'"
+      class="rating-pill rating-pill--mild"
+    >R15</span>
     <span
       v-if="work.status === 'running'"
       class="status-pill"
@@ -71,6 +93,35 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 遮罩只挡画面，不挡标题：用户要能认出这是自己的哪张图。
+   强模糊 + 轻微暗化，避免"糊一层还能看清"的假遮罩。 */
+.adult-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  backdrop-filter: blur(22px) saturate(0.7);
+  background: rgb(8 9 10 / 0.35);
+}
+
+.rating-pill {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  padding: 2px 8px;
+  border: 1px solid rgb(251 191 36 / 0.6);
+  border-radius: 4px;
+  background: rgb(8 9 10 / 0.7);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+
+.rating-pill--mild {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
 .work-placeholder {
   display: grid;
   place-items: center;

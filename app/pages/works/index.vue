@@ -3,6 +3,8 @@ import AppWorkCard from '~/components/AppWorkCard.vue'
 
 const api = useHougongApi()
 const session = useAuthSession()
+// 成人内容的可用性只取服务端算好的 canUseAdult，前端不自己推导。
+const gate = useAdultGate()
 const works = ref<(WorkItem & Record<string, unknown>)[]>([])
 const charNames = ref<Record<number, string>>({})
 const loading = ref(false)
@@ -16,12 +18,19 @@ const filtered = computed(() => {
   return works.value.filter(w => w.kind === kind)
 })
 
+const maskedIds = computed(() => new Set(
+  works.value
+    .filter(w => (w as { contentRating?: string }).contentRating === 'r18' && !gate.status.value.canUseAdult)
+    .map(w => w.id)
+))
+
 onMounted(async () => {
   session.load()
   if (!session.token.value) {
     await navigateTo('/auth/login')
     return
   }
+  gate.refresh()
   loading.value = true
   try {
     const [list, chars] = await Promise.all([
@@ -30,6 +39,7 @@ onMounted(async () => {
     ])
     charNames.value = Object.fromEntries(chars.map(c => [c.id, c.name]))
     // 映射组件所需字段（image/meta/status/recommended）。
+    // masked 在渲染时按 canUseAdult 现算（见 maskedIds），这里只把分级带进卡片。
     works.value = list.map(w => ({ ...w, image: w.imageUrl || '', meta: w.kind === 'video' ? '视频' : '图片', status: 'done', recommended: false }) as WorkItem & Record<string, unknown>)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
@@ -90,7 +100,7 @@ onMounted(async () => {
       <AppWorkCard
         v-for="(w, i) in filtered"
         :key="w.id"
-        :work="w"
+        :work="{ ...w, masked: maskedIds.has(w.id) }"
         :index="i"
         :character-name="charNames[w.characterId]"
       />

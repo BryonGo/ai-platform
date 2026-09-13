@@ -59,6 +59,10 @@ export interface WorkItem {
   kind: string
   status: string
   favorite: boolean
+  /** 内容分级 sfw/r15/r18（语义见服务端 internal/platform/rating）。 */
+  contentRating?: string
+  /** 可见性 private/unlisted/public。 */
+  visibility?: string
   createdAt: number
 }
 
@@ -91,6 +95,12 @@ export interface CatalogItem {
   family: string
   /** 后台维护的一句话简介；未配置时后端不下发该字段 */
   summary?: string
+  /**
+   * 内容分级。adult 条目只在"本站开启成人内容 + 已过 18+ 年龄门 + 已开成人模式"时
+   * 由服务端下发；也就是说前端拿到 adult 就说明当前用户有资格，
+   * 不需要再自己判断一次（判定只有服务端那一份）。
+   */
+  safety: 'safe' | 'adult' | string
   fileName?: string
   cover?: string
   available: boolean
@@ -213,6 +223,10 @@ export interface WorkCreateInput {
   assetId?: number | string
   kind?: string
   title?: string
+  /** 内容分级，缺省 sfw。 */
+  contentRating?: 'sfw' | 'r15' | 'r18'
+  /** 可见性；缺省由服务端按分级推（r18 → private）。 */
+  visibility?: 'private' | 'unlisted' | 'public'
 }
 
 export interface SessionItem {
@@ -701,6 +715,18 @@ export function useHougongApi() {
     return apiRequest<WorkItem>('/hougong/works', { method: 'POST', body: input })
   }
 
+  /** 修改作品可见性（可选一并改分级）。作者本人。 */
+  async function setWorkVisibility(
+    id: number | string,
+    visibility: 'private' | 'unlisted' | 'public',
+    contentRating?: 'sfw' | 'r15' | 'r18'
+  ): Promise<WorkItem> {
+    return apiRequest<WorkItem>(`/hougong/works/${id}/visibility`, {
+      method: 'PUT',
+      body: contentRating ? { visibility, contentRating } : { visibility }
+    })
+  }
+
   // ── 生成会话（workspace）──
   async function listSessions(page = 1, pageSize = 20): Promise<SessionItem[]> {
     const res = await apiRequest<{ items: SessionItem[] }>(`/platform/session?page=${page}&pageSize=${pageSize}`)
@@ -994,6 +1020,7 @@ export function useHougongApi() {
     cancelTask,
     retryTask,
     createWork,
+    setWorkVisibility,
     getCatalog,
     optimizePrompt,
     translatePrompt,
