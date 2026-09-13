@@ -173,6 +173,8 @@ export interface CatalogVideoModel {
   durations: VideoDurationOption[]
   resolutions: VideoResolution[]
   note?: string
+  /** 后台维护的一句话简介（目录下发；未配置时为空，UI 回落 note） */
+  summary?: string
   available: boolean
   selectable: boolean
   /** 不可用原因（未就绪 / 后台停用原文）；可用时后端不下发 */
