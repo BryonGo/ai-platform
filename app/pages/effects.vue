@@ -94,20 +94,24 @@ const counts = computed(() => ({
   video: effects.value.filter(e => e.category === 'video').length
 }))
 
-/** 标签行：全部 + 角标（热门/新品…）+ 标签（按出现次数排序，最多 14 个）。 */
+/**
+ * 标签行：全部 + 角标（热门/新品…）+ 标签（最多 12 个）。
+ *
+ * 顺序按"第一次出现的顺序"排，不按出现次数：按钮顺序一变，用户下一次就找不到
+ * 上次点的那个标签了（脱衣这类主力效果排在最前也符合直觉）。
+ */
 const tagList = computed(() => {
   const badges = [...new Set(effects.value.filter(inTab).map(e => e.badge).filter(Boolean))] as string[]
-  const freq = new Map<string, number>()
+  const seen = new Set<string>()
   for (const e of effects.value.filter(inTab)) {
-    for (const t of e.tags) freq.set(t, (freq.get(t) || 0) + 1)
+    for (const t of e.tags) {
+      if (seen.size >= 12) break
+      seen.add(t)
+    }
   }
-  const tags = [...freq.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([value]) => value)
-    .slice(0, 14)
   return [
     ...badges.map(b => ({ kind: 'badge' as const, value: b })),
-    ...tags.map(t => ({ kind: 'tag' as const, value: t }))
+    ...[...seen].map(t => ({ kind: 'tag' as const, value: t }))
   ]
 })
 
