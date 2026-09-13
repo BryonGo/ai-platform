@@ -18,6 +18,10 @@ export interface ToolItem {
   category: string
   summary: string
   icon: string
+  /** 封面图（效果卡缩略图）；空 = 用图标占位，不留空框。 */
+  cover?: string
+  /** 角标文案（热门/新品/精选…）；空 = 不显示。 */
+  badge?: string
   engine: string
   input: string
   supportsTemplates: boolean

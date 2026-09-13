@@ -107,6 +107,10 @@ export interface ToolCatalogItem {
   category: string
   summary: string
   icon: string
+  /** 封面图 URL（效果卡缩略图）；空 = 用图标占位 */
+  cover?: string
+  /** 角标文案（热门/新品/精选…）；空 = 不显示 */
+  badge?: string
   /** 执行引擎：comfy / cloud */
   engine: string
   /** 输入形态：text/image/image_pair/image_mask/image_audio（据此选输入面板） */
