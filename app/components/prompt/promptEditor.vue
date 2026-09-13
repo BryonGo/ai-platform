@@ -31,13 +31,21 @@ const emit = defineEmits<{
 }>()
 
 // 第一级分类菜单（对齐 PeachArt snippet-menu）。
-const categories = [
+const baseCategories = [
   { key: 'character', label: '角色', description: '选择角色并保留完整特征' },
   { key: 'clothing', label: '服装', description: '选择一套完整搭配' },
   { key: 'background', label: '背景', description: '选择画面所在场景' },
   { key: 'pose', label: '姿势', description: '选择动作与构图姿势' },
   { key: 'style', label: '画风', description: '选择艺术家风格' }
 ]
+
+// 「成人」分类只在服务端说 canUseAdult 时才出现在菜单里。
+// 这里不是权限判断（真正的闸在服务端：未过年龄门/未开成人模式时那个分类根本不下发），
+// 而是不给用户一个点进去必然空手而归的入口。
+const gate = useAdultGate()
+const categories = computed(() => (gate.status.value.canUseAdult
+  ? [...baseCategories, { key: 'adult', label: '成人', description: '成人向提示词（仅你可见）' }]
+  : baseCategories))
 
 const menuOpen = ref(false)
 const menuActive = ref(0)
@@ -149,13 +157,13 @@ function onMenuKeydown(event: KeyboardEvent) {
   if (!menuOpen.value) return
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    menuActive.value = (menuActive.value + 1) % categories.length
+    menuActive.value = (menuActive.value + 1) % categories.value.length
   } else if (event.key === 'ArrowUp') {
     event.preventDefault()
-    menuActive.value = (menuActive.value - 1 + categories.length) % categories.length
+    menuActive.value = (menuActive.value - 1 + categories.value.length) % categories.value.length
   } else if (event.key === 'Enter') {
     event.preventDefault()
-    const cat = categories[menuActive.value]
+    const cat = categories.value[menuActive.value]
     if (cat) chooseCategory(cat.key)
   } else if (event.key === 'Backspace') {
     event.preventDefault()

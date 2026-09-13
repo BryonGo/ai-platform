@@ -25,7 +25,8 @@ const labels: Record<string, string> = {
   clothing: '服装',
   background: '背景',
   pose: '姿势',
-  style: '画风'
+  style: '画风',
+  adult: '成人'
 }
 const title = computed(() => `选择${labels[props.category] || '超级标签'}`)
 const subfilters = computed(() => {

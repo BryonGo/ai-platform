@@ -11,6 +11,15 @@ const related = ref<WorkItem[]>([])
 const loading = ref(true)
 const error = ref('')
 const favBusy = ref(false)
+// r18 在未开成人模式时默认遮罩；作者本人可以在本页临时查看（这是自己的作品，
+// 服务端的 CanView 也允许作者看自己的 r18 —— 遮罩在这里是防"顺手被旁人看到"，
+// 不是权限判断）。
+const revealed = ref(false)
+const needMask = computed(
+  () => work.value?.contentRating === 'r18'
+    && !gate.status.value.canUseAdult
+    && !revealed.value
+)
 const coverBusy = ref(false)
 const coverNote = ref('')
 
@@ -158,6 +167,32 @@ function markOrientation(event: Event) {
             class="media-placeholder"
           >
             <span>{{ work.title.slice(0, 1) }}</span>
+          </div>
+          <div
+            v-if="needMask"
+            class="media-mask"
+          >
+            <p class="media-mask__title">
+              R18 成人内容
+            </p>
+            <p class="media-mask__hint">
+              当前未开启成人模式，已默认遮罩。
+            </p>
+            <div class="media-mask__actions">
+              <button
+                type="button"
+                class="btn-ghost"
+                @click="revealed = true"
+              >
+                临时查看
+              </button>
+              <NuxtLink
+                to="/settings"
+                class="btn-primary"
+              >
+                去设置里开启
+              </NuxtLink>
+            </div>
           </div>
         </div>
       </div>
@@ -371,6 +406,39 @@ function markOrientation(event: Event) {
 </style>
 
 <style scoped>
+.media-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  backdrop-filter: blur(22px) saturate(0.7);
+  background: rgb(8 9 10 / 0.55);
+}
+
+.media-mask__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--amber);
+}
+
+.media-mask__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.media-mask__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 .detail-rating {
   color: var(--amber);
 }
