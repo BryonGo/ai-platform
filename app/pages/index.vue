@@ -58,12 +58,48 @@ const costText = computed(() => cost.value === null ? '费用待确认' : `${cos
 const referenceAllowed = computed(() => mode.value === 'video' || selectedModel.value?.channel === 'cloud')
 const showUpload = computed(() => referenceAllowed.value)
 
-/* 全部工具：分类筛选 + 搜索（标注图） */
+/* 全部工具：目录驱动（后台「创作工具」维护），分类筛选 + 搜索。
+ *
+ * 目录为空时回落到 HOME_TOOLS：首屏是产品的门面，一次接口抖动不该让它变空。
+ * 回落数据只是**展示兜底**，点进去仍会走对应工具（后端没有该工具时会被明确拒绝）。 */
+const toolCatalog = useToolCatalog()
 const toolTab = ref<'all' | ToolKind>('all')
 const toolQuery = ref('')
+
+/** 统一的展示结构：目录项与兜底项都映射成它，模板只认这几个字段。 */
+interface ToolCard {
+  key: string
+  to: string
+  label: string
+  icon: string
+  cover: string
+  kinds: ToolKind[]
+}
+
+const toolCards = computed<ToolCard[]>(() => {
+  const fromCatalog: ToolCard[] = toolCatalog.tools.value.map(tool => ({
+    key: `tool:${tool.code}`,
+    to: `/create?tool=${tool.code}`,
+    label: tool.name,
+    icon: tool.icon || 'i-lucide-sparkles',
+    // 目录不下发封面图；先用首页统一底图，后续工具接入预览图再替换
+    cover: '/images/daji-three-tail-front-v1.webp',
+    kinds: [tool.category as ToolKind]
+  }))
+  if (fromCatalog.length) return fromCatalog
+  return HOME_TOOLS.map(tool => ({
+    key: `mock:${tool.id}`,
+    to: '/create',
+    label: tool.label,
+    icon: tool.icon,
+    cover: tool.cover,
+    kinds: tool.kinds
+  }))
+})
+
 const filteredTools = computed(() => {
   const keyword = toolQuery.value.trim().toLowerCase()
-  return HOME_TOOLS
+  return toolCards.value
     .filter(tool => toolTab.value === 'all' || tool.kinds.includes(toolTab.value))
     .filter(tool => !keyword || tool.label.toLowerCase().includes(keyword))
 })
@@ -75,6 +111,7 @@ const ratioList = RATIO_OPTIONS
 
 onMounted(async () => {
   session.load()
+  void toolCatalog.ensure()
   try {
     catalog.value = await hgApi.getCatalog()
   } catch {
@@ -750,9 +787,10 @@ function openContinuePreview(item: ContinueItem) {
       </div>
 
       <div class="tool-grid">
-        <article
+        <NuxtLink
           v-for="tool in filteredTools"
-          :key="tool.id"
+          :key="tool.key"
+          :to="tool.to"
           class="hg-card tool-card"
         >
           <div class="hg-media r16x9">
@@ -761,10 +799,6 @@ function openContinuePreview(item: ContinueItem) {
               :alt="tool.label"
               loading="lazy"
             >
-            <span
-              v-if="!tool.badgeBaked"
-              class="hg-badge"
-            >热门</span>
             <span
               v-if="tool.kinds.includes('video')"
               class="media-play"
@@ -782,7 +816,7 @@ function openContinuePreview(item: ContinueItem) {
             </span>
             <span class="card-label">{{ tool.label }}</span>
           </div>
-        </article>
+        </NuxtLink>
       </div>
     </section>
 

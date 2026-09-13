@@ -1,42 +1,51 @@
 <script setup lang="ts">
-useSeoMeta({ title: '全部效果 · 后宫' })
+// 全部工具（/effects）。
+//
+// 列表由后端目录驱动（GET /hougong/tools）：运营在后台停用工具后这里立刻消失，
+// 不需要发版；新增工具也不用改前端。目录为空时给明确空态，而不是回落到写死的假数据。
+useSeoMeta({ title: '全部工具 · 后宫' })
 
+const catalog = useToolCatalog()
 const category = ref('all')
 const search = ref('')
+
 const categories = [
   { value: 'all', label: '全部' },
   { value: 'image', label: '图片' },
-  { value: 'video', label: '视频' }
+  { value: 'video', label: '视频' },
+  { value: 'enhance', label: '增强' }
 ]
-// 仅连接已经存在的创作模式，不在入口层选择模型或创建任务。
-const effects = [
-  { id: 'image', title: '图片创作', kind: 'image', label: '图片', icon: 'i-lucide-image', tags: '文生图 图生图 图片编辑', to: '/create?mode=image' },
-  { id: 'first-frame', title: '首帧图生视频', kind: 'video', label: '视频', icon: 'i-lucide-video', tags: '首帧 图生视频', to: '/create?mode=video' }
-]
-const filteredEffects = computed(() => effects.filter(effect =>
-  (category.value === 'all' || effect.kind === category.value)
-  && `${effect.title} ${effect.tags}`.includes(search.value.trim())
-))
+
+const filteredTools = computed(() => {
+  const list = catalog.byCategory(category.value)
+  const q = search.value.trim().toLowerCase()
+  if (!q) return list
+  return list.filter(t => `${t.name} ${t.summary} ${t.code}`.toLowerCase().includes(q))
+})
+
+onMounted(() => {
+  catalog.ensure()
+})
 </script>
 
 <template>
   <div class="page-body effects-page">
     <div class="page-head">
-      <h1>全部效果</h1>
+      <h1>全部工具</h1>
       <label class="effect-search">
         <UIcon name="i-lucide-search" />
         <input
           v-model="search"
           type="search"
-          placeholder="搜索效果"
-          aria-label="搜索效果"
+          placeholder="搜索工具"
+          aria-label="搜索工具"
         >
       </label>
     </div>
     <div
       class="effect-categories"
       role="group"
-      aria-label="效果分类"
+      aria-label="工具分类"
     >
       <button
         v-for="item in categories"
@@ -50,31 +59,52 @@ const filteredEffects = computed(() => effects.filter(effect =>
     </div>
     <div class="effects-grid">
       <NuxtLink
-        v-for="effect in filteredEffects"
-        :key="effect.id"
-        :to="effect.to"
+        v-for="tool in filteredTools"
+        :key="tool.code"
+        :to="`/create?tool=${tool.code}`"
         class="effect-card"
       >
         <div class="effect-media">
           <img
             src="/images/daji-three-tail-front-v1.webp"
-            alt="角色素材"
+            alt=""
             loading="lazy"
           >
-          <span class="effect-kind"><UIcon :name="effect.icon" />{{ effect.label }}</span>
+          <span class="effect-kind"><UIcon :name="tool.icon || 'i-lucide-sparkles'" />{{ tool.name }}</span>
+          <span
+            v-if="tool.templates.length"
+            class="effect-count"
+          >{{ tool.templates.length }} 个模板</span>
         </div>
         <div class="effect-name">
-          <h2>{{ effect.title }}</h2>
+          <div class="effect-text">
+            <h2>{{ tool.name }}</h2>
+            <p v-if="tool.summary">
+              {{ tool.summary }}
+            </p>
+          </div>
           <UIcon name="i-lucide-arrow-up-right" />
         </div>
       </NuxtLink>
     </div>
     <p
-      v-if="!filteredEffects.length"
+      v-if="catalog.loading.value && !catalog.tools.value.length"
       role="status"
       class="empty-tip"
     >
-      没有匹配的效果
+      正在加载工具…
+    </p>
+    <p
+      v-else-if="!filteredTools.length"
+      role="status"
+      class="empty-tip"
+    >
+      <template v-if="!catalog.tools.value.length">
+        本站还没有开放任何工具（可在后台「平台运营 → 创作工具」里添加并启用）。
+      </template>
+      <template v-else>
+        没有匹配的工具
+      </template>
     </p>
   </div>
 </template>
@@ -90,11 +120,14 @@ const filteredEffects = computed(() => effects.filter(effect =>
 .effect-card { min-width: 0; overflow: hidden; border: 1px solid var(--hg-line); border-radius: 8px; background: var(--hg-card); color: var(--ink); text-decoration: none; }
 .effect-card:hover { border-color: var(--hg-muted); }
 .effect-media { position: relative; aspect-ratio: 4 / 3; background: #141416; }
-.effect-media img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.effect-media img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0.35; }
 .effect-kind { position: absolute; bottom: 12px; left: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px; background: #151517; font-size: 12px; }
-.effect-name { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; }
+.effect-count { position: absolute; top: 12px; right: 12px; padding: 4px 8px; border-radius: 4px; background: #151517cc; font-size: 12px; color: var(--hg-muted); }
+.effect-name { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px; }
+.effect-text { min-width: 0; }
 .effect-name h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
-.effect-name > span { flex-shrink: 0; }
+.effect-name p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--hg-muted); }
+.effect-name > span, .effect-name > svg { flex-shrink: 0; }
 @media (max-width: 600px) {
   .page-head { align-items: stretch; }
   .effect-search { width: 100%; }

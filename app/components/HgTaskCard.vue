@@ -31,7 +31,12 @@ onUnmounted(() => {
 })
 
 const assets = computed(() => props.message.assets ?? [])
-const kindLabel = computed(() => props.message.meta?.mode === 'video' ? '视频生成' : '图片生成')
+const kindLabel = computed(() => {
+  const meta = props.message.meta
+  // 用了工具就报工具名：用户点的是"高清放大"，卡片上写"图片生成"等于不承认这件事
+  if (meta?.toolName) return meta.templateName ? `${meta.toolName} · ${meta.templateName}` : meta.toolName
+  return meta?.mode === 'video' ? '视频生成' : '图片生成'
+})
 const paramsLine = computed(() => {
   const meta = props.message.meta
   if (!meta) return ''

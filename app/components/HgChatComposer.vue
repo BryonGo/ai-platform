@@ -77,6 +77,8 @@ function ensureMentionData() {
 }
 
 const characterName = computed(() => studio.selectedCharacter.value?.name || '')
+/** 模板选择浮层开关（模板只在工具支持时才有内容）。 */
+const tplOpen = ref(false)
 
 function onFile(event: Event) {
   const input = event.target as HTMLInputElement
@@ -131,6 +133,80 @@ function patchSampling(patch: Record<string, number | string>) {
           aria-hidden="true"
         />视频创作
       </button>
+    </div>
+
+    <!-- 当前工具 + 模板：只在从工具入口进来（或手动选过工具）时出现。
+         工具决定"能做什么"，模板决定"做成什么样"，两者都只传 code 给后端。 -->
+    <div
+      v-if="studio.activeTool.value"
+      class="tool-row"
+    >
+      <span class="tool-chip">
+        <UIcon
+          :name="studio.toolInfo.value?.icon || 'i-lucide-sparkles'"
+          aria-hidden="true"
+        />
+        {{ studio.toolInfo.value?.name || studio.activeTool.value }}
+        <button
+          type="button"
+          aria-label="取消当前工具"
+          @click="studio.setTool('')"
+        >
+          <UIcon name="i-lucide-x" />
+        </button>
+      </span>
+      <button
+        v-if="studio.toolTemplates.value.length"
+        type="button"
+        class="template-chip"
+        :class="{ active: !!studio.activeTemplate.value }"
+        @click="tplOpen = !tplOpen"
+      >
+        <UIcon
+          name="i-lucide-layers"
+          aria-hidden="true"
+        />
+        {{ studio.activeTemplate.value
+          ? (studio.toolTemplates.value.find(t => t.code === studio.activeTemplate.value)?.name || studio.activeTemplate.value)
+          : '选择模板' }}
+        <UIcon name="i-lucide-chevron-down" />
+      </button>
+      <span
+        v-if="studio.toolNeedsImage.value && !studio.reference.value.preview"
+        class="tool-hint"
+      >该工具需要先选一张图</span>
+    </div>
+
+    <!-- 模板选择：底部弹层（移动端友好），与其它选择器同一套交互 -->
+    <div
+      v-if="tplOpen && studio.toolTemplates.value.length"
+      class="tpl-sheet"
+      role="dialog"
+      aria-label="选择模板"
+    >
+      <div class="tpl-sheet-head">
+        <span>选择模板</span>
+        <button
+          type="button"
+          aria-label="关闭"
+          @click="tplOpen = false"
+        >
+          <UIcon name="i-lucide-x" />
+        </button>
+      </div>
+      <div class="tpl-grid">
+        <button
+          v-for="tpl in studio.toolTemplates.value"
+          :key="tpl.code"
+          type="button"
+          class="tpl-card"
+          :class="{ active: studio.activeTemplate.value === tpl.code }"
+          @click="studio.setTemplate(tpl.code); tplOpen = false"
+        >
+          <strong>{{ tpl.name }}</strong>
+          <small v-if="tpl.summary">{{ tpl.summary }}</small>
+        </button>
+      </div>
     </div>
 
     <div
@@ -482,6 +558,20 @@ function patchSampling(patch: Record<string, number | string>) {
 </template>
 
 <style scoped>
+.tool-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tool-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--hg-accent); border-radius: 999px; background: color-mix(in srgb, var(--hg-accent) 12%, transparent); font-size: 13px; }
+.tool-chip button { display: inline-flex; border: 0; background: transparent; color: inherit; cursor: pointer; opacity: 0.7; }
+.tool-chip button:hover { opacity: 1; }
+.template-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--hg-line); border-radius: 999px; background: transparent; color: var(--hg-muted); font-size: 13px; cursor: pointer; }
+.template-chip.active { color: var(--ink); border-color: var(--hg-muted); }
+.tool-hint { font-size: 12px; color: var(--hg-muted); }
+.tpl-sheet { margin-bottom: 10px; padding: 12px; border: 1px solid var(--hg-line); border-radius: 10px; background: var(--hg-card); }
+.tpl-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; color: var(--hg-muted); }
+.tpl-sheet-head button { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+.tpl-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--hg-line); border-radius: 8px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.tpl-card.active { border-color: var(--hg-accent); }
+.tpl-card small { color: var(--hg-muted); }
 .chat-composer {
   width: 100%;
   /* 与消息列同宽并居中：输入框不再通栏撑开 */

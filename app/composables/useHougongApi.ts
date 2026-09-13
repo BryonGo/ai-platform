@@ -88,6 +88,33 @@ export interface CatalogSampling {
   schedulers: string[]
 }
 
+/**
+ * 创作工具（后台「创作工具」维护）。
+ *
+ * 与 CatalogItem（底模/LoRA 目录）是两回事：工具是"一类能力 + 预置"，
+ * 底模是"用哪个模型画"。工具的预置提示词/LoRA/工作流都在服务端，前端只认 code。
+ */
+export interface ToolTemplateItem {
+  code: string
+  name: string
+  summary: string
+}
+
+export interface ToolCatalogItem {
+  code: string
+  name: string
+  /** image / video / enhance */
+  category: string
+  summary: string
+  icon: string
+  /** 执行引擎：comfy / cloud */
+  engine: string
+  /** 输入形态：text/image/image_pair/image_mask/image_audio（据此选输入面板） */
+  input: string
+  supportsTemplates: boolean
+  templates?: ToolTemplateItem[]
+}
+
 export interface CatalogItem {
   id: string
   type: 'model' | 'lora'
@@ -649,6 +676,12 @@ export function useHougongApi() {
    * true：不可用条目也下发并带 `unavailableReason`，由 UI 自己渲染灰态 +
    * 「为什么不可用」。这是产品口径，切换前先确认前端面板能承载灰态列表。
    */
+  /** 创作工具目录（本站已启用的工具与模板）。运营在后台停用后立刻不再下发。 */
+  async function listTools(): Promise<ToolCatalogItem[]> {
+    const res = await apiRequest<{ items: ToolCatalogItem[] }>('/hougong/tools')
+    return res.items || []
+  }
+
   async function getCatalog(includeUnavailable = false): Promise<Catalog> {
     const q = includeUnavailable ? '?includeUnavailable=1' : ''
     return apiRequest<Catalog>(`/platform/catalog${q}`)
@@ -694,6 +727,10 @@ export function useHougongApi() {
     engine?: string
     characterId?: string
     refAssetIds?: string[]
+    /** 创作工具 code（可选）。只能传 code：预置提示词/LoRA/工作流都由服务端拼。 */
+    tool?: string
+    /** 工具模板 code（可选）。 */
+    template?: string
   }): Promise<HougongTask> {
     return apiRequest<HougongTask>('/hougong/tasks', { method: 'POST', body: input })
   }
@@ -1024,6 +1061,7 @@ export function useHougongApi() {
     createWork,
     setWorkVisibility,
     getCatalog,
+    listTools,
     optimizePrompt,
     translatePrompt,
     listSessions,

@@ -41,6 +41,9 @@ export interface RunMeta {
   unit: '积分' | '余额'
   prompt: string
   characterName: string
+  /** 用了哪个创作工具/模板（建任务时定稿，任务卡回显用；没选工具时为空）。 */
+  toolName?: string
+  templateName?: string
   /**
    * 这一单的内容分级，**提交时定稿**。
    *
@@ -94,6 +97,31 @@ export function createChatStudio() {
   /* ---------------- 输入器状态 ---------------- */
 
   const mode = ref<ComposerMode>(route.query.mode === 'video' ? 'video' : 'image')
+
+  /* ---------------- 创作工具（后台「创作工具」维护） ----------------
+   *
+   * 前端只认 code：提示词预置、LoRA 文件名、工作流名都由后端从库里取并在建任务时
+   * 冻结进快照。这里持有的两份状态只用于**展示与提交**，不参与任何权限判断。
+   */
+  const tools = useToolCatalog()
+  const activeTool = ref<string>('')
+  const activeTemplate = ref<string>('')
+  const toolInfo = computed(() => (activeTool.value ? tools.get(activeTool.value) : undefined))
+  const toolTemplates = computed(() => (activeTool.value ? tools.templatesOf(activeTool.value) : []))
+  /** 该工具是否需要先选图（决定引用区是否显示、以及能否发送）。 */
+  const toolNeedsImage = computed(() => !!activeTool.value && tools.needsImage(activeTool.value))
+
+  /** 切换工具：连带把模式切到工具所属类别，并清掉不适用的模板。 */
+  function setTool(code: string) {
+    activeTool.value = code || ''
+    activeTemplate.value = ''
+    const info = code ? tools.get(code) : undefined
+    if (info) mode.value = info.category === 'video' ? 'video' : 'image'
+  }
+
+  function setTemplate(code: string) {
+    activeTemplate.value = code || ''
+  }
   /** 提示词：结构化 parts（@角色/@服装/@背景/@姿势/@画风 插入 snippet 节点），
      提交任务时用 promptText() 取纯文本（与旧创作页一致）。 */
   const promptModel = ref<Prompt>({ parts: [] })
@@ -198,7 +226,10 @@ export function createChatStudio() {
    * - 云端模型支持参考图（catalog.cloudModels.capabilities.maxInputs > 0）
    * - 视频必须给首帧，所以视频模式保留
    */
-  const referenceAllowed = computed(() => mode.value === 'video' || selectedModel.value?.channel === 'cloud')
+  // 参考图是"输入"而不是"图片模型的附加能力"：视频、云端图生图，以及**需要图的工具**
+  // （放大/脱衣/换脸…）都必须允许上传。少了最后一项，选完工具会发现传不了图。
+  const referenceAllowed = computed(() =>
+    mode.value === 'video' || selectedModel.value?.channel === 'cloud' || toolNeedsImage.value)
 
   const quote = computed(() => quoteModel(catalog.value, selectedModel.value, {
     ratio: ratio.value,
@@ -673,6 +704,10 @@ export function createChatStudio() {
       unit: quote.value?.unit ?? '积分',
       prompt: text,
       characterName: selectedCharacter.value?.name || '',
+      toolName: toolInfo.value?.name || '',
+      templateName: activeTemplate.value
+        ? (toolTemplates.value.find(t => t.code === activeTemplate.value)?.name || activeTemplate.value)
+        : '',
       contentRating: usedAdultLora.value ? 'r18' : 'sfw'
     }
     // 第二层防重：同会话内相同生成意图先确认，未确认前不建任务、不预占、不扣款
@@ -725,6 +760,11 @@ export function createChatStudio() {
       if (mode.value === 'video' && !refAssetId) {
         throw new Error('视频生成请先上传首帧图片，或从素材库选择')
       }
+      // 需要图的工具同样必须先有图：前端先拦一道，免得白跑一次计费预占
+      // （后端也会拒，见 createTask 的"该工具需要先选择一张图片"）。
+      if (toolNeedsImage.value && !refAssetId) {
+        throw new Error('该工具需要先选择一张图片，或从素材库选择')
+      }
       // 本地文生图模型不支持参考图：即使界面上残留了引用也不下发
       if (!referenceAllowed.value) refAssetId = ''
       const created2 = await hgApi.createTask({
@@ -751,7 +791,10 @@ export function createChatStudio() {
           : undefined,
         modelId: modelId.value || undefined,
         characterId: characterId.value || undefined,
-        refAssetIds: refAssetId ? [refAssetId] : []
+        refAssetIds: refAssetId ? [refAssetId] : [],
+        // 工具与模板只传 code；预置由后端拼（前端不碰提示词预置/LoRA/工作流）
+        tool: activeTool.value || undefined,
+        template: activeTemplate.value || undefined
       })
       created = String(created2.id)
       taskMessage.taskId = created
@@ -833,7 +876,20 @@ export function createChatStudio() {
 
   async function init() {
     session.load()
-    await Promise.all([loadCatalog(), loadCharacters()])
+    // 目录与模型目录并行拉：工具要先于"默认模型"落位，避免选完工具又被默认模型覆盖模式
+    await Promise.all([loadCatalog(), loadCharacters(), tools.ensure()])
+    const queryTool = typeof route.query.tool === 'string' ? route.query.tool : ''
+    if (queryTool) {
+      if (tools.get(queryTool)) {
+        setTool(queryTool)
+        const queryTemplate = typeof route.query.template === 'string' ? route.query.template : ''
+        if (queryTemplate) setTemplate(queryTemplate)
+      } else {
+        // 工具被运营停用/删除了。**不能静默降级**成普通创作：用户点的是"放大"，
+        // 悄悄按文生图跑出来的是另一件事，而且照样计费。
+        notice.value = '该工具已下线，已切换为普通创作'
+      }
+    }
     // 目录到位后显式落一次默认底模：图片 Krea 2 Turbo / 视频 MiniMax H3。
     // 不依赖 watch 的触发时序，避免出现「模型：待选择」。
     ensureDefaultModel()
@@ -861,6 +917,8 @@ export function createChatStudio() {
   return {
     // 输入器
     mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId, reference, notice,
+    // 创作工具
+    activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,
     selectedLoras, loraOptions,
     costText, quote, canSend, referenceAllowed,
