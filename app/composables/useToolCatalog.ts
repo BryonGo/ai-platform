@@ -10,6 +10,18 @@ export interface ToolTemplate {
   code: string
   name: string
   summary: string
+  /** 该玩法自己一张卡的缩略图；空 = 前台回落用所属工具的封面。 */
+  cover?: string
+  /** 玩法角标（热门/新品/精选…），空 = 不显示（**不**继承工具角标）。 */
+  badge?: string
+  /** 标签（分类），效果列表的标签行按它筛。 */
+  tags?: string[]
+  /**
+   * 是否在「全部效果」里单独成一张卡。
+   * false = 只是父工具的一个选项（全脱/上半身/下半身），只在工具页作为玩法切换出现。
+   * 后端没下发时按 true 处理：漏一个字段不该让整批玩法从效果列表里消失。
+   */
+  isCard?: boolean
 }
 
 export interface ToolItem {
@@ -22,6 +34,8 @@ export interface ToolItem {
   cover?: string
   /** 角标文案（热门/新品/精选…）；空 = 不显示。 */
   badge?: string
+  /** 标签（分类），效果列表的标签行按它筛。 */
+  tags?: string[]
   engine: string
   input: string
   supportsTemplates: boolean

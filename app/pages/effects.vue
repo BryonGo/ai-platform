@@ -3,8 +3,16 @@
 // 顶部一条「新功能」提示 → 大横幅（标题 + 开始使用 + 三个小标签）→ 横排精选
 // → 「视频效果 N / 图像效果 N」+ 搜索 → 标签行 → 五列竖版卡片（缩略图 + 角标 + 名称在下方）。
 //
+// 什么算"一张卡"：**一个效果一张卡**，不是"一个玩法一张卡"。
+// 脱衣工具下的全脱/上半身/下半身是同一件事的三个选项，各自铺一张卡会让整个列表
+// 看起来全是重名（运营实测反馈："脱衣、全托、上半身、下半身这是一样的吧"）。
+// 所以工具下的玩法分两类（后台 one 开关控制）：
+//   单独成卡（默认）：口交、深喉、大字型 —— 参考站就是一张张列出来的，确实是不同的效果；
+//   只是选项（isCard=false）：全脱/上半身/下半身、护士装/旗袍、2 倍/4 倍 —— 进工具页切。
+// 选项仍然能点到：它们挂在所属工具那张卡的"玩法"里，标签行也照旧能筛出来。
+//
 // 数据仍然全部来自后端目录（GET /hougong/tools）：运营在后台停用工具，这里立刻消失；
-// 封面图与角标也在后台填（没填就用图标兜底，不留空框）。
+// 封面图、角标、标签也在后台填（没填就用图标兜底，不留空框）。
 useSeoMeta({ title: '全部效果 · 后宫' })
 
 const catalog = useToolCatalog()
@@ -14,8 +22,6 @@ const activeTag = ref('all')
 
 const tools = computed(() => catalog.tools.value)
 
-/** 一个"效果"= 工具本身，或它下面的一个玩法（玩法卡点进去会带上该玩法）。
- *  参考站的 All Effects 就是这个粒度：裸体姿势、大字型、深喉 各占一张卡。 */
 interface EffectCard {
   key: string
   code: string
@@ -26,35 +32,61 @@ interface EffectCard {
   cover?: string
   badge?: string
   category: string
-  templateCount: number
+  /** 该卡里能选的玩法数（工具卡 = 它下面所有玩法；玩法卡 = 0）。 */
+  optionCount: number
+  tags: string[]
+  /** 是否工具卡（横排精选只放工具卡，跟参考站一致）。 */
+  isTool: boolean
+}
+
+/** 只当作"选项"的玩法：后端明确说了 isCard=false。 */
+function isOption(tpl: { isCard?: boolean }): boolean {
+  return tpl.isCard === false
 }
 
 const effects = computed<EffectCard[]>(() => {
   const out: EffectCard[] = []
   for (const t of tools.value) {
-    const base = {
-      code: t.code, icon: t.icon, cover: t.cover, badge: t.badge,
-      category: t.category, templateCount: (t.templates || []).length
+    const tpls = t.templates || []
+    const plays = tpls.filter(x => !isOption(x))
+    const options = tpls.filter(x => isOption(x))
+    const base = { code: t.code, icon: t.icon, category: t.category }
+    // 工具自己什么时候成卡：它没有玩法卡（那它本身就是这个效果），
+    // 或者它有"只是选项"的玩法（那些选项需要一个入口，否则就点不到了）。
+    if (!plays.length || options.length) {
+      out.push({
+        ...base, key: t.code, name: t.name, summary: t.summary,
+        cover: t.cover, badge: t.badge,
+        optionCount: tpls.length, tags: t.tags || [], isTool: true
+      })
     }
-    out.push({ ...base, key: t.code, name: t.name, summary: t.summary })
-    for (const tpl of t.templates || []) {
+    for (const tpl of plays) {
       out.push({
         ...base, key: `${t.code}:${tpl.code}`, template: tpl.code,
-        name: tpl.name, summary: tpl.summary || t.summary
+        name: tpl.name, summary: tpl.summary || t.summary,
+        // 玩法封面没配就用所属工具的封面：玩法比工具多得多，
+        // 一张张配图是长期活儿，没配的那批不该是一整排灰框。
+        cover: tpl.cover || t.cover,
+        // 角标**不**继承：工具挂了"热门"，不等于它下面 44 个玩法个个都热门。
+        badge: tpl.badge,
+        optionCount: 0, tags: tpl.tags || [], isTool: false
       })
     }
   }
   return out
 })
 
-/** 横幅按钮指向第一个可用工具（没有工具时按钮不渲染）。 */
+/** 横幅按钮指向第一个可用效果（没有效果时按钮不渲染）。 */
 const firstTool = computed(() => effects.value[0])
 
-/** 角标为空的工具也需要展示，这里只取「有角标或排在前面的」做横排精选。 */
+const inTab = (e: EffectCard) => (tab.value === 'video' ? e.category === 'video' : e.category !== 'video')
+
+/** 横排精选：优先挑工具卡（参考站那一排就是 脱衣/换脸/文字转图像/快速编辑/图像放大）。 */
 const strip = computed(() => {
-  const withBadge = effects.value.filter(e => e.badge)
-  const rest = effects.value.filter(e => !e.badge)
-  return [...withBadge, ...rest].slice(0, 5)
+  const cards = effects.value.filter(e => e.isTool && inTab(e))
+  const rest = effects.value.filter(e => e.isTool && !inTab(e))
+  const others = effects.value.filter(e => !e.isTool)
+  return [...cards, ...rest, ...others].slice(0, 5)
 })
 
 const counts = computed(() => ({
@@ -62,30 +94,46 @@ const counts = computed(() => ({
   video: effects.value.filter(e => e.category === 'video').length
 }))
 
-/** 标签行：全部 + 角标（新品/热门…）+ 模板名（点一下筛出带该模板的工具）。 */
+/** 标签行：全部 + 角标（热门/新品…）+ 标签（按出现次数排序，最多 14 个）。 */
 const tagList = computed(() => {
-  const badges = [...new Set(tools.value.map(t => t.badge).filter(Boolean))] as string[]
-  // 标签行给"玩法"用：只显示各工具的前几个，避免整行被 44 个动作铺满
-  const plays = tools.value
-    .filter(t => t.category === tab.value)
-    .flatMap(t => (t.templates || []).slice(0, 6).map(x => ({ tool: t.code, name: x.name })))
+  const badges = [...new Set(effects.value.filter(inTab).map(e => e.badge).filter(Boolean))] as string[]
+  const freq = new Map<string, number>()
+  for (const e of effects.value.filter(inTab)) {
+    for (const t of e.tags) freq.set(t, (freq.get(t) || 0) + 1)
+  }
+  const tags = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([value]) => value)
     .slice(0, 14)
   return [
-    ...badges.map(b => ({ kind: 'badge' as const, value: b, tool: '' })),
-    ...plays.map(p => ({ kind: 'play' as const, value: p.name, tool: p.tool }))
+    ...badges.map(b => ({ kind: 'badge' as const, value: b })),
+    ...tags.map(t => ({ kind: 'tag' as const, value: t }))
   ]
 })
 
 const shown = computed(() => {
-  let list = effects.value.filter(e => (tab.value === 'video' ? e.category === 'video' : e.category !== 'video'))
+  let list = effects.value.filter(inTab)
   const q = search.value.trim().toLowerCase()
-  if (q) list = list.filter(e => `${e.name} ${e.summary} ${e.code}`.toLowerCase().includes(q))
+  if (q) {
+    list = list.filter(e =>
+      `${e.name} ${e.summary} ${e.code} ${e.tags.join(' ')}`.toLowerCase().includes(q)
+    )
+  }
   const tag = activeTag.value
   if (tag !== 'all') {
     const hit = tagList.value.find(t => t.value === tag)
-    list = hit?.kind === 'badge' ? list.filter(e => e.badge === tag) : list.filter(e => e.name === tag)
+    list = hit?.kind === 'badge'
+      ? list.filter(e => e.badge === tag)
+      : list.filter(e => e.tags.includes(tag))
   }
   return list
+})
+
+/** 切页签时清掉可能已经不存在的筛选项，避免"点了标签再切页签，结果空列表"。 */
+watch(tab, () => {
+  if (activeTag.value !== 'all' && !tagList.value.some(t => t.value === activeTag.value)) {
+    activeTag.value = 'all'
+  }
 })
 
 onMounted(() => {
@@ -142,7 +190,7 @@ onMounted(() => {
       <div class="fx-strip">
         <NuxtLink
           v-for="tool in strip"
-          :key="tool.code"
+          :key="tool.key"
           class="fx-strip-card"
           :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
         >
@@ -225,7 +273,7 @@ onMounted(() => {
     <div class="fx-grid">
       <NuxtLink
         v-for="tool in shown"
-        :key="tool.code"
+        :key="tool.key"
         class="fx-card"
         :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
       >
@@ -247,9 +295,9 @@ onMounted(() => {
             class="fx-badge"
           >{{ tool.badge }}</span>
           <span
-            v-if="!tool.template && tool.templateCount"
+            v-if="tool.isTool && tool.optionCount"
             class="fx-tpl"
-          >{{ tool.templateCount }} 个玩法</span>
+          >{{ tool.optionCount }} 个玩法</span>
         </div>
         <div class="fx-name">
           {{ tool.name }}
