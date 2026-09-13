@@ -35,12 +35,18 @@ const slots = reactive<InputSlot[]>([emptySlot(), emptySlot()])
 const uploading = ref(false)
 const prompt = ref('')
 const inputKind = computed(() => tool.value?.input || 'text')
-const needsImage = computed(() => ['image', 'image_pair', 'image_mask', 'image_audio'].includes(inputKind.value))
+const needsImage = computed(() => ['image', 'image_pair', 'image_mask', 'image_audio', 'video_pair'].includes(inputKind.value))
 const isPair = computed(() => inputKind.value === 'image_pair')
+/** 视频换脸：第一个槽位是**视频**，第二个是人脸图（accept 与预览都不同）。 */
+const isVideoPair = computed(() => inputKind.value === 'video_pair')
 /** 局部重绘：用户涂抹出要改的区域（image_mask 输入形态）。 */
 const isMask = computed(() => inputKind.value === 'image_mask')
+/** 角色延展：文字 + 必须选一个角色（character 输入形态）。 */
+const isCharacter = computed(() => inputKind.value === 'character')
+const characters = ref<{ id: number, name: string, alias?: string }[]>([])
+const characterId = ref('')
 /** 参与提交的槽位数：双图工具要求两张都齐。 */
-const slotCount = computed(() => (isPair.value ? 2 : 1))
+const slotCount = computed(() => (isPair.value || isVideoPair.value ? 2 : 1))
 const filledSlots = computed(() => slots.slice(0, slotCount.value))
 
 /* ---------------- 涂抹画布 ---------------- */
@@ -65,7 +71,9 @@ let lastPoint: { x: number, y: number } | null = null
 const canSubmit = computed(() =>
   !!tool.value && !busy.value
   && (!needsImage.value || filledSlots.value.every(s => !!s.assetId || !!s.file))
-  && (!isMask.value || hasStroke.value))
+  && (!isMask.value || hasStroke.value)
+  // 角色必填：后端也会拒，但在这里挡住能让用户当场知道少选了什么
+  && (!isCharacter.value || !!characterId.value))
 
 /* ---------------- 任务与结果 ---------------- */
 interface ToolRun {
@@ -90,6 +98,11 @@ const SLOT_LABELS = [
 ] as const
 
 function slotLabel(i: number) {
+  if (isVideoPair.value) {
+    return i === 0
+      ? { title: '上传视频', hint: '要换脸的视频，建议 10 秒内、人物清晰' }
+      : { title: '人脸图片', hint: '提供五官的清晰正脸照' }
+  }
   if (isPair.value) return SLOT_LABELS[i] ?? SLOT_LABELS[0]
   return { title: '上传包含人物的图片', hint: '支持 PNG / JPG / WebP' }
 }
@@ -267,11 +280,15 @@ async function submit() {
     runs.value.unshift(run)
     const created = await api.createTask({
       clientKey: `tool-${tool.value.code}-${Date.now()}`,
-      type: tool.value.category === 'video' ? 'i2v' : 't2i',
+      // 视频工具分两种：带图的走图生视频（i2v，首帧来自上传图），
+      // 纯文字的走文生视频（t2v，云端 Seedance）。类型传错的表现是
+      // "任务建了但 worker 找不到首帧直接失败"，而用户只会看到生成失败。
+      type: tool.value.category === 'video' ? (needsImage.value ? 'i2v' : 't2v') : 't2i',
       prompt: prompt.value.trim(),
       ratio: '1:1',
       tool: tool.value.code,
       template: template.value || undefined,
+      characterId: isCharacter.value ? characterId.value : undefined,
       refAssetIds: refIds
     })
     run.id = String(created.id)
@@ -337,6 +354,11 @@ function download(url: string) {
 onMounted(async () => {
   session.load()
   await catalog.ensure()
+  // 角色延展工具需要角色清单：只在这个输入形态下拉取，避免每个工具页都请求一次
+  if (isCharacter.value) {
+    characters.value = await api.listCharacters().catch(() => [])
+    if (characters.value.length && !characterId.value) characterId.value = String(characters.value[0]!.id)
+  }
   // 模板默认取第一个：参考产品的模板是"选一个即可"，默认空着会让人以为必须先点
   const first = templates.value[0]
   if (first && !template.value) template.value = first.code
@@ -392,6 +414,31 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           </p>
         </header>
 
+        <template v-if="isCharacter">
+          <div class="field-label">
+            选择角色
+          </div>
+          <select
+            v-if="characters.length"
+            v-model="characterId"
+            class="text-input"
+          >
+            <option
+              v-for="c in characters"
+              :key="c.id"
+              :value="String(c.id)"
+            >
+              {{ c.name }}{{ c.alias ? ` · ${c.alias}` : '' }}
+            </option>
+          </select>
+          <p
+            v-else
+            class="mask-warn"
+          >
+            你还没有角色，先去「角色资产」创建一个再来用这个工具。
+          </p>
+        </template>
+
         <template v-if="needsImage">
           <div
             class="slot-grid"
@@ -411,11 +458,19 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
               >
                 <input
                   type="file"
-                  accept="image/*"
+                  :accept="isVideoPair && i === 1 ? 'video/*' : 'image/*'"
                   @change="e => onPick(e, i - 1)"
                 >
+                <video
+                  v-if="isVideoPair && i === 1 && slots[i - 1]!.preview"
+                  :src="slots[i - 1]!.preview"
+                  class="drop-video"
+                  controls
+                  muted
+                  playsinline
+                />
                 <img
-                  v-if="slots[i - 1]!.preview"
+                  v-else-if="slots[i - 1]!.preview"
                   :src="slots[i - 1]!.preview"
                   :alt="slotLabel(i - 1).title"
                   @load="syncMaskCanvas"
@@ -670,6 +725,7 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
 .drop.filled { border-style: solid; padding: 0; overflow: hidden; }
 .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .drop img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
+.drop-video { display: block; width: 100%; max-height: 320px; background: #000; }
 .drop strong { color: var(--ink); font-size: 14px; }
 .drop small { font-size: 12px; }
 .text-input { width: 100%; padding: 10px 12px; border: 1px solid var(--hg-line); border-radius: 8px; background: #141416; color: var(--ink); font: inherit; resize: vertical; }
