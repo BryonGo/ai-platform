@@ -4,8 +4,7 @@
 // → 「视频效果 N / 图像效果 N」+ 搜索 → 标签行 → 五列竖版卡片（缩略图 + 角标 + 名称在下方）。
 //
 // 什么算"一张卡"：**一个效果一张卡**，不是"一个玩法一张卡"。
-// 脱衣工具下的全脱/上半身/下半身是同一件事的三个选项，各自铺一张卡会让整个列表
-// 看起来全是重名（运营实测反馈："脱衣、全托、上半身、下半身这是一样的吧"）。
+// 脱衣对照 undress.xxx：图像效果只有一张「脱衣」卡，不上/下半身拆分。
 // 所以工具下的玩法分两类（后台 one 开关控制）：
 //   单独成卡（默认）：口交、深喉、大字型 —— 参考站就是一张张列出来的，确实是不同的效果；
 //   只是选项（isCard=false）：全脱/上半身/下半身、护士装/旗袍、2 倍/4 倍 —— 进工具页切。
@@ -93,6 +92,9 @@ const counts = computed(() => ({
   image: effects.value.filter(e => e.category !== 'video').length,
   video: effects.value.filter(e => e.category === 'video').length
 }))
+watch(counts, (c) => {
+  if (c.video === 0 && tab.value === 'video') tab.value = 'image'
+}, { immediate: true })
 
 /**
  * 标签行：全部 + 角标（热门/新品…）+ 标签（最多 12 个）。
@@ -225,6 +227,7 @@ onMounted(() => {
     <div class="fx-toolbar">
       <div class="fx-counts">
         <button
+          v-if="counts.video > 0"
           type="button"
           :class="{ active: tab === 'video' }"
           @click="tab = 'video'"

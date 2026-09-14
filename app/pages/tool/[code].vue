@@ -596,7 +596,7 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
         </template>
 
         <div
-          v-if="templates.length"
+          v-if="templates.length > 1"
           class="field-block"
         >
           <div class="field-label">

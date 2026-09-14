@@ -75,6 +75,12 @@ const filteredTools = computed(() => {
     .filter(tool => !keyword || tool.label.toLowerCase().includes(keyword))
 })
 
+/** 视频工具未上线时不展示「视频」页签，避免空分组。 */
+const toolTabs = computed(() => {
+  const hasVideo = toolCards.value.some(t => t.kinds.includes('video'))
+  return TOOL_TABS.filter(tab => tab.id !== 'video' || hasVideo)
+})
+
 /** 进行中的任务数（来自真实作品状态；mock 兜底时按 mock 里「生成中」的条数） */
 const runningWorks = ref(0)
 
@@ -359,7 +365,7 @@ function openContinuePreview(item: ContinueItem) {
           aria-label="工具分类"
         >
           <button
-            v-for="tab in TOOL_TABS"
+            v-for="tab in toolTabs"
             :key="tab.id"
             type="button"
             role="tab"
