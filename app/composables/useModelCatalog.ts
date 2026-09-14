@@ -220,6 +220,33 @@ export function videoRatios(catalog: Catalog | null, modelId: string): string[] 
 }
 
 /**
+ * 云端模型支持的清晰度档：来自模型行 capabilities（后台可配）。
+ *
+ * 为什么不能写死 1K/2K：后台可以新建任意模型（Nano Banana、grok…），
+ * 它们支持的档位由运营在后台填。写死会让用户选到模型不支持的档，
+ * 后端（建单查表后）会直接拒绝该请求 —— 用户看到的是「点不动」而不是「没这个选项」。
+ */
+export function cloudQualities(catalog: Catalog | null, modelId: string): string[] {
+  const model = catalog?.cloudModels?.find(item => item.id === modelId)
+  const params = model?.capabilities?.parameters ?? []
+  return params.map(item => item.quality).filter((q): q is string => !!q)
+}
+
+/** 后台声明的默认清晰度（为空时调用方回落到第一档）。 */
+export function cloudDefaultQuality(catalog: Catalog | null, modelId: string): string {
+  const model = catalog?.cloudModels?.find(item => item.id === modelId)
+  return model?.capabilities?.default?.quality || ''
+}
+
+/** 云端模型在指定清晰度下支持的比例（该档没声明比例时返回空数组=不限制）。 */
+export function cloudRatios(catalog: Catalog | null, modelId: string, quality: string): string[] {
+  const model = catalog?.cloudModels?.find(item => item.id === modelId)
+  const params = model?.capabilities?.parameters ?? []
+  const pick = params.find(item => item.quality === quality) ?? params[0]
+  return (pick?.ratios ?? []).map(item => item.ratio).filter((r): r is string => !!r)
+}
+
+/**
  * 视频模式的默认模型：优先 MiniMax H3（运营主推），否则第一个可用视频模型。
  * 只做「默认值」，用户切换后不会被覆盖。
  */

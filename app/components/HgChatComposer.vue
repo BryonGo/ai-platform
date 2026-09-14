@@ -3,7 +3,7 @@ import PromptEditor from '~/components/prompt/promptEditor.vue'
 import SnippetPicker from '~/components/prompt/snippetPicker.vue'
 import LoraPicker from '~/components/selection/loraPicker.vue'
 import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
-import { RATIO_OPTIONS, RESOLUTIONS, ratioIcon } from '~/data/image-options'
+import { RATIO_OPTIONS, ratioIcon } from '~/data/image-options'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
 /** 当前就地展开的选项行（'' 表示都收起）：不再用浮层遮挡输入框 */
@@ -12,6 +12,25 @@ function togglePicker(key: 'ratio' | 'resolution' | 'duration') {
   pickerOpen.value = pickerOpen.value === key ? '' : key
 }
 const studio = useChatStudio()
+
+/**
+ * 该比例在当前模型下是否不可选。
+ *
+ * 视频：只认模型自带的分辨率表（videoModels[].resolutions）；
+ * 云端图像：只认模型能力里该清晰度档声明的比例（capabilities.parameters[].ratios）；
+ * 本地 comfy：不限制。三种口径统一在这里，避免「能选、提交被后端拒」。
+ */
+function ratioUnsupported(value: string) {
+  if (studio.mode.value === 'video') {
+    return !!studio.modelId.value && !studio.supportedVideoRatios.value.includes(value)
+  }
+  const cloud = studio.supportedCloudRatios.value
+  return cloud.length > 0 && !cloud.includes(value)
+}
+
+function ratioUnsupportedReason() {
+  return studio.mode.value === 'video' ? '当前视频模型不支持该比例' : '当前模型在该清晰度下不支持该比例'
+}
 
 /**
  * landing = 首页那种"输入 → 交草稿跳创作页"的用法（同一套按钮，提交动作不同）。
@@ -473,7 +492,7 @@ function patchSampling(patch: Record<string, number | string>) {
         v-if="pickerOpen === 'ratio'"
         title="比例"
         :value="studio.ratio.value"
-        :options="ratioList.map(item => ({ value: item.value, label: item.label, icon: ratioIcon(item.shape), disabled: studio.mode.value === 'video' && !!studio.modelId.value && !studio.supportedVideoRatios.value.includes(item.value), title: studio.mode.value === 'video' && !!studio.modelId.value && !studio.supportedVideoRatios.value.includes(item.value) ? '当前视频模型不支持该比例' : undefined }))"
+        :options="ratioList.map(item => ({ value: item.value, label: item.label, icon: ratioIcon(item.shape), disabled: ratioUnsupported(item.value), title: ratioUnsupported(item.value) ? ratioUnsupportedReason() : undefined }))"
         @select="studio.ratio.value = $event"
         @close="pickerOpen = ''"
       />
@@ -481,7 +500,7 @@ function patchSampling(patch: Record<string, number | string>) {
         v-if="pickerOpen === 'resolution'"
         title="分辨率"
         :value="studio.resolution.value"
-        :options="RESOLUTIONS.map(item => ({ value: item.value, label: item.label, icon: 'i-lucide-aperture', disabled: studio.mode.value === 'video' && item.value === '2K', title: studio.mode.value === 'video' && item.value === '2K' ? '当前视频模型只提供一档分辨率' : undefined }))"
+        :options="studio.supportedQualities.value.map(value => ({ value, label: value, icon: 'i-lucide-aperture', disabled: studio.mode.value === 'video' && value === '2K', title: studio.mode.value === 'video' && value === '2K' ? '当前视频模型只提供一档分辨率' : undefined }))"
         @select="studio.resolution.value = $event"
         @close="pickerOpen = ''"
       />

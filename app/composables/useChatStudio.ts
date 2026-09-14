@@ -1,5 +1,5 @@
 import type { Catalog, CharacterItem, HougongTask, SessionItem } from './useHougongApi'
-import { buildModelOptions, durationOptions, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
+import { buildModelOptions, cloudDefaultQuality, cloudQualities, cloudRatios, durationOptions, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { sizeFor } from '../data/image-options'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
 
@@ -178,6 +178,17 @@ export function createChatStudio() {
 
   const modelOptions = computed(() => buildModelOptions(catalog.value, mode.value))
   const selectedModel = computed(() => modelOptions.value.find(item => item.id === modelId.value))
+  /** 云端图像模型的清晰度档 / 比例档：都来自模型行 capabilities（后台可配）。
+      本地 comfy 模型仍用固定 1K/2K（那是 width/height 的口径，与云端 quality 不是一回事）。 */
+  const isCloudImage = computed(() => mode.value === 'image' && selectedModel.value?.channel === 'cloud')
+  const supportedQualities = computed<string[]>(() => {
+    if (!isCloudImage.value) return ['1K', '2K']
+    const list = cloudQualities(catalog.value, modelId.value)
+    return list.length ? list : ['1K', '2K']
+  })
+  const supportedCloudRatios = computed<string[]>(() =>
+    isCloudImage.value ? cloudRatios(catalog.value, modelId.value, resolution.value) : []
+  )
   const durationList = computed(() => durationOptions(selectedModel.value, catalog.value))
   const selectedCharacter = computed(() => characters.value.find(item => String(item.id) === characterId.value))
 
@@ -193,6 +204,19 @@ export function createChatStudio() {
           cfg: raw.sampling.cfg
         }
       : null
+  }, { immediate: true })
+
+  // 换模型（或后端改了能力）后，把清晰度收敛到该模型支持的档；再按该档收敛比例。
+  // 不收敛的话用户会拿着上一个模型的参数提交，后端建单查表会直接拒绝。
+  watch(supportedQualities, (list) => {
+    if (!list.length || list.includes(resolution.value)) return
+    resolution.value = cloudDefaultQuality(catalog.value, modelId.value) || list[0] || resolution.value
+  }, { immediate: true })
+
+  watch([supportedCloudRatios, resolution], () => {
+    const list = supportedCloudRatios.value
+    if (!list.length || list.includes(ratio.value)) return
+    ratio.value = list[0] ?? ratio.value
   }, { immediate: true })
 
   // 切到视频模式且当前模型不可用时，默认选中 MiniMax H3（用户手动换过就不再改）
@@ -952,6 +976,8 @@ export function createChatStudio() {
     costText, quote, canSend, referenceAllowed,
     /** 当前视频模型支持的比例（用于 UI 置灰） */
     supportedVideoRatios: computed(() => videoRatios(catalog.value, modelId.value)),
+    supportedQualities,
+    supportedCloudRatios,
     /** 视频 1K/2K 是否可选：后端每个比例只给一档，因此视频下 2K 不可选 */
     videoSecondTierAvailable: computed(() => false),
     // 会话
