@@ -6,6 +6,8 @@
 // "我传了图、点了生成、结果在哪"变成一段需要读的流水账。自由对话创作仍在 /create。
 //
 // 前端只认工具 code：预置提示词、LoRA、工作流都由后端拼并在建任务时冻结。
+import { toolNotice } from '~/data/tool-notice'
+
 useSeoMeta({ title: '创作工具 · 后宫' })
 
 const route = useRoute()
@@ -100,6 +102,40 @@ const notice = ref('')
 const sourceUrl = computed(() => slots[0]!.preview)
 /** 最近一次成功的产物（右侧主展示位）。 */
 const latest = computed(() => runs.value.find(r => r.outputs.length))
+
+/** 当前玩法自己的封面（后台在模板上填了才有）。 */
+const templateCover = computed(() => templates.value.find(t => t.code === template.value)?.cover || '')
+/** 当前玩法自己的对比原图。 */
+const templateCoverBefore = computed(() => templates.value.find(t => t.code === template.value)?.coverBefore || '')
+
+/**
+ * 生成前右半边展示的「效果示例」。
+ *
+ * 由**后台**配置驱动（hougong_tool.cover 效果图 / cover_before 原图）——
+ * 换素材是运营的活儿，不该等一次前端发版。玩法级优先，回落工具级。
+ *
+ *   cover + coverBefore 都有 → 可拖动的对比滑块
+ *   只有 cover              → 单图
+ *   都没有                  → null，回到原来的空态文案
+ *
+ * 只有 cover 时**不**硬凑对比：拿同一张当原图和效果，拖起来毫无变化，比单图更糟。
+ */
+const demo = computed<{ before: string, after: string } | null>(() => {
+  const cover = templateCover.value || tool.value?.cover || ''
+  const before = templateCoverBefore.value || tool.value?.coverBefore || ''
+  if (cover && before) return { before, after: cover }
+  const one = cover || before
+  return one ? { before: '', after: one } : null
+})
+
+/** 示例图的 alt：目录是客户端才拉到的，SSR 时 tool 还没有 —— 别渲染出 "undefined效果"。 */
+const demoAlt = computed(() => (tool.value?.name ? `${tool.value.name}效果示例` : '效果示例'))
+
+/**
+ * 这个工具的能力边界提示（目前只有脱衣：仅单人女性）。
+ * 刻意叫 restriction 而不是 notice —— 下面已经有个 `notice` ref 装提交错误了。
+ */
+const restriction = computed(() => toolNotice(code.value))
 
 /** 双图工具的槽位文案：目标图与参考脸各说清要传什么，避免传反。 */
 const SLOT_LABELS = [
@@ -475,6 +511,19 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
         </template>
 
         <template v-if="needsImage">
+          <!-- 能力边界写在传图之前。等出图了再说"不支持男性"就晚了：
+               用户已经等了一两分钟、积分也扣了，最后拿到一张废图。 -->
+          <div
+            v-if="restriction"
+            class="limit-note"
+          >
+            <span class="limit-icon"><UIcon name="i-lucide-info" /></span>
+            <div>
+              <strong>{{ restriction.text }}</strong>
+              <small v-if="restriction.detail">{{ restriction.detail }}</small>
+            </div>
+          </div>
+
           <div
             class="slot-grid"
             :class="{ pair: isPair }"
@@ -520,7 +569,10 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
                   @pointerup="onMaskUp"
                   @pointercancel="onMaskUp"
                 />
-                <template v-else>
+                <!-- 占位提示只在**没图**时出现。
+                     这里原来是 <template v-else>，挂在上面的 <canvas v-if> 上 ——
+                     非涂抹工具传完图，图下面还压着"点击或拖拽图片"，看起来像没传上。 -->
+                <template v-if="!slots[i - 1]!.preview">
                   <UIcon name="i-lucide-image-plus" />
                   <strong>点击或拖拽图片</strong>
                   <small>{{ slotLabel(i - 1).hint }}</small>
@@ -715,6 +767,50 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           <small>任务 ID：{{ runs[0]!.id }}</small>
         </div>
 
+        <!-- 生成中（有原图）：把用户自己那张图铺满，进度压在上面。
+             一个转圈的灰框说明不了"在改的是哪张"；垫上原图之后，等待的一两分钟里
+             用户看着的是自己这张。没有原图的工具（纯文字）走下面那个分支。 -->
+        <div
+          v-else-if="runs.length && sourceUrl"
+          class="result-pending-live"
+        >
+          <div class="result-media pending-media">
+            <video
+              v-if="isVideoPair"
+              :src="sourceUrl"
+              class="result-video"
+              controls
+              muted
+              playsinline
+            />
+            <img
+              v-else
+              :src="sourceUrl"
+              alt="正在处理的图片"
+            >
+            <div class="pending-overlay">
+              <UIcon
+                name="i-lucide-loader-circle"
+                class="pending-spin"
+              />
+              <strong>正在生成…</strong>
+              <small>
+                {{ runs[0]!.status }}
+                <template v-if="runs[0]!.progress > 0"> · {{ runs[0]!.progress }}%</template>
+              </small>
+              <div
+                v-if="runs[0]!.progress > 0"
+                class="pending-bar"
+              >
+                <span :style="{ width: `${Math.min(100, runs[0]!.progress)}%` }" />
+              </div>
+            </div>
+          </div>
+          <div class="result-actions">
+            <span class="result-meta">大多需要 60–120 秒，可以先去做别的</span>
+          </div>
+        </div>
+
         <div
           v-else-if="runs.length"
           class="result-pending"
@@ -723,6 +819,64 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           <strong>正在生成…</strong>
           <small>{{ runs[0]!.status }} · {{ runs[0]!.progress }}%</small>
           <p>大多需要 30–90 秒，可以先去做别的。</p>
+        </div>
+
+        <!-- 已上传、还没点生成：右半边换成用户自己的图。
+             这里继续放效果示例是错的 —— 用户刚传完图，再看一张别人的前后对比，
+             会以为"我传的没生效"。顺便把"下一步点哪"写在这儿。 -->
+        <div
+          v-else-if="sourceUrl"
+          class="result-ready"
+        >
+          <div class="result-media">
+            <video
+              v-if="isVideoPair"
+              :src="sourceUrl"
+              class="result-video"
+              controls
+              muted
+              playsinline
+            />
+            <img
+              v-else
+              :src="sourceUrl"
+              alt="待处理的图片"
+            >
+          </div>
+          <div class="result-actions">
+            <span class="result-meta">图片已就绪</span>
+            <span class="demo-tip">点左侧「{{ session.token.value ? '开始生成' : '登录后创建' }}」</span>
+          </div>
+        </div>
+
+        <!-- 还没传图：右半边不放"还没有结果"的灰框，放这个工具的效果示例。
+             用户点进「脱衣」就是想看能变成什么样 —— 把原图/效果同坐标摆在第一屏，
+             比任何文案都有说服力；等上面几个分支接手，示例自动让位。 -->
+        <div
+          v-else-if="demo"
+          class="result-demo"
+        >
+          <div class="demo-media">
+            <HgCompareSlider
+              v-if="demo.before"
+              :before="demo.before"
+              :after="demo.after"
+              :alt="demoAlt"
+              :label="`${tool?.name || '效果'} 原图与效果对比`"
+            />
+            <img
+              v-else
+              :src="demo.after"
+              :alt="demoAlt"
+            >
+          </div>
+          <div class="demo-actions">
+            <span class="result-meta">效果示例</span>
+            <span
+              v-if="demo.before"
+              class="demo-tip"
+            >拖动中间滑块看对比</span>
+          </div>
         </div>
 
         <div
@@ -784,7 +938,30 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
 .result-empty, .result-pending { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--hg-muted); text-align: center; }
 .result-empty strong, .result-pending strong { color: var(--ink); font-size: 15px; }
 .result-empty p, .result-pending p { max-width: 320px; font-size: 12px; }
-.result-live { display: flex; flex-direction: column; gap: 14px; }
+.result-live, .result-ready, .result-pending-live { display: flex; flex-direction: column; gap: 14px; }
+/* 生成中：原图铺满，进度压在**下缘**。
+   刻意不用整块平铺的暗色遮罩 —— 那会把用户那张图糊掉，而铺原图的意义正是
+   "等待的一两分钟里看着自己这张"。改成自下而上的渐变，人像主体仍看得清，
+   文字压在渐变上保证可读。 */
+.pending-media { position: relative; }
+.pending-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 16px 16px 22px; background: linear-gradient(to top, rgb(10 11 13 / 90%) 0%, rgb(10 11 13 / 62%) 24%, rgb(10 11 13 / 0%) 56%); color: #fff; text-align: center; }
+.pending-overlay strong { font-size: 15px; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
+.pending-overlay small { font-size: 12px; opacity: 0.86; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
+.pending-spin { font-size: 26px; filter: drop-shadow(0 1px 3px rgb(0 0 0 / 55%)); animation: hg-spin 1.1s linear infinite; }
+@keyframes hg-spin { to { transform: rotate(360deg); } }
+.pending-bar { width: 56%; height: 4px; margin-top: 8px; border-radius: 999px; background: rgb(255 255 255 / 26%); overflow: hidden; }
+.pending-bar span { display: block; height: 100%; border-radius: 999px; background: var(--hg-accent); transition: width 400ms ease; }
+/* 能力边界提示：琥珀色，与 .mask-warn 同一套语义色。 */
+.limit-note { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid rgb(245 158 11 / 32%); border-radius: 8px; background: rgb(245 158 11 / 8%); }
+.limit-icon { flex: 0 0 auto; margin-top: 1px; color: #f59e0b; }
+.limit-note strong { display: block; font-size: 13px; font-weight: 600; }
+.limit-note small { display: block; margin-top: 3px; color: var(--hg-muted); font-size: 12px; line-height: 1.6; }
+/* 效果示例：竖图为主，按高度定尺寸、宽度由比例推出来，上限内不撑破右栏。 */
+.result-demo { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.demo-media { position: relative; flex: 0 0 auto; height: min(560px, 64vh); aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: #141416; }
+.demo-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.demo-actions { display: flex; align-items: center; gap: 12px; }
+.demo-tip { color: var(--hg-muted); font-size: 12px; opacity: 0.75; }
 .result-media { display: grid; place-items: center; background: #141416; border-radius: 10px; overflow: hidden; }
 .result-media img { display: block; max-width: 100%; max-height: 520px; object-fit: contain; }
 .result-video { display: block; width: 100%; max-height: 520px; background: #000; }
