@@ -21,7 +21,17 @@ export default defineNuxtConfig({
       // 浏览器用：留空 = 同源 /api/v1，由本服务的 routeRules 代理到内网 API（无跨域）；
       // 也可填公网 API 域名直连。
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
-      siteCode: process.env.NUXT_PUBLIC_SITE_CODE || 'default'
+      siteCode: process.env.NUXT_PUBLIC_SITE_CODE || 'default',
+      // 本次运行的版本（浏览器缓存的那份前端是哪个版本）。生产由 compose 传
+      // NUXT_PUBLIC_BUILD_VERSION=${HOUGONGWEB_IMAGE_TAG}（形如 20260914151045-96ce975）；
+      // 本地/dev 不传就是 'dev'。它同时被 server/api/version.get.ts 读取并在运行时返回，
+      // 因此不需要把版本号写进代码，也不会与镜像 tag 漂移。
+      buildVersion: process.env.NUXT_PUBLIC_BUILD_VERSION || 'dev',
+      // 版本检测节拍（毫秒）：轮询间隔 / 两次探测的最小间隔 / 检测到新版本后的自动刷新延迟。
+      // 生产用默认值；本地与 e2e 可以调短，否则一个用例要等一分钟。
+      versionPollMs: Number(process.env.NUXT_PUBLIC_VERSION_POLL_MS || 60000),
+      versionMinIntervalMs: Number(process.env.NUXT_PUBLIC_VERSION_MIN_INTERVAL_MS || 15000),
+      versionAutoDelayMs: Number(process.env.NUXT_PUBLIC_VERSION_AUTO_DELAY_MS || 20000)
     }
   },
 

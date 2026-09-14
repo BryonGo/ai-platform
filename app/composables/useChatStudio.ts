@@ -922,6 +922,15 @@ export function createChatStudio() {
     ready.value = true
   }
 
+  // 版本更新的"不要自动刷新"条件：这条链路上有用户手上的东西 ——
+  // 生成中的任务（刷新后客户端状态会重置）、没提交的提示词、已选但未上传的参考图。
+  // 命中时提示条只提示、不倒计时（见 useVersionWatcher.hasActiveWork）。
+  useUpdateBlocker(() =>
+    runningMessages.value.length > 0
+    || !!prompt.value.trim()
+    || !!reference.value.file
+    || !!reference.value.assetId)
+
   return {
     // 输入器
     mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId, reference, notice,

@@ -608,6 +608,9 @@ watch(() => route.fullPath, () => {
       <!-- 站点 18+ 年龄门：服务端说需要过门且本浏览器未过时遮住整页。
            挂在应用壳最外层，任何页面（含直接深链进入）都拦得住。 -->
       <AppAgeGate />
+
+      <!-- 新版本提示条：全局挂载，任何页面都检测得到（详见 useVersionWatcher） -->
+      <HgUpdateBar />
     </div>
   </UApp>
 </template>
