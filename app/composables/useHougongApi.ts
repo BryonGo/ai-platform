@@ -242,6 +242,8 @@ export interface HougongTask {
   status: string
   progress?: number
   errorCode?: string
+  /** 失败原因（上游原始报错）。有它才能把"451 内容审核"和"地址拼错"分开给用户看。 */
+  errorMessage?: string
   billedCredits?: number
   snapshot?: Record<string, unknown>
   outputAssets?: string[]

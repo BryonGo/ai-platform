@@ -584,6 +584,8 @@ export function createChatStudio() {
       w?.()
     })
     let guard = 0
+    // 轮询里记下最近一次拿到上游原因：终态处理在循环外，`task` 出了作用域就没了。
+    let lastErrorMessage = ''
     try {
       while (!TERMINAL.includes(status) && guard < 600) {
         guard += 1
@@ -602,6 +604,7 @@ export function createChatStudio() {
         status = (task.status as StudioStatus) || status
         message.status = status
         message.progress = task.progress ?? message.progress
+        if (task.errorMessage) lastErrorMessage = task.errorMessage
       }
     } catch (e: unknown) {
       message.error = e instanceof Error ? e.message : '任务状态读取失败'
@@ -631,7 +634,10 @@ export function createChatStudio() {
       }
       if (message.assets.length) openPreview(message.id, 0)
     } else if (status === 'failed') {
-      message.error = message.error || '生成失败，积分已退回'
+      // 有上游原因就带给用户：只说"生成失败"会让「内容被审核拦」和「我们的地址拼错」
+      // 看起来一模一样，用户第一反应永远是"是不是你们的 bug"。
+      const reason = lastErrorMessage.trim()
+      message.error = message.error || (reason ? `生成失败：${reason}` : '生成失败，积分已退回')
     } else if (status === 'cancelled') {
       message.error = '任务已取消'
     }
@@ -799,10 +805,17 @@ export function createChatStudio() {
       }
       // 本地文生图模型不支持参考图：即使界面上残留了引用也不下发
       if (!referenceAllowed.value) refAssetId = ''
+      const splitPrompt = splitNegativePrompt(text)
+      if (splitPrompt.negative) {
+        notice.value = '已把「负面词 …」拆到负面提示词，提交时按负面词生效。'
+      }
       const created2 = await hgApi.createTask({
         clientKey,
         type: mode.value === 'video' ? 'i2v' : 't2i',
-        prompt: text || '根据附件生成',
+        prompt: splitPrompt.prompt || '根据附件生成',
+        // 负面词是独立字段：用户在输入框里写了「负面词 …」也要走到这里，
+        // 否则它既不起作用、又会把 nude/genitals 这类词带进正向提示词被审核拦。
+        negativePrompt: splitPrompt.negative || undefined,
         ratio: ratio.value,
         durationSeconds: mode.value === 'video' ? seconds.value : undefined,
         count: mode.value === 'image' ? count.value : undefined,
@@ -1001,6 +1014,29 @@ export function provideChatStudio() {
   const studio = createChatStudio()
   provide(STUDIO_KEY, studio)
   return studio
+}
+
+/**
+ * splitNegativePrompt 把用户写在正向提示词里的「负面词 …」拆出来。
+ *
+ * 为什么需要：输入框只有一个，而"负面词"是另一个语义的字段（后端 createTask 一直支持
+ * `negativePrompt`，前端却从来没有填过）。用户把负面词整段贴进正向提示词时有两个后果：
+ *   1) 它起不到负面词的作用；
+ *   2) 里面的 nude / genitals 这类词进了**正向**提示词，显著提高被上游内容审核拦的概率
+ *      （实测 GPT Image 直接回 451 image_unsafe）。
+ * 拆出来是确定性行为：只认「负面词 / 负面提示词 / negative prompt」这个标记，
+ * 标记之前是正向、之后是负面。认不出就原样返回，不改用户输入。
+ */
+export function splitNegativePrompt(text: string): { prompt: string; negative: string } {
+  const raw = text || ''
+  const re = /(^|\n)\s*(负面词|负面提示词|negative\s*prompt)\s*[:：]?\s*/i
+  const m = raw.match(re)
+  if (!m || m.index === undefined) return { prompt: raw, negative: '' }
+  const prompt = raw.slice(0, m.index).trim()
+  const negative = raw.slice(m.index + m[0].length).trim()
+  // 标记后面什么都没有 = 用户还没写完，按没写处理（不要清空正向提示词）
+  if (!negative) return { prompt: raw, negative: '' }
+  return { prompt, negative }
 }
 
 export function useChatStudio() {
