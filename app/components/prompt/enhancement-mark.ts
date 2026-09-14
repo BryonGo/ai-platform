@@ -144,7 +144,14 @@ const PromptHistory = Extension.create({
   }
 })
 
-export const maxPromptLength = 2000
+// 提示词长度上限（字符）。
+//
+// 为什么从 2000 提到 8000：角色锁模这类提示词（画面类型/气质/皮肤/头发/服装/首饰/灯光/
+// 锁模重点/Negative Prompt）实测 4000+ 字，2000 的上限会把后半段**静默丢掉** ——
+// 用户以为粘贴成功了，实际送上去的是半截提示词。后端对 prompt 没有长度校验，
+// 所以这只是前端写死的值；上游若更严，会在任务里明确报错（可见、可改），
+// 而静默截断是不可见的。
+export const maxPromptLength = 8000
 
 export function promptExtensions() {
   return [
