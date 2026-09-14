@@ -3,12 +3,12 @@ import PromptEditor from '~/components/prompt/promptEditor.vue'
 import SnippetPicker from '~/components/prompt/snippetPicker.vue'
 import LoraPicker from '~/components/selection/loraPicker.vue'
 import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
-import { RATIO_OPTIONS, ratioIcon } from '~/data/image-options'
+import { RATIO_OPTIONS } from '~/data/image-options'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
 /** 当前就地展开的选项行（'' 表示都收起）：不再用浮层遮挡输入框 */
-const pickerOpen = ref<'' | 'ratio' | 'resolution' | 'duration'>('')
-function togglePicker(key: 'ratio' | 'resolution' | 'duration') {
+const pickerOpen = ref<'' | 'size' | 'ratio' | 'resolution' | 'duration'>('')
+function togglePicker(key: 'size' | 'ratio' | 'resolution' | 'duration') {
   pickerOpen.value = pickerOpen.value === key ? '' : key
 }
 const studio = useChatStudio()
@@ -19,6 +19,9 @@ const studio = useChatStudio()
  * 视频：只认模型自带的分辨率表（videoModels[].resolutions）；
  * 云端图像：只认模型能力里该清晰度档声明的比例（capabilities.parameters[].ratios）；
  * 本地 comfy：不限制。三种口径统一在这里，避免「能选、提交被后端拒」。
+ *
+ * 现在只用来**过滤选项**（不支持的直接不渲染）。早先还有个 ratioUnsupportedReason()
+ * 给灰按钮做 tooltip，改成隐藏之后就没有调用方了，故删除 —— 留着是死代码。
  */
 function ratioUnsupported(value: string) {
   if (studio.mode.value === 'video') {
@@ -26,10 +29,6 @@ function ratioUnsupported(value: string) {
   }
   const cloud = studio.supportedCloudRatios.value
   return cloud.length > 0 && !cloud.includes(value)
-}
-
-function ratioUnsupportedReason() {
-  return studio.mode.value === 'video' ? '当前视频模型不支持该比例' : '当前模型在该清晰度下不支持该比例'
 }
 
 /**
@@ -135,6 +134,42 @@ function focusEditorFromContainer(event: MouseEvent) {
 }
 
 const ratioList = RATIO_OPTIONS
+
+/**
+ * 比例选项（带该档位下的像素尺寸）。
+ *
+ * 当前模型不支持的**直接不渲染**，不是灰掉 —— 原来是 map + disabled
+ * （3390f6b 有意选的，理由是"让用户看到点不动而不是没这个选项"）。但两端能力差得
+ * 很多：本地底模 8 个比例全支持，云端 Seedream / GPT Image 只支持 5 个，
+ * 21:9 / 4:3 / 3:4 永远是三个灰按钮，反而像坏了。
+ *
+ * 图像模式直接用 studio.sizeOptions（它已经按模型能力过滤好了，且带 size）；
+ * 视频模式的比例来自模型自带的分辨率表，仍走 ratioUnsupported。
+ */
+const ratioOptions = computed(() => {
+  if (studio.mode.value === 'image' && studio.sizeOptions.value.length) {
+    return studio.sizeOptions.value.map(item => ({ value: item.ratio, label: item.ratio, size: item.size }))
+  }
+  return ratioList
+    .filter(item => !ratioUnsupported(item.value))
+    .map(item => ({ value: item.value, label: item.label, size: '' }))
+})
+
+/**
+ * 分辨率选项：同理，只渲染这个模型在这个模式下真正提供的档。
+ *
+ * 视频每个比例后端只给一档（videoSecondTierAvailable 恒 false），所以视频下只出第一档。
+ */
+const resolutionOptions = computed(() => {
+  const all = studio.supportedQualities.value
+  const usable = studio.mode.value === 'video' && !studio.videoSecondTierAvailable.value ? all.slice(0, 1) : all
+  return usable.map(value => ({ value, label: value, icon: 'i-lucide-aperture' }))
+})
+
+/** "1600x2848" / "1600×2848" → 统一成中间带空格的乘号 */
+function fmtSize(size: string) {
+  return (size || '').replace(/\s*[xX]\s*/, ' × ').replace(/×/, '×')
+}
 
 const samplingLimits = computed(() => studio.catalog.value?.sampling ?? null)
 
@@ -348,8 +383,11 @@ function patchSampling(patch: Record<string, number | string>) {
           :mode="studio.mode.value"
         />
 
+        <!-- LoRA 是**本地底模**的能力，云端模型没有这东西 —— 直接不渲染。
+             原来只判 mode==='image'，选着 GPT Image 也照样显示，点下去才弹
+             「请先选择一个本地底模」，等于先给一个不存在的入口再拒绝。 -->
         <button
-          v-if="studio.mode.value === 'image'"
+          v-if="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
           type="button"
           class="hg-chip"
           :aria-expanded="loraOpen"
@@ -363,42 +401,25 @@ function patchSampling(patch: Record<string, number | string>) {
           <span>LoRA{{ studio.selectedLoras.value.length ? `(${studio.selectedLoras.value.length})` : '' }}</span>
         </button>
 
+        <!-- 画幅：比例 / 分辨率 / 大小合成一个入口。
+             原来是三个独立 chip（比例、分辨率、参数），用户要连点两次才知道自己出的是
+             多大一张图。现在按钮上直接显示"比例 · 档位"，图标就是最终形状。 -->
         <button
           type="button"
           class="hg-chip"
-          :aria-expanded="pickerOpen === 'ratio'"
-          aria-label="选择画幅"
-          @click="togglePicker('ratio')"
+          :aria-expanded="pickerOpen === 'size'"
+          aria-label="选择画幅与分辨率"
+          @click="togglePicker('size')"
         >
-          <UIcon
-            :name="ratioIcon(ratioList.find(r => r.value === studio.ratio.value)?.shape ?? 'wide')"
-            aria-hidden="true"
+          <HgRatioIcon
+            :ratio="studio.ratio.value"
+            :size="18"
           />
-          <span>{{ studio.ratio.value }}</span>
+          <span>{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
           <UIcon
             name="i-lucide-chevron-down"
             class="hg-chevron"
-            :class="{ up: pickerOpen === 'ratio' }"
-            aria-hidden="true"
-          />
-        </button>
-
-        <button
-          type="button"
-          class="hg-chip"
-          :aria-expanded="pickerOpen === 'resolution'"
-          aria-label="选择分辨率"
-          @click="togglePicker('resolution')"
-        >
-          <UIcon
-            name="i-lucide-aperture"
-            aria-hidden="true"
-          />
-          <span>{{ studio.resolution.value }}</span>
-          <UIcon
-            name="i-lucide-chevron-down"
-            class="hg-chevron"
-            :class="{ up: pickerOpen === 'resolution' }"
+            :class="{ up: pickerOpen === 'size' }"
             aria-hidden="true"
           />
         </button>
@@ -488,22 +509,63 @@ function patchSampling(patch: Record<string, number | string>) {
         </div>
       </div>
 
-      <HgOptionRow
-        v-if="pickerOpen === 'ratio'"
-        title="比例"
-        :value="studio.ratio.value"
-        :options="ratioList.map(item => ({ value: item.value, label: item.label, icon: ratioIcon(item.shape), disabled: ratioUnsupported(item.value), title: ratioUnsupported(item.value) ? ratioUnsupportedReason() : undefined }))"
-        @select="studio.ratio.value = $event"
-        @close="pickerOpen = ''"
-      />
-      <HgOptionRow
-        v-if="pickerOpen === 'resolution'"
-        title="分辨率"
-        :value="studio.resolution.value"
-        :options="studio.supportedQualities.value.map(value => ({ value, label: value, icon: 'i-lucide-aperture', disabled: studio.mode.value === 'video' && value === '2K', title: studio.mode.value === 'video' && value === '2K' ? '当前视频模型只提供一档分辨率' : undefined }))"
-        @select="studio.resolution.value = $event"
-        @close="pickerOpen = ''"
-      />
+      <!-- 画幅面板：比例（带形状图标）/ 分辨率 / 大小，三行一次看完 -->
+      <div
+        v-if="pickerOpen === 'size'"
+        class="hg-size-panel"
+      >
+        <div class="size-head">
+          <span class="row-title">比例</span>
+          <button
+            type="button"
+            class="row-close"
+            aria-label="收起选项"
+            @click="pickerOpen = ''"
+          >
+            <UIcon name="i-lucide-x" />
+          </button>
+        </div>
+        <div class="ratio-grid">
+          <button
+            v-for="item in ratioOptions"
+            :key="item.value"
+            type="button"
+            class="ratio-cell"
+            :class="{ active: item.value === studio.ratio.value }"
+            :aria-pressed="item.value === studio.ratio.value"
+            :title="item.size ? `${item.value} · ${fmtSize(item.size)}` : item.value"
+            @click="studio.ratio.value = item.value"
+          >
+            <HgRatioIcon
+              :ratio="item.value"
+              :size="30"
+            />
+            <span>{{ item.value }}</span>
+          </button>
+        </div>
+
+        <div class="size-line">
+          <span class="row-title">分辨率</span>
+          <div class="res-row">
+            <button
+              v-for="item in resolutionOptions"
+              :key="item.value"
+              type="button"
+              class="res-pill"
+              :class="{ active: item.value === studio.resolution.value }"
+              :aria-pressed="item.value === studio.resolution.value"
+              @click="studio.resolution.value = item.value"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="size-line">
+          <span class="row-title">大小</span>
+          <strong class="size-value">{{ studio.sizeLabel.value || '—' }}</strong>
+        </div>
+      </div>
       <div
         v-if="pickerOpen === 'duration' && studio.mode.value === 'video'"
         class="hg-option-row duration-row"
@@ -921,5 +983,108 @@ function patchSampling(patch: Record<string, number | string>) {
   margin: 8px 0 0;
   color: var(--hg3-warn);
   font-size: 12px;
+}
+
+/* ── 画幅面板（比例 / 分辨率 / 大小） ──
+   配色与 HgOptionRow 同一套 token，避免两个面板看起来像两个产品。 */
+.hg-size-panel {
+  min-width: min(420px, 86vw);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+.size-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.size-head .row-title,
+.size-line .row-title {
+  color: var(--hg3-faint, #6e6b66);
+  font-size: 11px;
+}
+.size-head .row-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hg3-faint, #6e6b66);
+  cursor: pointer;
+}
+.size-head .row-close:hover {
+  background: rgb(255 255 255 / 8%);
+  color: var(--hg3-ink, #f2f0ec);
+}
+/* 比例用网格而不是横排：形状对比才有意义（21:9 与 9:16 并排一眼就分得出）。
+   列宽自适应，13 个比例（Grok）也不会挤成一条。 */
+.ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.ratio-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 4px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 4%);
+  color: var(--hg3-ink, #f2f0ec);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.ratio-cell:hover {
+  border-color: rgb(255 255 255 / 22%);
+}
+.ratio-cell.active {
+  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
+  color: var(--hg3-accent-hi, #f99749);
+}
+.size-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.res-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.res-pill {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 4%);
+  color: var(--hg3-ink, #f2f0ec);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.res-pill:hover {
+  border-color: rgb(255 255 255 / 22%);
+}
+.res-pill.active {
+  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
+  color: var(--hg3-accent-hi, #f99749);
+}
+/* 大小右对齐、等宽数字：换比例时数字跳动不会带着整行抖 */
+.size-value {
+  margin-left: auto;
+  color: var(--hg3-ink, #f2f0ec);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 </style>
