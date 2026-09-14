@@ -101,6 +101,20 @@ function onMediaFile(file: File) {
   studio.setReferenceFile(file)
 }
 
+/**
+ * D3/D6 点击委托：输入框里除了正文和按钮之外，还有大片"看着是输入区、点了没反应"的空白
+ * （顶部内边距、正文下半、媒体框与正文之间的 12px 间隙、chips 行空白、工具栏空隙）。
+ * 实测这些点点击后 activeElement 落在 BODY 上 —— 既不出光标，还会把已有焦点弄丢。
+ *
+ * 白名单很关键：点在正文内部必须**原样放行**，否则会把用户点出来的光标位置重置到上一次选区。
+ */
+const FOCUS_PASSTHROUGH = 'button, a, label, input, textarea, select, .media-box, .prompt-editor, .tpl-sheet, .snippet-menu'
+function focusEditorFromContainer(event: MouseEvent) {
+  const el = event.target as HTMLElement | null
+  if (!el || el.closest(FOCUS_PASSTHROUGH)) return
+  promptEditorRef.value?.focus()
+}
+
 const ratioList = RATIO_OPTIONS
 
 const samplingLimits = computed(() => studio.catalog.value?.sampling ?? null)
@@ -226,6 +240,7 @@ function patchSampling(patch: Record<string, number | string>) {
     <div
       class="box hg-glow hg-material-input"
       @pointermove="onGlowPointerMove"
+      @click="focusEditorFromContainer"
     >
       <div
         v-if="characterName || studio.reference.value.preview || studio.selectedLoras.value.length"
@@ -442,6 +457,7 @@ function patchSampling(patch: Record<string, number | string>) {
             type="button"
             class="hg-btn-primary send"
             :disabled="!studio.canSend.value"
+            :title="studio.canSend.value ? '' : '先描述这一幕，或上传参考图'"
             @click="onSend"
           >
             <UIcon
@@ -655,6 +671,7 @@ function patchSampling(patch: Record<string, number | string>) {
 .composer-body .editor {
   flex: 1;
   min-width: 0;
+  cursor: text;
 }
 /* 有图时在图片与文字之间画一条分隔线，明确"哪块是可点的正文" */
 .composer-body.has-media .editor {

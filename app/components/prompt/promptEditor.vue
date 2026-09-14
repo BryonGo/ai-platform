@@ -73,11 +73,20 @@ const snippetTarget = ref<{ kind: 'insert' | 'replace', from: number, to: number
 const editor = useEditor({
   extensions: [
     ...promptExtensions(),
-    Placeholder.configure({ placeholder: props.placeholder })
+    // 传函数而不是字符串：图片/视频两种模式的提示语不同（"输入 @ 唤出角色…" vs
+    // "输入 @ 唤出角色、服装、姿势…，或描述这一镜"），字符串会被固定在创建那一刻。
+    Placeholder.configure({ placeholder: () => props.placeholder })
   ],
   content: promptToDocument(props.modelValue),
   editable: !props.disabled,
   editorProps: {
+    // D5 无障碍：contenteditable 默认只报 "edit text"，没有可访问名称；
+    // 视觉上的占位符是 CSS 伪元素，读屏也读不到，所以这里同时补 aria-*。
+    attributes: {
+      'aria-label': '创作描述',
+      'aria-multiline': 'true',
+      'aria-placeholder': props.placeholder
+    },
     // 纯文本粘贴：换行按段内硬换行处理，避免被切成多个段落（见 clipboardTextSlice）。
     clipboardTextParser: (text: string, _context: unknown, _plain: boolean, view: EditorView) =>
       clipboardTextSlice(text, view.state.schema),
@@ -115,6 +124,15 @@ watch(() => props.modelValue, (value) => {
 
 watch(() => props.disabled, (d) => {
   editor.value?.setEditable(!d)
+})
+
+// 提示语随模式变化：改 aria-placeholder，并派发一次空事务让占位符装饰器重算
+// （装饰器只在 state 更新时计算，光改 prop 不会刷新）。
+watch(() => props.placeholder, (text) => {
+  const e = editor.value
+  if (!e) return
+  e.view.dom.setAttribute('aria-placeholder', text)
+  e.view.dispatch(e.state.tr)
 })
 
 // —— @ 触发：输入 @ / ＠ 时在光标处插入 '@' 并打开第一级分类菜单。
@@ -271,9 +289,29 @@ onBeforeUnmount(() => {
 
 <style>
 .prompt-editor { position: relative; width: 100%; }
-.prompt-editor__content { min-height: 60px; }
-.prompt-editor__content .tiptap { outline: none; min-height: 100%; }
+/* D1：可见编辑区高 60px，但 contenteditable 之前只有一行 24px 高，下面 38px 是死区
+   （点击不出光标、还会把焦点丢给 body）。min-height:100% 对"只有 min-height 的父级"
+   不成立，所以这里让外壳成为 flex 容器，把 contenteditable 拉满。 */
+.prompt-editor__content {
+  display: flex;
+  min-height: 60px;
+}
+.prompt-editor__content .tiptap {
+  flex: 1 0 auto;
+  min-height: 60px;
+  outline: none;
+}
 .prompt-editor__content .tiptap p { margin: 0; }
+/* D2：占位符。TipTap 已经把文案写进 data-placeholder（实测 <p data-placeholder="…"
+   class="is-empty is-editor-empty">），缺的只是这条样式 —— 此前全站唯一的同类规则
+   挂在 .prompt-copy 下（那个容器已无任何页面使用），所以输入框里一直看不到提示语。 */
+.prompt-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #65666c;
+  pointer-events: none;
+}
 
 /* 第一级分类菜单 */
 .snippet-menu {
