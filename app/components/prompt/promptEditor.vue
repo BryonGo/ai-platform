@@ -2,13 +2,12 @@
 // TipTap 提示词编辑器：输入 @ 唤出「超级 Tag」分类菜单（@角色/@服装/@背景/@姿势/@画风），
 // 选中分类后由父组件打开该分类的标签卡片弹层，选中标签经 applySnippet 插入 snippet 节点。
 // 两级交互对齐 PeachArt prompt-editor.tsx + snippet-menu.tsx + snippet-picker.tsx。
-import { useEditor, EditorContent, type Editor } from '@tiptap/vue-3'
+import { useEditor, EditorContent } from '@tiptap/vue-3'
 import Placeholder from '@tiptap/extension-placeholder'
 import type { EditorView } from '@tiptap/pm/view'
 import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
 import { ref, watch, onBeforeUnmount } from 'vue'
 import {
-  maxPromptLength,
   promptExtensions,
   serializePrompt,
   promptToDocument,
@@ -108,26 +107,9 @@ const editor = useEditor({
     }
   },
   onUpdate: ({ editor: e }) => {
-    syncCharCount(e)
     emit('update:modelValue', serializePrompt(e.state.doc))
-  },
-  onCreate: ({ editor: e }) => {
-    syncCharCount(e)
   }
 })
-
-/** 当前字符数（用于"已达上限"提示；CharacterCount 扩展在每次事务后更新）。 */
-const charCount = ref(0)
-const atLimit = computed(() => charCount.value >= maxPromptLength)
-
-function syncCharCount(e: Editor) {
-  // CharacterCount 扩展把自己的计数挂在 editor.storage 上（TipTap 的类型是宽松的
-  // Record，这里显式收窄，避免 any）。
-  const counter = (e.storage as Record<string, unknown>).characterCount as { characters?: () => number } | undefined
-  if (counter && typeof counter.characters === 'function') {
-    charCount.value = counter.characters()
-  }
-}
 
 // 外部替换（润色/翻译结果回填）时，若编辑器内容已不同才 setContent，避免打断 IME。
 watch(() => props.modelValue, (value) => {
@@ -272,15 +254,6 @@ onBeforeUnmount(() => {
       :editor="editor"
       class="prompt-editor__content"
     />
-    <!-- 触顶提示：超出的部分不会再被输入（浏览器与扩展都会直接拒绝），
-         必须让用户看见，否则就是"粘贴成功但内容少了一半" -->
-    <p
-      v-if="atLimit"
-      class="prompt-editor__limit"
-      role="status"
-    >
-      已达 {{ maxPromptLength }} 字上限，后面粘贴的内容没有输入进来（建议精简后再粘贴）
-    </p>
     <!-- 第一级分类菜单：浮在编辑器上方 -->
     <div
       v-if="menuOpen"
@@ -322,16 +295,18 @@ onBeforeUnmount(() => {
 .prompt-editor__content {
   display: flex;
   min-height: 60px;
-  /* 上限：长提示词（例如整段"角色锁模"参考词，4000+ 字）不能把输入框撑到全屏 ——
-     否则工具栏与发送按钮会被顶出屏幕。编辑区自己滚，工具栏始终留在可视区。
-     上限按可视高度算，且留出工具栏/内边距的余量，整框约在半屏以内。 */
-  max-height: min(34vh, 300px);
+  /* 长提示词（例如整段"角色锁模"参考词，数千字）不能把输入框撑到全屏 ——
+     否则工具栏与发送按钮会被顶出屏幕。这里只限**高度**、不限字数：
+     编辑区自己滚动，工具栏始终留在可视区（整框约在半屏以内）。
+     做法对齐 dsh 自己的输入框：max-height: var(--dsh-composer-text-max-height)
+     + overflow-y: auto，字数由用户决定。 */
+  max-height: var(--hg-composer-text-max-height, min(34vh, 300px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 @media (max-width: 1100px) {
   .prompt-editor__content {
-    max-height: min(28vh, 220px);
+    max-height: var(--hg-composer-text-max-height, min(28vh, 220px));
   }
 }
 .prompt-editor__content .tiptap {
@@ -340,11 +315,6 @@ onBeforeUnmount(() => {
   outline: none;
 }
 .prompt-editor__content .tiptap p { margin: 0; }
-.prompt-editor__limit {
-  margin: 6px 0 0;
-  color: var(--hg3-warn, #ffb454);
-  font-size: 11px;
-}
 /* D2：占位符。TipTap 已经把文案写进 data-placeholder（实测 <p data-placeholder="…"
    class="is-empty is-editor-empty">），缺的只是这条样式 —— 此前全站唯一的同类规则
    挂在 .prompt-copy 下（那个容器已无任何页面使用），所以输入框里一直看不到提示语。 */

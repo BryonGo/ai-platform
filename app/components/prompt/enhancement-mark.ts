@@ -2,7 +2,6 @@
 // 以及 Prompt <-> ProseMirror 文档的序列化。
 // 忠实移植 PeachArt apps/web/src/components/prompt/enhancement-mark.ts。
 import { Mark, Node, Extension } from '@tiptap/core'
-import CharacterCount from '@tiptap/extension-character-count'
 import HardBreak from '@tiptap/extension-hard-break'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
@@ -144,15 +143,16 @@ const PromptHistory = Extension.create({
   }
 })
 
-// 提示词长度上限（字符）。
+// 提示词**不设字数上限**（对齐 dsh 自己的输入框：只限高度，不限字数）。
 //
-// 为什么从 2000 提到 8000：角色锁模这类提示词（画面类型/气质/皮肤/头发/服装/首饰/灯光/
-// 锁模重点/Negative Prompt）实测 4000+ 字，2000 的上限会把后半段**静默丢掉** ——
-// 用户以为粘贴成功了，实际送上去的是半截提示词。后端对 prompt 没有长度校验，
-// 所以这只是前端写死的值；上游若更严，会在任务里明确报错（可见、可改），
-// 而静默截断是不可见的。
-export const maxPromptLength = 8000
-
+// 历史坑：这里曾用 CharacterCount.configure({ limit }) 限制 2000 字。TipTap 的
+// limit 不是"提示"，而是直接拒绝超出部分的事务 —— 粘贴 4600 字的角色锁模提示词，
+// 后 2600 字**静默消失**，界面没有任何反馈，用户以为发送成功，实际上去的是半截词。
+// 现在改为：输入框只做高度上限（超出滚动，见 promptEditor.vue），字数由用户决定。
+//
+// 不设限的依据：后端 clientMaxBodySize=5GB，Go 侧对 prompt 无长度校验；真正会
+// 撞到的约束是模型上下文，那属于上游能力，会以任务失败的形式明确报错（可见、可改），
+// 而不是被前端悄悄截掉。
 export function promptExtensions() {
   return [
     PromptDocument,
@@ -161,8 +161,7 @@ export function promptExtensions() {
     PromptHardBreak,
     EnhancementMark,
     SnippetNode,
-    PromptHistory,
-    CharacterCount.configure({ limit: maxPromptLength })
+    PromptHistory
   ]
 }
 
