@@ -682,7 +682,10 @@ export function createChatStudio() {
       return
     }
     if (!canSend.value) {
-      notice.value = '请先描述这一幕，或上传参考图。'
+      // 这句以前是「请先描述这一幕，或上传参考图。」，被读成"必须传图"才让提交 ——
+      // 实际原因是**输入框是空的**（提交失败后草稿被清空，见 submitGeneration）。
+      // 图片只是可选参考，纯文生图只要文字，所以文案先把"没输入内容"说清楚。
+      notice.value = '还没输入内容：描述一下画面即可（纯文生图不需要传图；有参考图也可以传）。'
       return
     }
     // 状态类提问绝不创建计费任务（交接文档第 4 节）
@@ -747,6 +750,11 @@ export function createChatStudio() {
       meta
     }
     messages.value.push(userMessage, taskMessage)
+    // 提交前留一份草稿：建任务失败（内容守卫拦截 / 积分不足 / 参数不支持 / 网络失败）时
+    // 要还回输入框。以前是提交前直接 clearPrompt()，于是失败后用户点发送只会看到
+    // 「还没输入内容」——而内容守卫恰恰要求他"修改后重试"，原文已经被删掉了，
+    // 等于让他把几千字重新粘一遍。
+    const draftBeforeSubmit = promptModel.value
     clearPrompt()
 
     let created: string | null = null
@@ -807,13 +815,16 @@ export function createChatStudio() {
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : '生成失败'
       if (created === null) {
-        // 任务从未创建（余额不足 / 参数不支持 / 未登录）：不留「预占 → 失败」的假卡片
+        // 任务从未创建（余额不足 / 参数不支持 / 内容拦截 / 未登录）：不留「预占 → 失败」的假卡片
         messages.value = messages.value.filter(item => item.id !== taskMessage.id)
         pushAssistant(`创建任务失败：${reason}`)
       } else {
         taskMessage.status = 'failed'
         taskMessage.error = reason
       }
+      // 只在用户没有新输入时还回草稿：失败后他可能已经开始写下一段，
+      // 那时不能把新的内容覆盖掉。
+      if (!prompt.value.trim()) promptModel.value = draftBeforeSubmit
       notice.value = reason
     }
   }
