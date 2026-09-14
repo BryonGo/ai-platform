@@ -10,8 +10,15 @@ export interface ToolTemplate {
   code: string
   name: string
   summary: string
-  /** 该玩法自己一张卡的缩略图；空 = 前台回落用所属工具的封面。 */
+  /** 该玩法自己一张卡的缩略图（效果图）；空 = 前台回落用所属工具的封面。 */
   cover?: string
+  /**
+   * 对比原图（处理**前**）。与 cover 成对时前台出可拖动的对比滑块。
+   *
+   * 两张必须**同一画面坐标**（同机位/同姿势/同构图/同宽高比）：滑块是裁切整幅同尺寸
+   * 图层实现的，两张错位一点点，一拖就露馅。只有 cover 时退化成单图。
+   */
+  coverBefore?: string
   /** 玩法角标（热门/新品/精选…），空 = 不显示（**不**继承工具角标）。 */
   badge?: string
   /** 标签（分类），效果列表的标签行按它筛。 */
@@ -30,8 +37,10 @@ export interface ToolItem {
   category: string
   summary: string
   icon: string
-  /** 封面图（效果卡缩略图）；空 = 用图标占位，不留空框。 */
+  /** 效果图（处理**后**）。服务端下发的是**限时签名地址**，别缓存进持久状态。 */
   cover?: string
+  /** 对比原图（处理**前**），见 ToolTemplate.coverBefore。 */
+  coverBefore?: string
   /** 角标文案（热门/新品/精选…）；空 = 不显示。 */
   badge?: string
   /** 标签（分类），效果列表的标签行按它筛。 */

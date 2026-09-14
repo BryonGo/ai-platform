@@ -13,7 +13,15 @@ const props = withDefaults(defineProps<{
   label?: string
   /** 初始揭示比例（%），默认从中间开始 */
   initial?: number
-}>(), { alt: '', label: '原图与效果对比', initial: 50 })
+  /**
+   * 图层的 object-fit。默认 cover（铺满容器、裁掉溢出）。
+   *
+   * 容器比素材更"方"时要传 contain：竖构图全身像按 cover 裁会切掉头顶和脚
+   * （效果卡的 .fx-thumb 是 3:4，脱衣素材是 2:3，上下各裁约 5%）。
+   * 两层用同一个 fit，contain 也只是上下留黑，**不会错位** —— 这一点是安全的。
+   */
+  fit?: 'cover' | 'contain'
+}>(), { alt: '', label: '原图与效果对比', initial: 50, fit: 'cover' })
 
 const value = ref(props.initial)
 const rootRef = ref<HTMLElement | null>(null)
@@ -62,6 +70,7 @@ function onKeydown(event: KeyboardEvent) {
       class="layer"
       :src="after"
       :alt="alt"
+      :style="{ objectFit: fit }"
     >
     <div
       class="layer clip"
@@ -71,6 +80,7 @@ function onKeydown(event: KeyboardEvent) {
         class="layer"
         :src="before"
         alt=""
+        :style="{ objectFit: fit }"
       >
     </div>
 
