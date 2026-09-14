@@ -5,6 +5,7 @@
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import Placeholder from '@tiptap/extension-placeholder'
 import type { EditorView } from '@tiptap/pm/view'
+import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
 import { ref, watch, onBeforeUnmount } from 'vue'
 import {
   promptExtensions,
@@ -49,6 +50,23 @@ const categories = computed(() => (gate.status.value.canUseAdult
 
 const menuOpen = ref(false)
 const menuActive = ref(0)
+
+/**
+ * 纯文本粘贴：把换行变成**段内硬换行**（hardBreak），整段仍是一个段落。
+ *
+ * 不这样做时，粘贴多行文本（例如一段带换行的代码）会被切成多个段落；段落一多，
+ * 输入框高度暴涨、光标定位与删除都变别扭。产品语义上这就是"一条提示词里的换行"，
+ * 提交时 promptText 会把 '\n' 统一换成 ', '（见 enhancement-mark.ts）。
+ */
+function clipboardTextSlice(text: string, schema: Schema): Slice {
+  const inline: ProseMirrorNode[] = []
+  text.split(/\r?\n/).forEach((line, index) => {
+    if (index > 0) inline.push(schema.nodes.hardBreak!.create())
+    if (line) inline.push(schema.text(line))
+  })
+  const paragraph = schema.nodes.paragraph!.create(null, inline)
+  return Slice.maxOpen(Fragment.from(paragraph))
+}
 // 待替换的 @ 触发位置（insert：刚输入 @；replace：已有节点换类别）。
 const snippetTarget = ref<{ kind: 'insert' | 'replace', from: number, to: number } | null>(null)
 
@@ -60,6 +78,9 @@ const editor = useEditor({
   content: promptToDocument(props.modelValue),
   editable: !props.disabled,
   editorProps: {
+    // 纯文本粘贴：换行按段内硬换行处理，避免被切成多个段落（见 clipboardTextSlice）。
+    clipboardTextParser: (text: string, _context: unknown, _plain: boolean, view: EditorView) =>
+      clipboardTextSlice(text, view.state.schema),
     handleDOMEvents: {
       // 对齐 PeachArt：beforeinput 拦截 @ / ＠（比 keydown 可靠，兼容 IME 与全角输入）。
       beforeinput: (view: EditorView, event: Event) => {
@@ -193,7 +214,12 @@ function toPlainText(): string {
   return e ? promptText(serializePrompt(e.state.doc)) : ''
 }
 
-defineExpose({ toPlainText, triggerSnippet: tryTriggerSnippet, applySnippet, cancelSnippet })
+/** 聚焦到正文：输入框内可点的空白区域（如参考图那一行）点一下就应落到光标上。 */
+function focus() {
+  editor.value?.chain().focus().run()
+}
+
+defineExpose({ toPlainText, focus, triggerSnippet: tryTriggerSnippet, applySnippet, cancelSnippet })
 
 onBeforeUnmount(() => {
   editor.value?.destroy()

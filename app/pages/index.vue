@@ -10,53 +10,24 @@ import {
   type ExploreCategory,
   type ExploreWork
 } from '~/data/hougong-home'
-import { buildModelOptions, durationOptions, quoteModel, type ComposerMode } from '~/composables/useModelCatalog'
-import { RATIO_OPTIONS, RESOLUTIONS, ratioIcon } from '~/data/image-options'
-import type { Catalog, CharacterItem, WorkItem } from '~/composables/useHougongApi'
+import { promptText } from '~/components/prompt/enhancement-mark'
+import type { WorkItem } from '~/composables/useHougongApi'
 
 const hgApi = useHougongApi()
 const session = useAuthSession()
 const { openDialog } = useAuthDialog()
 const { setDraft } = useComposerDraft()
-const { onGlowPointerMove } = useGlowPointer()
 
-/* ---------------- 输入器 ---------------- */
-
-/** 当前就地展开的选项行（'' 表示都收起）：不再用浮层遮挡输入框 */
-const pickerOpen = ref<'' | 'ratio' | 'resolution' | 'duration'>('')
-function togglePicker(key: 'ratio' | 'resolution' | 'duration') {
-  pickerOpen.value = pickerOpen.value === key ? '' : key
-}
-const mode = ref<ComposerMode>('image')
-const prompt = ref('')
-const ratio = ref('16:9')
-const seconds = ref(5)
-const count = ref(1)
-/** 输出分辨率 1K / 2K（即梦口径） */
-const resolution = ref('1K')
-const modelId = ref('')
-const catalog = ref<Catalog | null>(null)
+/* ---------------- 输入器 ----------------
+ *
+ * 首页与创作页**共用同一个输入器组件**（HgChatComposer）。
+ * 之前两页各写了一套（首页工具栏只有 比例/分辨率/时长，上传是正文里的方框；创作页多了
+ * 参考图/LoRA/参数，发送按钮在框内），同一个动作两种交互、时长胶囊还漏了数值 —— 用户反馈
+ * 「首页的交互按钮和创作页不一致」。现在状态统一由 useChatStudio 持有，两页只差一个提交动作：
+ * 首页把这次输入交成**草稿**再跳创作页，创作页直接建任务。
+ */
+const studio = provideChatStudio()
 const notice = ref('')
-const uploadFile = ref<File | null>(null)
-const uploadPreview = ref('')
-const uploadName = ref('')
-
-const modelOptions = computed(() => buildModelOptions(catalog.value, mode.value))
-const selectedModel = computed(() => modelOptions.value.find(item => item.id === modelId.value))
-/** 当前视频模型支持的比例（用于置灰，避免下发后端不认的尺寸） */
-const supportedVideoRatios = computed(() => (catalog.value?.videoModels?.find(item => item.id === modelId.value)?.resolutions ?? []).map(item => item.ratio))
-const durationList = computed(() => durationOptions(selectedModel.value, catalog.value))
-
-// 报价跟着**所选模型**走：本地按积分、云端按余额，单位不能混（交接文档 G2）。
-// 未选模型时显示「费用待确认」，不编造价格（首页设计说明 §5.3）。
-const cost = computed(() => quoteModel(catalog.value, selectedModel.value, { ratio: ratio.value, seconds: seconds.value, count: count.value }))
-const costText = computed(() => cost.value === null ? '费用待确认' : `${cost.value.amount} ${cost.value.unit}`)
-
-// 上传区按所选模型能力显示。后端「统一用户视图」的能力字段（交接文档 G1）
-// 尚未落地，因此只有模型明确声明不支持参考图时才隐藏；未选模型时保持可见，
-// 与效果图一致。
-const referenceAllowed = computed(() => mode.value === 'video' || selectedModel.value?.channel === 'cloud')
-const showUpload = computed(() => referenceAllowed.value)
 
 /* 全部工具：目录驱动（后台「创作工具」维护），分类筛选 + 搜索。
  *
@@ -107,178 +78,17 @@ const filteredTools = computed(() => {
 /** 进行中的任务数（来自真实作品状态；mock 兜底时按 mock 里「生成中」的条数） */
 const runningWorks = ref(0)
 
-const ratioList = RATIO_OPTIONS
-
 onMounted(async () => {
-  session.load()
+  // withSessions:false —— 首页不读会话/消息，只把目录与默认模型准备好给输入器
+  await studio.init({ withSessions: false })
   void toolCatalog.ensure()
-  try {
-    catalog.value = await hgApi.getCatalog()
-  } catch {
-    catalog.value = null
-  }
   void loadContinue()
-  void loadCharacters()
   void loadExplore(true)
 })
 
 onBeforeUnmount(() => {
-  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
   observer?.disconnect()
 })
-
-// 目录加载完成后若处于视频模式且没选模型，补默认值（幂等，用户选过就不动）
-watch(modelOptions, (list) => {
-  if (list.some(item => item.id === modelId.value)) return
-  // 图片默认 Krea 2 Turbo，视频默认 MiniMax H3
-  const pattern = mode.value === 'video' ? /mini\s*max/i : /krea\s*2\s*turbo/i
-  const preferred = list.find(model => model.available && pattern.test(model.name))
-  const fallback = list.find(model => model.available)
-  modelId.value = preferred?.id ?? fallback?.id ?? ''
-})
-
-function switchMode(next: ComposerMode) {
-  if (mode.value === next) return
-  mode.value = next
-  notice.value = ''
-  // 切换模式不自动生成、不自动扣费；不兼容的模型就地收敛到该模式的默认值
-  // （视频默认 MiniMax H3）
-  if (!modelOptions.value.some(item => item.id === modelId.value)) {
-    const list = modelOptions.value
-    const pattern = next === 'video' ? /mini\s*max/i : /krea\s*2\s*turbo/i
-    modelId.value = (list.find(item => item.available && pattern.test(item.name)) ?? list.find(item => item.available))?.id ?? ''
-  }
-  if (!durationList.value.includes(seconds.value)) seconds.value = durationList.value[0] ?? 5
-}
-
-function handleUpload(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
-  uploadPreview.value = URL.createObjectURL(file)
-  uploadName.value = file.name
-  uploadFile.value = file
-}
-
-function clearUpload() {
-  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
-  uploadPreview.value = ''
-  uploadName.value = ''
-  uploadFile.value = null
-}
-
-// 未登录：生成／发布前弹登录，草稿保留，登录后回到费用确认（不自动扣费）
-function submit() {
-  notice.value = ''
-  if (!prompt.value.trim()) {
-    notice.value = '请先描述这一幕。'
-    return
-  }
-  if (!session.token.value) {
-    openDialog({ reason: 'generate', resume: 'composer' })
-    notice.value = '草稿已保留，登录后即可继续生成。'
-    return
-  }
-  setDraft({
-    prompt: prompt.value,
-    mode: mode.value,
-    ratio: ratio.value,
-    durationSeconds: seconds.value,
-    uploadName: uploadName.value,
-    file: uploadFile.value,
-    // 已选模型一并交接，避免用户在对话页重选（交接文档第 4 节）
-    modelId: selectedModel.value?.id,
-    modelChannel: selectedModel.value?.channel
-  })
-  navigateTo('/create')
-}
-
-/* ---------------- @ 引用面板 ---------------- */
-
-const mentionOpen = ref(false)
-const mentionQuery = ref('')
-const mentionIndex = ref(0)
-const characters = ref<CharacterItem[]>([])
-const mentionInput = ref<HTMLTextAreaElement | null>(null)
-
-const mentionItems = computed(() => {
-  const keyword = mentionQuery.value.trim().toLowerCase()
-  return characters.value
-    .filter(item => !keyword || item.name.toLowerCase().includes(keyword))
-    .slice(0, 8)
-})
-
-// 输入框上方的镜像层：把 @引用 渲染成 chip，和 textarea 完全同字号同内边距，
-// 保证文字像素对齐。用分段渲染而不是 v-html，避免注释注入。
-const promptSegments = computed(() => {
-  const segments: { text: string, mention: boolean }[] = []
-  const pattern = /@[^\s@]{1,24}/g
-  let cursor = 0
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(prompt.value)) !== null) {
-    if (match.index > cursor) segments.push({ text: prompt.value.slice(cursor, match.index), mention: false })
-    segments.push({ text: match[0], mention: true })
-    cursor = match.index + match[0].length
-  }
-  if (cursor < prompt.value.length) segments.push({ text: prompt.value.slice(cursor), mention: false })
-  return segments
-})
-function openMention() {
-  mentionQuery.value = ''
-  mentionIndex.value = 0
-  mentionOpen.value = true
-}
-
-function onPromptInput() {
-  const tail = prompt.value.slice(-1)
-  if (tail === '@') {
-    openMention()
-    return
-  }
-  if (mentionOpen.value) {
-    const match = /@([^\s@]*)$/.exec(prompt.value)
-    if (!match) {
-      mentionOpen.value = false
-      return
-    }
-    mentionQuery.value = match[1] ?? ''
-    mentionIndex.value = 0
-  }
-}
-
-function insertMention(name: string) {
-  prompt.value = prompt.value.replace(/@[^\s@]*$/, `@${name} `)
-  mentionOpen.value = false
-  mentionInput.value?.focus()
-}
-
-function onPromptKeydown(event: KeyboardEvent) {
-  if (!mentionOpen.value) return
-  if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    mentionIndex.value = Math.min(mentionIndex.value + 1, Math.max(0, mentionItems.value.length - 1))
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    mentionIndex.value = Math.max(mentionIndex.value - 1, 0)
-  } else if (event.key === 'Enter') {
-    const hit = mentionItems.value[mentionIndex.value]
-    if (hit) {
-      event.preventDefault()
-      insertMention(hit.name)
-    }
-  } else if (event.key === 'Escape') {
-    mentionOpen.value = false
-  }
-}
-
-async function loadCharacters() {
-  if (!session.token.value) {
-    characters.value = []
-    return
-  }
-  characters.value = await hgApi.listCharacters().catch(() => [] as CharacterItem[])
-}
 
 /* ---------------- 继续创作 ---------------- */
 
@@ -312,6 +122,37 @@ const STATUS_TEXT: Record<string, { status: ContinueItem['status'], text: string
   running: { status: 'running', text: '生成中' },
   queued: { status: 'running', text: '排队中' },
   failed: { status: 'edited', text: '已失败' }
+}
+
+/**
+ * 提交（首页侧）：不建任务，把这次输入交成草稿并跳到创作页。
+ * 真正的计费与建任务发生在创作页（首页跳转本身不产生第二次任务，见交接文档第 4 节）。
+ */
+function submitLanding() {
+  notice.value = ''
+  const text = promptText(studio.promptModel.value)
+  const reference = studio.reference.value
+  if (!text.trim() && !reference.file && !reference.assetId) {
+    notice.value = '请先描述这一幕。'
+    return
+  }
+  if (!session.token.value) {
+    openDialog({ reason: 'generate', resume: 'composer' })
+    notice.value = '草稿已保留，登录后即可继续生成。'
+    return
+  }
+  setDraft({
+    prompt: text,
+    mode: studio.mode.value,
+    ratio: studio.ratio.value,
+    durationSeconds: studio.seconds.value,
+    uploadName: reference.name,
+    file: reference.file,
+    // 已选模型一并交接，避免用户在对话页重选（交接文档第 4 节）
+    modelId: studio.selectedModel.value?.id,
+    modelChannel: studio.selectedModel.value?.channel
+  })
+  void navigateTo('/create')
 }
 
 async function loadContinue() {
@@ -475,261 +316,18 @@ function openContinuePreview(item: ContinueItem) {
 
       <div class="composer-row">
         <div class="h3-composer">
-          <!-- 图片／视频创作切换在输入框外上方（首页设计说明第 1 条批注） -->
-          <div
-            class="mode-switch hg-material-quick"
-            role="tablist"
-            aria-label="创作类型"
+          <HgChatComposer
+            variant="landing"
+            @submit="submitLanding"
+          />
+
+          <p
+            v-if="notice"
+            class="h3-composer-notice"
+            role="status"
           >
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="mode === 'image'"
-              :class="{ active: mode === 'image' }"
-              @click="switchMode('image')"
-            >
-              <UIcon
-                name="i-lucide-image"
-                aria-hidden="true"
-              />图片创作
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="mode === 'video'"
-              :class="{ active: mode === 'video' }"
-              @click="switchMode('video')"
-            >
-              <UIcon
-                name="i-lucide-video"
-                aria-hidden="true"
-              />视频创作
-            </button>
-          </div>
-
-          <div
-            class="h3-composer-box hg-glow hg-material-input"
-            @pointermove="onGlowPointerMove"
-          >
-            <div class="h3-composer-body">
-              <label
-                v-if="showUpload"
-                class="h3-upload-box"
-                :class="{ filled: !!uploadPreview }"
-              >
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  aria-label="上传参考图片"
-                  @change="handleUpload"
-                >
-                <img
-                  v-if="uploadPreview"
-                  :src="uploadPreview"
-                  :alt="uploadName"
-                >
-                <UIcon
-                  v-else
-                  name="i-lucide-plus"
-                  aria-hidden="true"
-                />
-                <button
-                  v-if="uploadPreview"
-                  type="button"
-                  class="h3-upload-clear"
-                  aria-label="移除参考图"
-                  @click.prevent.stop="clearUpload"
-                >
-                  <UIcon name="i-lucide-x" />
-                </button>
-              </label>
-
-              <div class="editor">
-                <div
-                  class="editor-mirror"
-                  aria-hidden="true"
-                >
-                  <template
-                    v-for="(segment, index) in promptSegments"
-                    :key="index"
-                  >
-                    <mark v-if="segment.mention">{{ segment.text }}</mark>
-                    <template v-else>
-                      {{ segment.text }}
-                    </template>
-                  </template>
-                </div>
-                <textarea
-                  ref="mentionInput"
-                  v-model="prompt"
-                  rows="2"
-                  aria-label="创作描述"
-                  :placeholder="mode === 'video' ? '描述你想生成的视频画面…' : '描述你想创作的画面…'"
-                  @input="onPromptInput"
-                  @keydown="onPromptKeydown"
-                />
-              </div>
-            </div>
-
-            <div class="toolbar">
-              <button
-                type="button"
-                class="at-button"
-                aria-label="引用素材或角色"
-                :aria-expanded="mentionOpen"
-                @click="mentionOpen ? mentionOpen = false : openMention()"
-              >
-                @
-              </button>
-
-              <HgModelPicker
-                v-model="modelId"
-                :options="modelOptions"
-                :mode="mode"
-              />
-
-              <button
-                type="button"
-                class="hg-chip"
-                :aria-expanded="pickerOpen === 'ratio'"
-                aria-label="选择画幅"
-                @click="togglePicker('ratio')"
-              >
-                <UIcon
-                  :name="ratio === '9:16' ? 'i-lucide-smartphone' : 'i-lucide-monitor'"
-                  aria-hidden="true"
-                />
-                <span>{{ ratio }}</span>
-                <UIcon
-                  name="i-lucide-chevron-down"
-                  class="hg-chevron"
-                  :class="{ up: pickerOpen === 'ratio' }"
-                  aria-hidden="true"
-                />
-              </button>
-
-              <button
-                type="button"
-                class="hg-chip"
-                :aria-expanded="pickerOpen === 'resolution'"
-                aria-label="选择分辨率"
-                @click="togglePicker('resolution')"
-              >
-                <UIcon
-                  name="i-lucide-aperture"
-                  aria-hidden="true"
-                />
-                <span>{{ resolution }}</span>
-                <UIcon
-                  name="i-lucide-chevron-down"
-                  class="hg-chevron"
-                  :class="{ up: pickerOpen === 'resolution' }"
-                  aria-hidden="true"
-                />
-              </button>
-
-              <button
-                type="button"
-                class="hg-chip"
-                :aria-expanded="pickerOpen === 'duration'"
-                aria-label="选择时长"
-                @click="togglePicker('duration')"
-              >
-                <UIcon
-                  name="i-lucide-clock-3"
-                  aria-hidden="true"
-                />
-                <span>{{ '' }}</span>
-                <UIcon
-                  name="i-lucide-chevron-down"
-                  class="hg-chevron"
-                  :class="{ up: pickerOpen === 'duration' }"
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
-
-            <HgOptionRow
-              v-if="pickerOpen === 'ratio'"
-              title="比例"
-              :value="ratio"
-              :options="ratioList.map(item => ({ value: item.value, label: item.label, icon: ratioIcon(item.shape), disabled: mode === 'video' && !!modelId && !supportedVideoRatios.includes(item.value), title: mode === 'video' && !!modelId && !supportedVideoRatios.includes(item.value) ? '当前视频模型不支持该比例' : undefined }))"
-              @select="ratio = $event"
-              @close="pickerOpen = ''"
-            />
-            <HgOptionRow
-              v-if="pickerOpen === 'resolution'"
-              title="分辨率"
-              :value="resolution"
-              :options="RESOLUTIONS.map(item => ({ value: item.value, label: item.label, icon: 'i-lucide-aperture', disabled: mode === 'video' && item.value === '2K', title: mode === 'video' && item.value === '2K' ? '当前视频模型只提供一档分辨率' : undefined }))"
-              @select="resolution = $event"
-              @close="pickerOpen = ''"
-            />
-            <HgOptionRow
-              v-if="pickerOpen === 'duration' && mode === 'video'"
-              title="时长"
-              :value="String(seconds)"
-              :options="durationList.map(item => ({ value: String(item), label: `${item} 秒` }))"
-              @select="seconds = Number($event)"
-              @close="pickerOpen = ''"
-            />
-
-            <!-- @ 引用面板：可搜索、方向键选择、Enter 确认、Esc 关闭 -->
-            <div
-              v-if="mentionOpen"
-              class="mention-panel"
-            >
-              <input
-                v-model="mentionQuery"
-                type="search"
-                placeholder="搜索角色资产"
-                aria-label="搜索引用对象"
-                @keydown.esc="mentionOpen = false"
-              >
-              <div class="mention-list">
-                <button
-                  v-for="(item, index) in mentionItems"
-                  :key="item.id"
-                  type="button"
-                  :class="{ active: index === mentionIndex }"
-                  @click="insertMention(item.name)"
-                >
-                  <UIcon
-                    name="i-lucide-user-round"
-                    aria-hidden="true"
-                  />
-                  <span>{{ item.name }}</span>
-                </button>
-                <p
-                  v-if="!mentionItems.length"
-                  class="mention-empty"
-                >
-                  {{ session.token.value ? '还没有角色资产，去「角色资产」创建一个。' : '登录后可引用你的角色资产。' }}
-                </p>
-              </div>
-            </div>
-
-            <p
-              v-if="notice"
-              class="h3-composer-notice"
-              role="status"
-            >
-              {{ notice }}
-            </p>
-          </div>
-        </div>
-        <div class="send-col">
-          <button
-            type="button"
-            class="hg-btn-primary h3-generate"
-            @click="submit"
-          >
-            <UIcon
-              name="i-lucide-sparkles"
-              aria-hidden="true"
-            />生成
-          </button>
-          <small class="cost-note">{{ costText }}</small>
+            {{ notice }}
+          </p>
         </div>
       </div>
     </section>
@@ -1163,190 +761,14 @@ function openContinuePreview(item: ContinueItem) {
   flex: 1 1 auto;
   min-width: 0;
 }
-.send-col {
-  display: grid;
-  flex: 0 0 88px;
-  gap: 4px;
-  justify-items: stretch;
-}
-.h3-generate {
-  height: 36px;
-  padding: 0 12px;
-  font-size: 14px;
-}
-.cost-note {
-  color: var(--hg3-faint);
-  font-size: 11px;
-  text-align: center;
-}
 
-.mode-switch {
-  display: inline-flex;
-  /* 快捷入口：暗流红材质 */
-  gap: 6px;
-  padding: 3px;
-  margin-bottom: 12px;
-  border: 1px solid var(--hg3-line);
-  border-radius: 999px;
-}
-.mode-switch button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 13px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--hg3-muted);
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.mode-switch button.active {
-  border-color: var(--hg3-accent-line);
-  background: var(--hg3-accent-soft);
-  color: var(--hg3-accent-hi);
-  font-weight: 600;
-}
+/* 正文里已经有图时，图片与文字之间加一条分隔线（用户要求：不加线就分不清哪块是可点的文本） */
 
-.h3-composer-box {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 170px;
-  padding: 18px 18px 14px;
-  border: 1px solid var(--hg3-accent-line);
-  border-radius: var(--hg3-radius-input);
-  box-shadow:
-    0 0 0 1px rgb(217 131 77 / 6%) inset,
-    0 18px 50px rgb(0 0 0 / 45%),
-    0 0 70px rgb(233 150 84 / 9%);
-}
-.h3-composer-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
 /* 图片上传框：参照即梦是方形「＋」按钮（不再带文字标签） */
-.h3-upload-box {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 14px;
-  background: rgb(255 255 255 / 5%);
-  color: var(--hg3-ink);
-  font-size: 20px;
-  cursor: pointer;
-}
-.h3-upload-box:hover {
-  border-color: var(--hg3-accent-line);
-  color: var(--hg3-ink);
-}
-.h3-upload-box input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-.h3-upload-box img {
-  width: 100%;
-  height: 100%;
-  border-radius: 11px;
-  object-fit: cover;
-}
-.h3-upload-box.filled {
-  border-style: solid;
-  border-color: var(--hg3-accent-line);
-}
-.h3-upload-clear {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 62%);
-  color: #fff;
-  cursor: pointer;
-}
-.editor {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  height: 96px;
-}
+
 .editor textarea,
-.editor-mirror {
-  width: 100%;
-  margin: 0;
-  padding: 2px 0;
-  border: 0;
-  background: transparent;
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 15px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-}
-.editor textarea {
-  position: relative;
-  z-index: 1;
-  height: 92px;
-  resize: none;
-  outline: none;
-}
-.editor textarea::placeholder {
-  color: var(--hg3-faint);
-}
-.editor-mirror {
-  position: absolute;
-  inset: 0;
-  color: transparent;
-  pointer-events: none;
-}
-.editor-mirror :deep(mark) {
-  padding: 2px 6px;
-  border: 1px solid var(--hg3-accent-line);
-  border-radius: 7px;
-  background: var(--hg3-accent-soft);
-  color: var(--hg3-accent-hi);
-}
 
 /* 工具条：距上传框底 18px，高 40px（参考图 y350-390） */
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  min-height: 40px;
-  flex-wrap: wrap;
-}
-.at-button {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border: 1px solid var(--hg3-line);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 4%);
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 16px;
-  cursor: pointer;
-}
-.at-button:hover {
-  border-color: var(--hg3-line-strong);
-}
 
 .pop-list {
   display: flex;
@@ -1389,61 +811,8 @@ function openContinuePreview(item: ContinueItem) {
   cursor: not-allowed;
 }
 
-.mention-panel {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 16px;
-  z-index: 20;
-  width: min(300px, 100%);
-  padding: 10px;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 14px;
-  background: #1c1d21;
-  box-shadow: 0 20px 50px #000a;
-}
-.mention-panel input {
-  width: 100%;
-  padding: 9px 11px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 9px;
-  background: #141519;
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 13px;
-  outline: none;
-}
-.mention-list {
-  display: grid;
-  gap: 2px;
-  max-height: 220px;
-  margin-top: 8px;
-  overflow-y: auto;
-}
-.mention-list button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
 .mention-list button:hover,
-.mention-list button.active {
-  background: var(--hg3-accent-soft);
-  color: var(--hg3-accent-hi);
-}
-.mention-empty {
-  padding: 18px 8px;
-  color: var(--hg3-faint);
-  font-size: 12px;
-  text-align: center;
-}
+
 .h3-composer-notice {
   margin: 10px 0 0;
   color: var(--hg3-warn);
@@ -1838,13 +1207,6 @@ function openContinuePreview(item: ContinueItem) {
   }
   .continue-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .h3-composer-body {
-    flex-direction: column;
-  }
-  .h3-upload-box {
-    width: 100%;
-    height: 64px;
   }
 }
 </style>

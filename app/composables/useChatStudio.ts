@@ -874,7 +874,11 @@ export function createChatStudio() {
     return true
   }
 
-  async function init() {
+  /**
+   * @param opts.withSessions=false 只准备输入器（首页用法）：不读会话列表、不重建消息、
+   *   也不消费草稿 —— 首页只负责把这次输入**写成**草稿再跳创作页。
+   */
+  async function init(opts: { withSessions?: boolean } = {}) {
     session.load()
     // 目录与模型目录并行拉：工具要先于"默认模型"落位，避免选完工具又被默认模型覆盖模式
     await Promise.all([loadCatalog(), loadCharacters(), tools.ensure()])
@@ -893,6 +897,10 @@ export function createChatStudio() {
     // 目录到位后显式落一次默认底模：图片 Krea 2 Turbo / 视频 MiniMax H3。
     // 不依赖 watch 的触发时序，避免出现「模型：待选择」。
     ensureDefaultModel()
+    if (opts.withSessions === false) {
+      ready.value = true
+      return
+    }
     await loadSessions()
     const hadDraft = applyDraft()
     const querySession = typeof route.query.session === 'string' ? route.query.session : ''

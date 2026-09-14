@@ -12,6 +12,22 @@ function togglePicker(key: 'ratio' | 'resolution' | 'duration') {
   pickerOpen.value = pickerOpen.value === key ? '' : key
 }
 const studio = useChatStudio()
+
+/**
+ * landing = 首页那种"输入 → 交草稿跳创作页"的用法（同一套按钮，提交动作不同）。
+ * 之所以用 variant 而不是再写一套：两页按钮曾经各写一份，最后长成了两套交互
+ * （上传位置不同、时长胶囊漏了数值、创作页多出参考图/LoRA/参数）。
+ */
+const props = withDefaults(defineProps<{ variant?: 'chat' | 'landing' }>(), { variant: 'chat' })
+const emit = defineEmits<{ submit: [] }>()
+
+function onSend() {
+  if (props.variant === 'landing') {
+    emit('submit')
+    return
+  }
+  void studio.send()
+}
 const isNarrow = useIsNarrow()
 const { onGlowPointerMove } = useGlowPointer()
 /* @ 唤出的五类标签：分类弹层由 SnippetPicker 承载（复用旧创作页的现成组件） */
@@ -80,11 +96,9 @@ const characterName = computed(() => studio.selectedCharacter.value?.name || '')
 /** 模板选择浮层开关（模板只在工具支持时才有内容）。 */
 const tplOpen = ref(false)
 
-function onFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) studio.setReferenceFile(file)
-  input.value = ''
+/** 公共图片方框选好文件后落到 studio（上传在建任务时按需做，见 submitGeneration）。 */
+function onMediaFile(file: File) {
+  studio.setReferenceFile(file)
 }
 
 const ratioList = RATIO_OPTIONS
@@ -236,32 +250,31 @@ function patchSampling(patch: Record<string, number | string>) {
             <UIcon name="i-lucide-x" />
           </button>
         </span>
-        <span
-          v-if="studio.reference.value.preview"
-          class="ref-thumb"
-        >
-          <img
-            :src="studio.reference.value.preview"
-            :alt="studio.reference.value.name"
-          >
-          <button
-            type="button"
-            aria-label="移除参考图"
-            @click="studio.clearReference()"
-          >
-            <UIcon name="i-lucide-x" />
-          </button>
-        </span>
       </div>
 
-      <div class="editor">
-        <PromptEditor
-          ref="promptEditorRef"
-          :model-value="studio.promptModel.value"
-          :placeholder="studio.mode.value === 'video' ? '输入 @ 唤出角色、服装、姿势…，或描述这一镜' : '输入 @ 唤出角色、服装、背景、姿势、画风'"
-          @update:model-value="studio.promptModel.value = $event"
-          @open-category="onOpenCategory"
+      <!-- 正文行：图片方框在**文字之外**（用户反馈：图在文字流里鼠标不好点、光标不好放），
+           有图时正文一侧加分隔线，见 .composer-body.has-media -->
+      <div
+        class="composer-body"
+        :class="{ 'has-media': !!studio.reference.value.preview }"
+      >
+        <HgComposerMedia
+          v-if="studio.referenceAllowed.value"
+          :preview="studio.reference.value.preview"
+          :name="studio.reference.value.name"
+          @file="onMediaFile"
+          @clear="studio.clearReference()"
         />
+
+        <div class="editor">
+          <PromptEditor
+            ref="promptEditorRef"
+            :model-value="studio.promptModel.value"
+            :placeholder="studio.mode.value === 'video' ? '输入 @ 唤出角色、服装、姿势…，或描述这一镜' : '输入 @ 唤出角色、服装、背景、姿势、画风'"
+            @update:model-value="studio.promptModel.value = $event"
+            @open-category="onOpenCategory"
+          />
+        </div>
       </div>
 
       <div class="toolbar">
@@ -274,24 +287,6 @@ function patchSampling(patch: Record<string, number | string>) {
         >
           @
         </button>
-
-        <label
-          v-if="studio.referenceAllowed.value"
-          class="upload-chip"
-          title="上传参考图"
-        >
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            aria-label="上传参考图"
-            @change="onFile"
-          >
-          <UIcon
-            name="i-lucide-image-plus"
-            aria-hidden="true"
-          />
-          <span>参考图</span>
-        </label>
 
         <button
           v-if="isNarrow"
@@ -447,7 +442,7 @@ function patchSampling(patch: Record<string, number | string>) {
             type="button"
             class="hg-btn-primary send"
             :disabled="!studio.canSend.value"
-            @click="studio.send()"
+            @click="onSend"
           >
             <UIcon
               name="i-lucide-send"
@@ -651,31 +646,20 @@ function patchSampling(patch: Record<string, number | string>) {
   color: var(--hg3-muted);
   cursor: pointer;
 }
-.ref-thumb {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  overflow: hidden;
+/* 正文行：图片方框 + 编辑器并排 */
+.composer-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
-.ref-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.composer-body .editor {
+  flex: 1;
+  min-width: 0;
 }
-.ref-thumb button {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 62%);
-  color: #fff;
-  cursor: pointer;
+/* 有图时在图片与文字之间画一条分隔线，明确"哪块是可点的正文" */
+.composer-body.has-media .editor {
+  border-left: 1px solid var(--hg3-line);
+  padding-left: 12px;
 }
 .editor {
   position: relative;
@@ -774,28 +758,6 @@ function patchSampling(patch: Record<string, number | string>) {
   font-family: inherit;
   font-size: 15px;
   cursor: pointer;
-}
-.upload-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--hg3-line);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 4%);
-  color: var(--hg3-ink);
-  font-size: 12px;
-  cursor: pointer;
-}
-.upload-chip input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-.upload-chip:hover {
-  border-color: var(--hg3-line-strong);
 }
 .send-wrap {
   display: grid;

@@ -37,7 +37,17 @@ const snippetLabels: Record<string, string> = {
   style: '画风'
 }
 
-const PromptDocument = Node.create({ name: 'doc', topNode: true, content: 'paragraph' })
+// 文档允许多个段落（paragraph+）。
+//
+// 为什么不是 `content: 'paragraph'`（只允许一个）：多行文本粘贴进编辑器时会变成
+// 多个段落，而"只允许一个段落"的 schema 不会报错，它会**静默丢掉**放不下的部分 ——
+// 实测（2026-09-14）：粘贴
+//     subject_definitions:
+//     <Subject 1> is the ...
+// 输入框里只剩第一行 `subject_definitions:`，用户读到的是"粘贴被自动截断了"。
+// 这里放开为 paragraph+，配合 serializePrompt 逐段落序列化（段落间补 '\n'），
+// 多行内容既不丢、也能原样回到 Prompt 模型。
+const PromptDocument = Node.create({ name: 'doc', topNode: true, content: 'paragraph+' })
 
 const EnhancementMark = Mark.create({
   name: enhancementMarkName,
@@ -150,28 +160,34 @@ export function promptExtensions() {
 }
 
 export function serializePrompt(doc: ProseMirrorNode): Prompt {
-  const paragraph = doc.firstChild
-  if (!paragraph) return { parts: [] }
   const parts: PromptPart[] = []
-  paragraph.forEach((child: ProseMirrorNode) => {
-    if (child.type.name === snippetNodeName) {
-      const source = child.attrs.source as SnippetSnapshot | null
-      if (source) parts.push({ kind: 'snippet', id: child.attrs.id as string, source })
-      return
-    }
-    const text = child.type.name === 'hardBreak' ? '\n' : (child.text ?? '')
-    if (!text) return
-    const mark = child.marks.find(candidate => candidate.type.name === enhancementMarkName)
-    if (!mark?.attrs.id) {
-      appendText(parts, text)
-      return
-    }
-    const previous = parts[parts.length - 1]
-    if (previous?.kind === 'enhancement' && previous.id === mark.attrs.id) {
-      previous.text += text
-    } else {
-      parts.push({ kind: 'enhancement', id: mark.attrs.id as string, text, note: (mark.attrs.note as string | null) ?? null })
-    }
+  let first = true
+  // 逐段落序列化：段落之间补一个 '\n'（文档现在是 paragraph+，多行粘贴会产生多段）。
+  // 只取 firstChild 的旧写法会把第二段及以后全部丢掉。
+  doc.forEach((block: ProseMirrorNode) => {
+    if (block.type.name !== 'paragraph') return
+    if (!first) appendText(parts, '\n')
+    first = false
+    block.forEach((child: ProseMirrorNode) => {
+      if (child.type.name === snippetNodeName) {
+        const source = child.attrs.source as SnippetSnapshot | null
+        if (source) parts.push({ kind: 'snippet', id: child.attrs.id as string, source })
+        return
+      }
+      const text = child.type.name === 'hardBreak' ? '\n' : (child.text ?? '')
+      if (!text) return
+      const mark = child.marks.find(candidate => candidate.type.name === enhancementMarkName)
+      if (!mark?.attrs.id) {
+        appendText(parts, text)
+        return
+      }
+      const previous = parts[parts.length - 1]
+      if (previous?.kind === 'enhancement' && previous.id === mark.attrs.id) {
+        previous.text += text
+      } else {
+        parts.push({ kind: 'enhancement', id: mark.attrs.id as string, text, note: (mark.attrs.note as string | null) ?? null })
+      }
+    })
   })
   return { parts }
 }
