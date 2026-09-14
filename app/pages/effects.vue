@@ -28,7 +28,10 @@ interface EffectCard {
   name: string
   summary: string
   icon: string
+  /** 效果图（处理**后**）。服务端下发的是限时签名地址，别缓存。 */
   cover?: string
+  /** 对比原图（处理**前**）。与 cover 成对 → 卡片出对比滑块。 */
+  coverBefore?: string
   badge?: string
   category: string
   /** 该卡里能选的玩法数（工具卡 = 它下面所有玩法；玩法卡 = 0）。 */
@@ -55,7 +58,7 @@ const effects = computed<EffectCard[]>(() => {
     if (!plays.length || options.length) {
       out.push({
         ...base, key: t.code, name: t.name, summary: t.summary,
-        cover: t.cover, badge: t.badge,
+        cover: t.cover, coverBefore: t.coverBefore, badge: t.badge,
         optionCount: tpls.length, tags: t.tags || [], isTool: true
       })
     }
@@ -66,6 +69,8 @@ const effects = computed<EffectCard[]>(() => {
         // 玩法封面没配就用所属工具的封面：玩法比工具多得多，
         // 一张张配图是长期活儿，没配的那批不该是一整排灰框。
         cover: tpl.cover || t.cover,
+        // 对比原图同理：玩法自己配了就用玩法的，否则回落工具的那一对。
+        coverBefore: tpl.coverBefore || t.coverBefore,
         // 角标**不**继承：工具挂了"热门"，不等于它下面 44 个玩法个个都热门。
         badge: tpl.badge,
         optionCount: 0, tags: tpl.tags || [], isTool: false
@@ -285,8 +290,19 @@ onMounted(() => {
         :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
       >
         <div class="fx-thumb">
+          <!-- 后台配了「原图 + 效果图」一对，就出可拖动的对比滑块：
+               光看一张裸图说明不了这个工具做了什么，前后一拖就懂了（首页同一条交互）。
+               fit=contain：卡片框是 3:4、素材是 2:3，cover 会把头顶和脚各裁掉约 5%。 -->
+          <HgCompareSlider
+            v-if="tool.coverBefore && tool.cover"
+            :before="tool.coverBefore"
+            :after="tool.cover"
+            :alt="tool.name"
+            :label="`${tool.name} 原图与效果对比`"
+            fit="contain"
+          />
           <img
-            v-if="tool.cover"
+            v-else-if="tool.cover"
             :src="tool.cover"
             alt=""
             loading="lazy"

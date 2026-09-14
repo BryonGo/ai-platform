@@ -421,6 +421,14 @@
 .hg-media.r9x16 {
   aspect-ratio: 9 / 16;
 }
+/* r2x3：创作工具卡的竖版封面。
+ *
+ * 工具封面素材统一出 2:3（1000×1500），容器也必须是 2:3 —— 用 r16x9 装 2:3 的图，
+ * object-fit:cover 会按宽度铺满、把高度裁掉 62%，卡片上只剩中间一条横带
+ * （头、脚全没了，看起来像图挂了）。 */
+.hg-media.r2x3 {
+  aspect-ratio: 2 / 3;
+}
 
 .hg-badge {
   position: absolute;

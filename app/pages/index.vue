@@ -44,6 +44,8 @@ interface ToolCard {
   label: string
   icon: string
   cover: string
+  /** 对比原图（处理前）。与 cover 成对时卡片出对比滑块。 */
+  coverBefore?: string
   kinds: ToolKind[]
 }
 
@@ -53,8 +55,11 @@ const toolCards = computed<ToolCard[]>(() => {
     to: `/tool/${tool.code}`,
     label: tool.name,
     icon: tool.icon || 'i-lucide-sparkles',
-    // 目录不下发封面图；先用首页统一底图，后续工具接入预览图再替换
-    cover: '/images/daji-three-tail-front-v1.webp',
+    // 封面走**后台配置**（hougong_tool.cover / cover_before），不再写死底图。
+    // 原来这里固定一张 daji-three-tail-front-v1.webp：结果"脱衣"卡挂的是穿红裙的
+    // 示例图，跟这个工具做什么无关；换素材还得等一次前端发版。
+    cover: tool.cover || tool.coverBefore || '',
+    coverBefore: tool.coverBefore || '',
     kinds: [tool.category as ToolKind]
   }))
   if (fromCatalog.length) return fromCatalog
@@ -397,8 +402,18 @@ function openContinuePreview(item: ContinueItem) {
           :to="tool.to"
           class="hg-card tool-card"
         >
-          <div class="hg-media r16x9">
+          <div class="hg-media r2x3">
+            <!-- 后台配了「原图 + 效果图」一对就出对比滑块（/effects 与工具页同一套逻辑）；
+                 只有一张就退回单图。素材是 2:3，容器也是 2:3，两边都不裁。 -->
+            <HgCompareSlider
+              v-if="tool.coverBefore && tool.cover"
+              :before="tool.coverBefore"
+              :after="tool.cover"
+              :alt="tool.label"
+              :label="`${tool.label} 原图与效果对比`"
+            />
             <img
+              v-else-if="tool.cover"
               :src="tool.cover"
               :alt="tool.label"
               loading="lazy"
