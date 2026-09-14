@@ -9,12 +9,28 @@ export interface RowOption {
   title?: string
 }
 
-defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   options: RowOption[]
   value: string
-}>()
+  /**
+   * 选中后是否自动收起。
+   *
+   * 默认 true：这一行是**单选**（比例 / 分辨率 / 时长），选完就完事了，留在原地
+   * 只会持续占掉输入框高度。实测（2026-09-14）：不自动收起时用户点完比例后
+   * 仍看到展开的选项行，会以为没生效、再点一次。
+   * 需要连续改多项的调用方显式传 false。
+   */
+  closeOnSelect?: boolean
+}>(), { closeOnSelect: true })
 const emit = defineEmits<{ select: [value: string], close: [] }>()
+
+/** 选中：先派发 select 让调用方落值，再按需收起（顺序保证收起时值已生效）。 */
+function choose(item: RowOption) {
+  if (item.disabled) return
+  emit('select', item.value)
+  if (props.closeOnSelect) emit('close')
+}
 </script>
 
 <template>
@@ -34,7 +50,7 @@ const emit = defineEmits<{ select: [value: string], close: [] }>()
         :disabled="item.disabled"
         :title="item.title"
         :class="{ active: item.value === value }"
-        @click="emit('select', item.value)"
+        @click="choose(item)"
       >
         <UIcon
           v-if="item.icon"

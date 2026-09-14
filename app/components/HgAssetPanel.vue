@@ -2,12 +2,28 @@
 // 右侧产物面板：按需展开，可切换同组多产物，并提供产物级操作。
 // 约束：完整预览保留原始宽高比（不裁切、不拉伸）；未完成的产物不渲染播放器；
 // 尚未接通的入口显式说明，不假装可用。
+//
+// 布局（2026-09-14 实测后改）：面板**浮在页面上层**，不再作为 flex 兄弟节点占宽。
+// 原实现是 `width:320px; flex-shrink:0` 的兄弟节点，打开时中间聊天列从 905px
+// 被压到 571px（输入器工具栏跟着换行），用户读到的是「聊天框被挤变形」。
+// 现在改为固定定位的右侧抽屉 + 半透明遮罩：聊天区一行都不重排，点空白或 Esc 关闭。
 const studio = useChatStudio()
 
 const message = computed(() => studio.previewMessage.value)
 const assets = computed(() => studio.previewAssets.value)
 const current = computed(() => studio.previewAsset.value)
 const infoOpen = ref(false)
+
+function close() {
+  studio.previewOpen.value = false
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') close()
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 function download() {
   const asset = current.value
@@ -40,155 +56,176 @@ function toVideo() {
 </script>
 
 <template>
-  <aside
-    class="asset-panel"
+  <!-- 遮罩层：点空白处关闭（图层自身不参与聊天区布局，聊天区因此完全不被挤压） -->
+  <div
+    class="panel-layer"
+    role="dialog"
+    aria-modal="true"
     aria-label="产物预览"
+    @click.self="close"
   >
-    <header>
-      <strong>预览 {{ assets.length ? studio.previewIndex.value + 1 : 0 }}/{{ assets.length }}</strong>
-      <div class="panel-tools">
-        <button
-          type="button"
-          aria-label="关闭预览面板"
-          @click="studio.previewOpen.value = false"
+    <aside class="asset-panel">
+      <header>
+        <strong>预览 {{ assets.length ? studio.previewIndex.value + 1 : 0 }}/{{ assets.length }}</strong>
+        <div class="panel-tools">
+          <button
+            type="button"
+            aria-label="关闭预览面板"
+            @click="close"
+          >
+            <UIcon name="i-lucide-x" />
+          </button>
+        </div>
+      </header>
+
+      <div class="stage">
+        <template v-if="current">
+          <img
+            v-if="current.kind === 'image'"
+            :src="current.url"
+            alt=""
+          >
+          <video
+            v-else
+            :src="current.url"
+            controls
+            playsinline
+            preload="metadata"
+          />
+        </template>
+        <p
+          v-else
+          class="stage-empty"
         >
-          <UIcon name="i-lucide-x" />
+          这个任务还没有可预览的产物。
+        </p>
+      </div>
+
+      <div
+        v-if="assets.length > 1"
+        class="thumbs"
+        role="tablist"
+        aria-label="同组产物"
+      >
+        <button
+          v-for="(asset, index) in assets"
+          :key="asset.id"
+          type="button"
+          role="tab"
+          :aria-selected="index === studio.previewIndex.value"
+          :class="{ active: index === studio.previewIndex.value }"
+          @click="studio.previewIndex.value = index"
+        >
+          <img
+            :src="asset.url"
+            alt=""
+            loading="lazy"
+          >
         </button>
       </div>
-    </header>
 
-    <div class="stage">
-      <template v-if="current">
-        <img
-          v-if="current.kind === 'image'"
-          :src="current.url"
-          alt=""
+      <div class="panel-actions">
+        <button
+          type="button"
+          @click="continueEdit"
         >
-        <video
-          v-else
-          :src="current.url"
-          controls
-          playsinline
-          preload="metadata"
-        />
-      </template>
-      <p
-        v-else
-        class="stage-empty"
-      >
-        这个任务还没有可预览的产物。
-      </p>
-    </div>
-
-    <div
-      v-if="assets.length > 1"
-      class="thumbs"
-      role="tablist"
-      aria-label="同组产物"
-    >
-      <button
-        v-for="(asset, index) in assets"
-        :key="asset.id"
-        type="button"
-        role="tab"
-        :aria-selected="index === studio.previewIndex.value"
-        :class="{ active: index === studio.previewIndex.value }"
-        @click="studio.previewIndex.value = index"
-      >
-        <img
-          :src="asset.url"
-          alt=""
-          loading="lazy"
+          <UIcon
+            name="i-lucide-wand-sparkles"
+            aria-hidden="true"
+          />继续修改
+        </button>
+        <button
+          type="button"
+          @click="toVideo"
         >
-      </button>
-    </div>
+          <UIcon
+            name="i-lucide-clapperboard"
+            aria-hidden="true"
+          />生成视频
+        </button>
+        <button
+          type="button"
+          @click="download"
+        >
+          <UIcon
+            name="i-lucide-download"
+            aria-hidden="true"
+          />下载
+        </button>
+        <button
+          type="button"
+          :aria-expanded="infoOpen"
+          @click="infoOpen = !infoOpen"
+        >
+          <UIcon
+            name="i-lucide-info"
+            aria-hidden="true"
+          />生成信息
+        </button>
+        <button
+          type="button"
+          class="muted"
+          title="工具入口尚未接入本轮范围"
+          @click="studio.notice.value = '「使用工具」尚未接入，本轮只做生成主链路。'"
+        >
+          <UIcon
+            name="i-lucide-layout-grid"
+            aria-hidden="true"
+          />使用工具
+        </button>
+      </div>
 
-    <div class="panel-actions">
-      <button
-        type="button"
-        @click="continueEdit"
+      <dl
+        v-if="infoOpen && message?.meta"
+        class="panel-info"
       >
-        <UIcon
-          name="i-lucide-wand-sparkles"
-          aria-hidden="true"
-        />继续修改
-      </button>
-      <button
-        type="button"
-        @click="toVideo"
-      >
-        <UIcon
-          name="i-lucide-clapperboard"
-          aria-hidden="true"
-        />生成视频
-      </button>
-      <button
-        type="button"
-        @click="download"
-      >
-        <UIcon
-          name="i-lucide-download"
-          aria-hidden="true"
-        />下载
-      </button>
-      <button
-        type="button"
-        :aria-expanded="infoOpen"
-        @click="infoOpen = !infoOpen"
-      >
-        <UIcon
-          name="i-lucide-info"
-          aria-hidden="true"
-        />生成信息
-      </button>
-      <button
-        type="button"
-        class="muted"
-        title="工具入口尚未接入本轮范围"
-        @click="studio.notice.value = '「使用工具」尚未接入，本轮只做生成主链路。'"
-      >
-        <UIcon
-          name="i-lucide-layout-grid"
-          aria-hidden="true"
-        />使用工具
-      </button>
-    </div>
-
-    <dl
-      v-if="infoOpen && message?.meta"
-      class="panel-info"
-    >
-      <div>
-        <dt>提示词</dt>
-        <dd>{{ message.meta.prompt || '—' }}</dd>
-      </div>
-      <div>
-        <dt>模型</dt>
-        <dd>{{ message.meta.modelName || '后端默认' }}</dd>
-      </div>
-      <div>
-        <dt>参数</dt>
-        <dd>{{ [message.meta.ratio, message.meta.mode === 'video' ? `${message.meta.seconds} 秒` : '', message.meta.count > 1 ? `${message.meta.count} 张` : ''].filter(Boolean).join(' · ') || '—' }}</dd>
-      </div>
-      <div>
-        <dt>任务</dt>
-        <dd>{{ message.taskId || '—' }}</dd>
-      </div>
-    </dl>
-  </aside>
+        <div>
+          <dt>提示词</dt>
+          <dd>{{ message.meta.prompt || '—' }}</dd>
+        </div>
+        <div>
+          <dt>模型</dt>
+          <dd>{{ message.meta.modelName || '后端默认' }}</dd>
+        </div>
+        <div>
+          <dt>参数</dt>
+          <dd>{{ [message.meta.ratio, message.meta.mode === 'video' ? `${message.meta.seconds} 秒` : '', message.meta.count > 1 ? `${message.meta.count} 张` : ''].filter(Boolean).join(' · ') || '—' }}</dd>
+        </div>
+        <div>
+          <dt>任务</dt>
+          <dd>{{ message.taskId || '—' }}</dd>
+        </div>
+      </dl>
+    </aside>
+  </div>
 </template>
 
 <style scoped>
+/* 固定定位的整屏图层：脱离 flex 流，因此打开面板不会让聊天列重排 */
+.panel-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(6 7 9 / 58%);
+}
 .asset-panel {
   display: flex;
   flex-direction: column;
-  width: 320px;
-  flex-shrink: 0;
+  width: min(420px, 92vw);
+  height: 100%;
   padding: 14px;
   border-left: 1px solid var(--hg3-line);
   background: #141519;
+  box-shadow: -18px 0 44px rgb(0 0 0 / 46%);
   min-height: 0;
   overflow-y: auto;
+  animation: panel-in 180ms ease;
+}
+@keyframes panel-in {
+  from { transform: translateX(22px); opacity: 0.5; }
+  to { transform: none; opacity: 1; }
 }
 .asset-panel header {
   display: flex;

@@ -31,6 +31,21 @@ onUnmounted(() => {
 })
 
 const assets = computed(() => props.message.assets ?? [])
+
+/**
+ * 当前正在右侧面板预览的产物下标（不在预览 / 不是本卡片时为 -1）。
+ * 用途：给对应缩略图描边，让"哪张正在右侧看"一目了然（也方便关掉面板后再找回来）。
+ */
+const activeIndex = computed(() => {
+  if (!studio.previewOpen.value) return -1
+  if (studio.previewMessage.value?.id !== props.message.id) return -1
+  return studio.previewIndex.value
+})
+
+/** 点缩略图 = 在右侧面板打开大图（用户预期：图能点，不是只有小图标能点）。 */
+function openAsset(index: number) {
+  studio.openPreview(props.message.id, index)
+}
 const kindLabel = computed(() => {
   const meta = props.message.meta
   // 用了工具就报工具名：用户点的是"高清放大"，卡片上写"图片生成"等于不承认这件事
@@ -137,13 +152,23 @@ function download(assetId: string) {
       <figure
         v-for="(asset, index) in assets"
         :key="asset.id"
+        :class="{ active: activeIndex === index }"
       >
-        <img
+        <!-- 图片本身可点开大图；视频要留给原生控件，不能整块包进 button -->
+        <button
           v-if="asset.kind === 'image'"
-          :src="asset.url"
-          alt=""
-          loading="lazy"
+          type="button"
+          class="result-open"
+          :aria-label="`查看第 ${index + 1} 个产物`"
+          title="点击在右侧查看大图"
+          @click="openAsset(index)"
         >
+          <img
+            :src="asset.url"
+            alt=""
+            loading="lazy"
+          >
+        </button>
         <video
           v-else
           :src="asset.url"
@@ -303,6 +328,20 @@ function download(assetId: string) {
   border-radius: 10px;
   overflow: hidden;
   background: #101114;
+}
+/* 正在右侧预览的那一张：描边，方便关掉面板后一眼找回 */
+.task-results figure.active {
+  outline: 2px solid var(--hg3-accent);
+  outline-offset: -2px;
+}
+/* 缩略图点击区：整张图都是热区，光标示意可放大 */
+.result-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
 }
 /* 产物按原始比例等比缩放：不裁切、不拉伸（交接文档：完整预览不裁主体） */
 .task-results img,

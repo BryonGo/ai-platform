@@ -162,36 +162,6 @@ onMounted(async () => {
     <HgAssetPanel v-if="studio.previewOpen.value" />
 
     <HgDuplicateDialog />
-
-    <!-- 移动端全屏预览 -->
-    <div
-      v-if="studio.previewOpen.value && studio.previewAsset.value"
-      class="mobile-preview"
-    >
-      <header>
-        <strong>{{ sessionTitle }} · 预览</strong>
-        <button
-          type="button"
-          aria-label="关闭预览"
-          @click="studio.previewOpen.value = false"
-        >
-          <UIcon name="i-lucide-x" />
-        </button>
-      </header>
-      <div class="mobile-stage">
-        <img
-          v-if="studio.previewAsset.value.kind === 'image'"
-          :src="studio.previewAsset.value.url"
-          alt=""
-        >
-        <video
-          v-else
-          :src="studio.previewAsset.value.url"
-          controls
-          playsinline
-        />
-      </div>
-    </div>
   </div>
 </template>
 
@@ -394,9 +364,6 @@ onMounted(async () => {
 .drawer-mask {
   display: none;
 }
-.mobile-preview {
-  display: none;
-}
 
 @media (max-width: 1100px) {
   .history-slot {
@@ -420,45 +387,6 @@ onMounted(async () => {
   }
   .mobile-only {
     display: inline-flex;
-  }
-  .mobile-preview {
-    display: flex;
-    flex-direction: column;
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    background: #0b0c0e;
-  }
-  .mobile-preview header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    color: var(--hg3-ink);
-    font-size: 13px;
-  }
-  .mobile-preview header button {
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border: 0;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 8%);
-    color: #fff;
-    cursor: pointer;
-  }
-  .mobile-stage {
-    display: grid;
-    flex: 1;
-    place-items: center;
-    min-height: 0;
-  }
-  .mobile-stage img,
-  .mobile-stage video {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
   }
 }
 </style>
