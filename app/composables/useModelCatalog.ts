@@ -232,10 +232,72 @@ export function cloudQualities(catalog: Catalog | null, modelId: string): string
   return params.map(item => item.quality).filter((q): q is string => !!q)
 }
 
+/**
+ * 云端模型在指定清晰度下支持的比例**及其像素尺寸**。
+ *
+ * 与 cloudRatios 的区别：那个只回比例字符串（给禁用判断用），这个连 size 一起回，
+ * 因为面板上要显示"这个比例在这个档位下实际出多大" —— 用户选 9:16 时想知道的是
+ * 1600×2848 而不是"9:16"。
+ *
+ * 各家比例集合差别很大，所以必须按模型取，不能用一个全局表：
+ *   Seedream 5 / GPT Image 2   5 个
+ *   Nano Banana (Gemini 3 Pro) 10 个（多 3:4 4:3 4:5 5:4 21:9）
+ *   本地 comfy                  8 个（见 app/data/image-options.ts）
+ */
+export function cloudRatioOptions(
+  catalog: Catalog | null,
+  modelId: string,
+  quality: string
+): { ratio: string, size: string }[] {
+  const model = catalog?.cloudModels?.find(item => item.id === modelId)
+  const params = model?.capabilities?.parameters ?? []
+  if (!params.length) return []
+  const pick = params.find(item => item.quality === quality) ?? params[0]
+  return (pick?.ratios ?? [])
+    .map(item => ({ ratio: String(item?.ratio ?? ''), size: String(item?.size ?? '') }))
+    .filter(item => !!item.ratio)
+}
+
 /** 后台声明的默认清晰度（为空时调用方回落到第一档）。 */
 export function cloudDefaultQuality(catalog: Catalog | null, modelId: string): string {
   const model = catalog?.cloudModels?.find(item => item.id === modelId)
   return model?.capabilities?.default?.quality || ''
+}
+
+/**
+ * 后台声明的默认画幅（为空时调用方回落到竖屏）。
+ *
+ * 这个字段以前**前端从来没读过** —— 换模型时只把画幅收敛到 list[0]，而 list[0] 是
+ * "1:1"（比例表就是按 1:1 打头排的），于是默认落在方图上。产品里"竖屏"只有一种口径
+ * （首页探索流 hg-media r9x16、视频报价 quoteVideo(catalog,'9:16',…)），图片输入器
+ * 却从 16:9 横屏起步、收敛后变 1:1 —— 跟哪儿都不一致。
+ *
+ * 走后台字段而不是写死：运营改一次 capabilities.default.ratio 就能换默认画幅，不用发版。
+ */
+export function cloudDefaultRatio(catalog: Catalog | null, modelId: string): string {
+  const model = catalog?.cloudModels?.find(item => item.id === modelId)
+  return model?.capabilities?.default?.ratio || ''
+}
+
+/**
+ * portraitFallback 竖屏兜底画幅。
+ *
+ * 模型没声明默认、或声明的那个当前档不支持时用它。9:16 与首页探索流容器、
+ * 视频报价同一条口径；再不行才轮到 supported[0]。
+ */
+export const PORTRAIT_RATIO = '9:16'
+
+/**
+ * pickRatio 选默认画幅：模型声明的 → 竖屏兜底 → 支持列表第一个。
+ *
+ * 顺序不能反：先信后台声明（运营配的才算数），再信产品的竖屏约定，
+ * 最后才退到"列表里随便挑一个能用"。
+ */
+export function pickRatio(supported: string[], preferred: string): string {
+  if (!supported.length) return preferred || PORTRAIT_RATIO
+  if (preferred && supported.includes(preferred)) return preferred
+  if (supported.includes(PORTRAIT_RATIO)) return PORTRAIT_RATIO
+  return supported[0] ?? preferred
 }
 
 /** 云端模型在指定清晰度下支持的比例（该档没声明比例时返回空数组=不限制）。 */

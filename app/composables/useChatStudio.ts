@@ -1,6 +1,6 @@
 import type { Catalog, CharacterItem, HougongTask, SessionItem } from './useHougongApi'
-import { buildModelOptions, cloudDefaultQuality, cloudQualities, cloudRatios, durationOptions, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
-import { sizeFor } from '../data/image-options'
+import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
+import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
 
 // 对话创作页的业务层。
@@ -126,7 +126,9 @@ export function createChatStudio() {
      提交任务时用 promptText() 取纯文本（与旧创作页一致）。 */
   const promptModel = ref<Prompt>({ parts: [] })
   const prompt = computed(() => promptText(promptModel.value))
-  const ratio = ref('16:9')
+  // 初始画幅：手机竖屏。原来是 '16:9' 横屏 —— 首页探索流用 r9x16、视频报价按 9:16
+  // 起算，只有图片输入器默认横屏。云端模型接入后由 capabilities.default.ratio 覆盖。
+  const ratio = ref(PORTRAIT_RATIO)
   const count = ref(1)
   /** 输出分辨率：1K / 2K（即梦口径）。云端按 quality 提交，本地按 width/height 提交。 */
   const resolution = ref('1K')
@@ -189,6 +191,30 @@ export function createChatStudio() {
   const supportedCloudRatios = computed<string[]>(() =>
     isCloudImage.value ? cloudRatios(catalog.value, modelId.value, resolution.value) : []
   )
+
+  /**
+   * 画幅选项（比例 + 该档位下的像素尺寸）。
+   *
+   * 面板上"比例"和"大小"是同一件事的两面 —— 用户点 9:16 时想知道的是 1600×2848，
+   * 所以两处口径在这里合流，不再各算各的。云端按模型能力（各家比例集合差得很远），
+   * 本地按 image-options。
+   */
+  const sizeOptions = computed<{ ratio: string, size: string }[]>(() => {
+    if (isCloudImage.value) {
+      return cloudRatioOptions(catalog.value, modelId.value, resolution.value)
+    }
+    return RATIO_OPTIONS.map((o) => {
+      const [w, h] = sizeFor(o.value, resolution.value)
+      return { ratio: o.value, size: `${w}×${h}` }
+    })
+  })
+
+  /** 面板底部「大小」那一行：当前比例 × 当前档位 = 多少像素。 */
+  const sizeLabel = computed(() => {
+    const hit = sizeOptions.value.find(o => o.ratio === ratio.value)
+    // 云端给的是 "1600x2848"，统一成 × 号显示
+    return (hit?.size || '').replace(/\s*[xX]\s*/, ' × ')
+  })
   const durationList = computed(() => durationOptions(selectedModel.value, catalog.value))
   const selectedCharacter = computed(() => characters.value.find(item => String(item.id) === characterId.value))
 
@@ -213,10 +239,19 @@ export function createChatStudio() {
     resolution.value = cloudDefaultQuality(catalog.value, modelId.value) || list[0] || resolution.value
   }, { immediate: true })
 
-  watch([supportedCloudRatios, resolution], () => {
+  // 换模型/换分辨率后，画幅收敛到"这个模型在这个档位下支持的"那个。
+  //
+  // 顺序：模型声明的默认 → 竖屏兜底(9:16) → 支持列表第一个。
+  // 原来是 list.includes(ratio) 就 return、否则取 list[0] —— 两个问题：
+  //   · 11 个模型声明了 default.ratio 却从没被读过，后台改了不起作用；
+  //   · list[0] 是 1:1（比例表按方图打头），默认落在方图上。
+  // 现在刻意**不再**因为"当前值恰好被支持"就跳过：切模型时要按新模型的声明重算，
+  // 否则从 Krea 切到 Seedream 会一直停在上一个模型的画幅上。
+  watch([supportedCloudRatios, resolution, modelId], () => {
     const list = supportedCloudRatios.value
-    if (!list.length || list.includes(ratio.value)) return
-    ratio.value = list[0] ?? ratio.value
+    if (!list.length) return
+    const next = pickRatio(list, cloudDefaultRatio(catalog.value, modelId.value))
+    if (next && next !== ratio.value) ratio.value = next
   }, { immediate: true })
 
   // 切到视频模式且当前模型不可用时，默认选中 MiniMax H3（用户手动换过就不再改）
@@ -991,6 +1026,8 @@ export function createChatStudio() {
     supportedVideoRatios: computed(() => videoRatios(catalog.value, modelId.value)),
     supportedQualities,
     supportedCloudRatios,
+    sizeOptions,
+    sizeLabel,
     /** 视频 1K/2K 是否可选：后端每个比例只给一档，因此视频下 2K 不可选 */
     videoSecondTierAvailable: computed(() => false),
     // 会话
