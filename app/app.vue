@@ -225,18 +225,6 @@ watch(() => route.fullPath, () => {
 
         <div class="hg-rail-scroll">
           <nav class="hg-nav">
-            <button
-              type="button"
-              class="hg-nav-item"
-              @click="openSearch()"
-            >
-              <UIcon
-                name="i-lucide-search"
-                style="color: var(--hg3-i-blue)"
-                aria-hidden="true"
-              />
-              <span class="hg-nav-label">搜索</span>
-            </button>
             <template
               v-for="item in navMain"
               :key="item.label"
@@ -309,6 +297,21 @@ watch(() => route.fullPath, () => {
                 <span class="hg-nav-label">{{ item.label }}</span>
               </NuxtLink>
             </template>
+            <!-- 搜索：原排在「首页」之上、与一级导航混在一起，位置抢了首页的头部。
+                 它是查找入口而不是导航目的地，下移到「我的资产」整组之后 ——
+                 既不再顶在最上面，也仍在侧栏可见区内。 -->
+            <button
+              type="button"
+              class="hg-nav-item"
+              @click="openSearch()"
+            >
+              <UIcon
+                name="i-lucide-search"
+                style="color: var(--hg3-i-blue)"
+                aria-hidden="true"
+              />
+              <span class="hg-nav-label">搜索</span>
+            </button>
           </nav>
 
           <div class="hg-rail-divider" />
