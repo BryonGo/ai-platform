@@ -1,14 +1,16 @@
 <script setup lang="ts">
-// 生成参数面板（不含容器）：比例 / 分辨率 / 大小 / **模型支持的参数**。
+// 生成参数面板（不含容器）：比例 / 清晰度 / 分辨率 / **模型支持的参数**。
+//
+// 用词口径（用户纠正过）：**清晰度**是 1K / 2K 这种档位，**分辨率**是长×宽（1024×1024）。
 //
 // 为什么合成一个面板：工具条上原来有「画幅」「时长」「参数」「LoRA」四个入口，
 // 用户要连点两三次才知道自己出的是多大一张图、能不能调采样。现在只有一个「参数」按钮，
-// 面板里按「比例 → 分辨率 → 模型参数」从上到下排一遍。
+// 面板里按「比例 → 清晰度 → 分辨率 → 模型参数」从上到下排一遍。
 //
 // 「只显示模型支持的项」由数据决定，不由这里判断：
 //   - 比例：调用方只传当前模型支持的比例（云端按 capabilities.parameters[].ratios，
 //     本地底模全部支持）；
-//   - 分辨率：调用方只传当前模型支持的清晰度档；
+//   - 清晰度：调用方只传当前模型支持的档位；
 //   - 数量/时长/采样：交给 HgParamsPanel，它自己按 mode 与 sampling 是否为 null 决定渲染，
 //     云端模型没有采样参数就不出现 Steps/CFG/采样器；
 //   - 效果包 LoRA：只在本地底模时有（云端模型没这东西）。
@@ -20,7 +22,7 @@ defineProps<{
   ratios: { value: string, label: string, size?: string }[]
   resolution: string
   resolutions: { value: string, label: string }[]
-  /** 当前比例对应的输出尺寸文案（如 1024 × 1024），空则显示占位 */
+  /** 当前比例 + 清晰度对应的**分辨率**文案（如 1024 × 1024），空则显示占位 */
   sizeLabel: string
   count: number
   seconds: number
@@ -85,7 +87,7 @@ function ratioTitle(item: { value: string, size?: string }) {
     </div>
 
     <div class="gp-line">
-      <span class="row-title">分辨率</span>
+      <span class="row-title">清晰度</span>
       <div class="res-row">
         <button
           v-for="item in resolutions"
@@ -102,7 +104,7 @@ function ratioTitle(item: { value: string, size?: string }) {
     </div>
 
     <div class="gp-line">
-      <span class="row-title">大小</span>
+      <span class="row-title">分辨率</span>
       <strong class="gp-value">{{ sizeLabel || '—' }}</strong>
     </div>
 

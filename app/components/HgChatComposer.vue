@@ -72,6 +72,10 @@ function onApplySnippet(source: SnippetSnapshot) {
 const modelSheet = ref(false)
 const paramsSheet = ref(false)
 
+// @ 引用入口按用户要求暂时从工具条取下（见 template 里被注释的那段按钮）。
+// 状态与数据链路保留：等下一条「@ 功能」写到这里时，解开按钮即可用，
+// 因此这里对 eslint 的未使用告警做定点豁免，而不是把代码删掉。
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- @ 入口临时下线，逻辑留待复用
 const mentionOpen = ref(false)
 
 /* @ 引用面板：角色 / 图片 / 视频 三类（交互标注 04） */
@@ -88,6 +92,7 @@ async function loadMediaAssets() {
   }))
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 同上：@ 入口临时下线
 function ensureMentionData() {
   void loadMediaAssets()
 }
@@ -324,6 +329,9 @@ function patchSampling(patch: Record<string, number | string>) {
       </div>
 
       <div class="toolbar">
+        <!-- @ 引用入口暂时取下（用户要求：工具条只留上传/模型/自定义）。
+             将来「@ 那套新功能」写好后再解开这段；MentionPanel / ensureMentionData /
+             mentionOpen 的状态与数据链路都保留着，解开即可用。
         <button
           type="button"
           class="at-button"
@@ -333,6 +341,7 @@ function patchSampling(patch: Record<string, number | string>) {
         >
           @
         </button>
+        -->
 
         <button
           v-if="isNarrow"
@@ -360,7 +369,7 @@ function patchSampling(patch: Record<string, number | string>) {
           :mode="studio.mode.value"
         />
 
-        <!-- 参数：比例 / 分辨率 / 模型支持的参数都收在这一个入口里。
+        <!-- 自定义：比例 / 清晰度 / 分辨率 / 模型支持的参数都收在这一个入口里。
              原来工具条上有「画幅」「时长」「参数」「LoRA」四个 chip，用户要连点两三次
              才知道自己出的是多大一张图、能不能调采样。现在按钮上的图标就是当前比例的形状。 -->
         <button
@@ -377,7 +386,7 @@ function patchSampling(patch: Record<string, number | string>) {
           <span>自定义</span>
           <span class="chip-name">{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
         </button>
-        <!-- 自定义：比例 / 分辨率 / 模型支持的参数都收在这一个浮窗里。
+        <!-- 自定义：比例 / 清晰度 / 分辨率 / 模型支持的参数都收在这一个浮窗里。
              必须 side=top —— 输入框在页面底部，向下展开会直接落到屏幕外。 -->
         <UPopover
           v-else
