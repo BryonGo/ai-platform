@@ -21,11 +21,19 @@ function updatedText(ts: number) {
     :to="`/stories/${story.id}`"
     class="story-card"
   >
-    <img
-      v-if="cover"
-      :src="cover"
-      :alt="story.title"
-    >
+    <template v-if="cover">
+      <img
+        class="media-bg"
+        :src="cover"
+        alt=""
+        aria-hidden="true"
+      >
+      <img
+        class="media-fg"
+        :src="cover"
+        :alt="story.title"
+      >
+    </template>
     <div
       v-else
       class="story-cover-placeholder"

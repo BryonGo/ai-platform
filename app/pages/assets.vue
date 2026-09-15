@@ -763,6 +763,15 @@ onUnmounted(() => {
         >
           <img
             v-if="isImage(a) && !brokenIds[a.id]"
+            class="media-bg"
+            :src="a.url"
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+          >
+          <img
+            v-if="isImage(a) && !brokenIds[a.id]"
+            class="media-fg"
             :src="a.url"
             :alt="displayName(a)"
             loading="lazy"
@@ -1298,6 +1307,9 @@ onUnmounted(() => {
   aspect-ratio: 1;
   background: #1b1d21;
   cursor: zoom-in;
+}
+.asset-card__media img.media-fg {
+  object-fit: contain;
 }
 .asset-card__media img,
 .asset-card__media video {

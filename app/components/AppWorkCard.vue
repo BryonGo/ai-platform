@@ -32,11 +32,19 @@ defineProps<{
     :to="`/works/${work.id}`"
     class="story-card"
   >
-    <img
-      v-if="work.image"
-      :src="work.image"
-      :alt="work.title"
-    >
+    <template v-if="work.image">
+      <img
+        class="media-bg"
+        :src="work.image"
+        alt=""
+        aria-hidden="true"
+      >
+      <img
+        class="media-fg"
+        :src="work.image"
+        :alt="work.title"
+      >
+    </template>
     <div
       v-else
       class="work-placeholder"
