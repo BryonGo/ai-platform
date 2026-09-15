@@ -470,7 +470,9 @@
  *   <img class="media-bg" src=…>   背景层（绝对定位铺满 + 模糊压暗）
  *   <img class="media-fg" src=…>   前景层（完整显示）
  * 绝对定位的层（如对比滑块）直接放同一容器，它自带 inset:0，会盖在背景层之上。 */
-.media-bg {
+/* 选择器带 img 标签：各页面普遍写着 `.xxx img { object-fit: cover }`（0,1,1），
+   只写类名（0,1,0）会被它压过去，前景层就退化成裁切了 —— 实测踩过。 */
+img.media-bg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -480,7 +482,7 @@
   transform: scale(1.15);
   pointer-events: none;
 }
-.media-fg {
+img.media-fg {
   position: relative;
   display: block;
   width: 100%;

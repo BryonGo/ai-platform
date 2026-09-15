@@ -463,6 +463,7 @@ function openContinuePreview(item: ContinueItem) {
               :after="tool.cover"
               :alt="tool.label"
               :label="`${tool.label} 原图与效果对比`"
+              fit="contain"
             />
             <img
               v-else-if="tool.cover"
