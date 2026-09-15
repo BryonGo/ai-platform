@@ -6,9 +6,9 @@ import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
 import { RATIO_OPTIONS } from '~/data/image-options'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
-/** 当前就地展开的选项行（'' 表示都收起）：不再用浮层遮挡输入框 */
-const pickerOpen = ref<'' | 'size' | 'ratio' | 'resolution' | 'duration'>('')
-function togglePicker(key: 'size' | 'ratio' | 'resolution' | 'duration') {
+/** 当前就地展开的选项面板（'' 表示收起）：不再用浮层遮挡输入框 */
+const pickerOpen = ref<'' | 'params'>('')
+function togglePicker(key: 'params') {
   pickerOpen.value = pickerOpen.value === key ? '' : key
 }
 const studio = useChatStudio()
@@ -52,21 +52,6 @@ const { onGlowPointerMove } = useGlowPointer()
 const loraOpen = ref(false)
 
 /** LoRA 按**底模 family** 过滤，没选底模就无从过滤——先明确提示，而不是弹一个空面板 */
-/** 时长档位范围（来自所选视频模型的档位表）；拖动时吸附到最近档位 */
-const durationBounds = computed(() => {
-  const list = studio.durationList.value
-  return { min: list[0] ?? 5, max: list.at(-1) ?? 10 }
-})
-function onDurationInput(event: Event) {
-  const raw = Number((event.target as HTMLInputElement).value)
-  const list = studio.durationList.value
-  if (!list.length) {
-    studio.seconds.value = raw
-    return
-  }
-  studio.seconds.value = list.reduce((best, item) => Math.abs(item - raw) < Math.abs(best - raw) ? item : best, list[0]!)
-}
-
 function openLora() {
   if (!studio.selectedModel.value || studio.selectedModel.value.channel === 'cloud') {
     studio.notice.value = '请先在上方选择一个本地底模，LoRA 按底模家族过滤。'
@@ -165,11 +150,6 @@ const resolutionOptions = computed(() => {
   const usable = studio.mode.value === 'video' && !studio.videoSecondTierAvailable.value ? all.slice(0, 1) : all
   return usable.map(value => ({ value, label: value, icon: 'i-lucide-aperture' }))
 })
-
-/** "1600x2848" / "1600×2848" → 统一成中间带空格的乘号 */
-function fmtSize(size: string) {
-  return (size || '').replace(/\s*[xX]\s*/, ' × ').replace(/×/, '×')
-}
 
 const samplingLimits = computed(() => studio.catalog.value?.sampling ?? null)
 
@@ -383,114 +363,43 @@ function patchSampling(patch: Record<string, number | string>) {
           :mode="studio.mode.value"
         />
 
-        <!-- LoRA 是**本地底模**的能力，云端模型没有这东西 —— 直接不渲染。
-             原来只判 mode==='image'，选着 GPT Image 也照样显示，点下去才弹
-             「请先选择一个本地底模」，等于先给一个不存在的入口再拒绝。 -->
+        <!-- 参数：比例 / 分辨率 / 模型支持的参数都收在这一个入口里。
+             原来工具条上有「画幅」「时长」「参数」「LoRA」四个 chip，用户要连点两三次
+             才知道自己出的是多大一张图、能不能调采样。现在按钮上的图标就是当前比例的形状。 -->
         <button
-          v-if="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
-          type="button"
-          class="hg-chip"
-          :aria-expanded="loraOpen"
-          aria-label="选择效果包 LoRA"
-          @click="openLora()"
-        >
-          <UIcon
-            name="i-lucide-layers"
-            aria-hidden="true"
-          />
-          <span>LoRA{{ studio.selectedLoras.value.length ? `(${studio.selectedLoras.value.length})` : '' }}</span>
-        </button>
-
-        <!-- 画幅：比例 / 分辨率 / 大小合成一个入口。
-             原来是三个独立 chip（比例、分辨率、参数），用户要连点两次才知道自己出的是
-             多大一张图。现在按钮上直接显示"比例 · 档位"，图标就是最终形状。 -->
-        <button
-          type="button"
-          class="hg-chip"
-          :aria-expanded="pickerOpen === 'size'"
-          aria-label="选择画幅与分辨率"
-          @click="togglePicker('size')"
-        >
-          <HgRatioIcon
-            :ratio="studio.ratio.value"
-            :size="18"
-          />
-          <span>{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
-          <UIcon
-            name="i-lucide-chevron-down"
-            class="hg-chevron"
-            :class="{ up: pickerOpen === 'size' }"
-            aria-hidden="true"
-          />
-        </button>
-
-        <button
-          v-if="studio.mode.value === 'video'"
-          type="button"
-          class="hg-chip"
-          :aria-expanded="pickerOpen === 'duration'"
-          aria-label="选择时长"
-          @click="togglePicker('duration')"
-        >
-          <UIcon
-            name="i-lucide-clock-3"
-            aria-hidden="true"
-          />
-          <span>{{ studio.seconds.value }} 秒</span>
-          <UIcon
-            name="i-lucide-chevron-down"
-            class="hg-chevron"
-            :class="{ up: pickerOpen === 'duration' }"
-            aria-hidden="true"
-          />
-        </button>
-
-        <button
-          v-if="isNarrow && studio.mode.value === 'image'"
+          v-if="isNarrow"
           type="button"
           class="hg-chip"
           aria-label="生成参数"
           @click="paramsSheet = true"
         >
-          <UIcon
-            name="i-lucide-sliders-horizontal"
-            aria-hidden="true"
+          <HgRatioIcon
+            :ratio="studio.ratio.value"
+            :size="18"
           />
           <span>参数</span>
         </button>
-        <UPopover
+        <button
           v-else
-          :ui="{ content: 'ring-0 bg-transparent shadow-none rounded-xl' }"
-          :content="{ side: 'top', align: 'center', collisionPadding: 12 }"
+          type="button"
+          class="hg-chip"
+          :aria-expanded="pickerOpen === 'params'"
+          aria-label="生成参数"
+          @click="togglePicker('params')"
         >
-          <button
-            v-if="studio.mode.value === 'image'"
-            type="button"
-            class="hg-chip"
-            aria-label="生成参数"
-          >
-            <UIcon
-              name="i-lucide-sliders-horizontal"
-              aria-hidden="true"
-            />
-            <span>参数</span>
-          </button>
-          <template #content>
-            <div class="param-pop">
-              <HgParamsPanel
-                :mode="studio.mode.value"
-                :count="studio.count.value"
-                :seconds="studio.seconds.value"
-                :duration-list="studio.durationList.value"
-                :sampling="studio.sampling.value"
-                :limits="samplingLimits"
-                @update:count="studio.count.value = $event"
-                @update:seconds="studio.seconds.value = $event"
-                @patch:sampling="patchSampling"
-              />
-            </div>
-          </template>
-        </UPopover>
+          <HgRatioIcon
+            :ratio="studio.ratio.value"
+            :size="18"
+          />
+          <span>参数</span>
+          <span class="chip-name">{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
+          <UIcon
+            name="i-lucide-chevron-down"
+            class="hg-chevron"
+            :class="{ up: pickerOpen === 'params' }"
+            aria-hidden="true"
+          />
+        </button>
 
         <div class="send-wrap">
           <button
@@ -509,89 +418,30 @@ function patchSampling(patch: Record<string, number | string>) {
         </div>
       </div>
 
-      <!-- 画幅面板：比例（带形状图标）/ 分辨率 / 大小，三行一次看完 -->
-      <div
-        v-if="pickerOpen === 'size'"
-        class="hg-size-panel"
-      >
-        <div class="size-head">
-          <span class="row-title">比例</span>
-          <button
-            type="button"
-            class="row-close"
-            aria-label="收起选项"
-            @click="pickerOpen = ''"
-          >
-            <UIcon name="i-lucide-x" />
-          </button>
-        </div>
-        <div class="ratio-grid">
-          <button
-            v-for="item in ratioOptions"
-            :key="item.value"
-            type="button"
-            class="ratio-cell"
-            :class="{ active: item.value === studio.ratio.value }"
-            :aria-pressed="item.value === studio.ratio.value"
-            :title="item.size ? `${item.value} · ${fmtSize(item.size)}` : item.value"
-            @click="studio.ratio.value = item.value"
-          >
-            <HgRatioIcon
-              :ratio="item.value"
-              :size="30"
-            />
-            <span>{{ item.value }}</span>
-          </button>
-        </div>
-
-        <div class="size-line">
-          <span class="row-title">分辨率</span>
-          <div class="res-row">
-            <button
-              v-for="item in resolutionOptions"
-              :key="item.value"
-              type="button"
-              class="res-pill"
-              :class="{ active: item.value === studio.resolution.value }"
-              :aria-pressed="item.value === studio.resolution.value"
-              @click="studio.resolution.value = item.value"
-            >
-              {{ item.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="size-line">
-          <span class="row-title">大小</span>
-          <strong class="size-value">{{ studio.sizeLabel.value || '—' }}</strong>
-        </div>
-      </div>
-      <div
-        v-if="pickerOpen === 'duration' && studio.mode.value === 'video'"
-        class="hg-option-row duration-row"
-      >
-        <span class="row-title">时长</span>
-        <input
-          class="duration-slider"
-          type="range"
-          :min="durationBounds.min"
-          :max="durationBounds.max"
-          step="1"
-          :value="studio.seconds.value"
-          :aria-valuetext="`${studio.seconds.value} 秒`"
-          aria-label="视频时长"
-          @input="onDurationInput"
-        >
-        <span class="duration-value">{{ studio.seconds.value }} 秒</span>
-        <button
-          type="button"
-          class="row-close"
-          aria-label="收起选项"
-          @click="pickerOpen = ''"
-        >
-          <UIcon name="i-lucide-x" />
-        </button>
-      </div>
+      <!-- 参数面板：比例 / 分辨率 / 大小 / 模型支持的参数（只列模型真的支持的项） -->
+      <HgGenParams
+        v-if="pickerOpen === 'params'"
+        :mode="studio.mode.value"
+        :ratio="studio.ratio.value"
+        :ratios="ratioOptions"
+        :resolution="studio.resolution.value"
+        :resolutions="resolutionOptions"
+        :size-label="studio.sizeLabel.value"
+        :count="studio.count.value"
+        :seconds="studio.seconds.value"
+        :duration-list="studio.durationList.value"
+        :sampling="studio.sampling.value"
+        :limits="samplingLimits"
+        :lora-visible="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
+        :lora-selected="studio.selectedLoras.value.length"
+        @update:ratio="studio.ratio.value = $event"
+        @update:resolution="studio.resolution.value = $event"
+        @update:count="studio.count.value = $event"
+        @update:seconds="studio.seconds.value = $event"
+        @patch:sampling="patchSampling"
+        @open:lora="openLora()"
+        @close="pickerOpen = ''"
+      />
     </div>
 
     <p
@@ -634,16 +484,27 @@ function patchSampling(patch: Record<string, number | string>) {
       v-model:open="paramsSheet"
       title="生成参数"
     >
-      <HgParamsPanel
+      <HgGenParams
         :mode="studio.mode.value"
+        :ratio="studio.ratio.value"
+        :ratios="ratioOptions"
+        :resolution="studio.resolution.value"
+        :resolutions="resolutionOptions"
+        :size-label="studio.sizeLabel.value"
         :count="studio.count.value"
         :seconds="studio.seconds.value"
         :duration-list="studio.durationList.value"
         :sampling="studio.sampling.value"
         :limits="samplingLimits"
+        :lora-visible="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
+        :lora-selected="studio.selectedLoras.value.length"
+        @update:ratio="studio.ratio.value = $event"
+        @update:resolution="studio.resolution.value = $event"
         @update:count="studio.count.value = $event"
         @update:seconds="studio.seconds.value = $event"
         @patch:sampling="patchSampling"
+        @open:lora="openLora()"
+        @close="paramsSheet = false"
       />
     </HgBottomSheet>
   </div>
