@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeHref } from '~/composables/useSafeUrl'
 // 作品完整预览。
 //
 // 首页设计说明第 6.2 节：完整预览保留原始宽高比、完整显示，
@@ -45,7 +46,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <a
               v-if="props.src"
               class="hg-icon-btn"
-              :href="props.src"
+              :href="safeHref(props.src)"
               download
               aria-label="下载原图"
             >

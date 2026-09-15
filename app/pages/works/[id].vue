@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppWorkCard from '~/components/AppWorkCard.vue'
+import { safeHref } from '~/composables/useSafeUrl'
 
 const api = useHougongApi()
 const session = useAuthSession()
@@ -310,7 +311,7 @@ function markOrientation(event: Event) {
         <div class="detail-actions">
           <a
             v-if="work.imageUrl"
-            :href="work.imageUrl"
+            :href="safeHref(work.imageUrl)"
             target="_blank"
             rel="noopener"
             class="btn-ghost"

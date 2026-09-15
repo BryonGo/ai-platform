@@ -11,6 +11,8 @@
 //
 // 选择态是**页面级**的：跨分页、跨筛选都保留，批量动作一次请求打完（后端逐条回报失败），
 // 再统一 reload —— 中途失败不会留下"删了一半看不出来"的状态。
+import { safeHref } from '~/composables/useSafeUrl'
+
 const api = useHougongApi()
 const session = useAuthSession()
 
@@ -258,7 +260,8 @@ async function download(a: AssetItem) {
       error.value = '后端未返回下载地址'
       return
     }
-    window.open(url, '_blank', 'noopener')
+    const target = safeHref(url)
+    if (target) window.open(target, '_blank', 'noopener')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '获取下载地址失败'
   } finally {
@@ -701,7 +704,7 @@ onUnmounted(() => {
       </div>
       <a
         v-if="exportTask.status === 'succeeded' && exportTask.downloadUrl"
-        :href="exportTask.downloadUrl"
+        :href="safeHref(exportTask.downloadUrl)"
         class="assets-btn assets-btn--primary"
         download
       >下载 ZIP</a>

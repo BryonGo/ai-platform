@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeHref } from '~/composables/useSafeUrl'
 // 右侧产物面板：按需展开，可切换同组多产物，并提供产物级操作。
 // 约束：完整预览保留原始宽高比（不裁切、不拉伸）；未完成的产物不渲染播放器；
 // 尚未接通的入口显式说明，不假装可用。
@@ -31,7 +32,8 @@ function download() {
   void (async () => {
     try {
       const res = await useHougongApi().assetDownloadUrl(asset.id)
-      window.open(res.url, '_blank', 'noopener')
+      const target = safeHref(res.url)
+      if (target) window.open(target, '_blank', 'noopener')
     } catch {
       studio.notice.value = '下载地址获取失败'
     }

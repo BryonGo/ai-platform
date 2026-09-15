@@ -8,6 +8,7 @@
 // 前端只认工具 code：预置提示词、LoRA、工作流都由后端拼并在建任务时冻结。
 import { FEATURES } from '~/config/features'
 import { toolNotice } from '~/data/tool-notice'
+import { safeHref } from '~/composables/useSafeUrl'
 
 useSeoMeta({ title: '创作工具 · 后宫' })
 
@@ -414,7 +415,8 @@ function outputLabel(out: ToolOutput) {
 }
 
 function download(url: string) {
-  window.open(url, '_blank', 'noopener')
+  const target = safeHref(url)
+  if (target) window.open(target, '_blank', 'noopener')
 }
 
 onMounted(async () => {

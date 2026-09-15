@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { StudioMessage } from '~/composables/useChatStudio'
+import { safeHref } from '~/composables/useSafeUrl'
 
 // 任务卡：状态、任务 ID、等待时长、进度、产物与操作。
 // 约束（交接文档第 4 节 / 第 6 条修正）：
@@ -77,7 +78,8 @@ function download(assetId: string) {
   void (async () => {
     try {
       const res = await useHougongApi().assetDownloadUrl(assetId)
-      window.open(res.url, '_blank', 'noopener')
+      const target = safeHref(res.url)
+      if (target) window.open(target, '_blank', 'noopener')
     } catch {
       studio.notice.value = '下载地址获取失败'
     }
