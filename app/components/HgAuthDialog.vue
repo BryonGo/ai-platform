@@ -10,8 +10,6 @@ const { intent } = useAuthDialog()
 const tab = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
-const username = ref('')
-const nickname = ref('')
 const showPassword = ref(false)
 const pending = ref(false)
 const error = ref('')
@@ -59,19 +57,18 @@ async function submitLogin() {
   }
 }
 
+// 注册只要邮箱 + 密码：用户名由服务端自动生成（并且就是展示名），注册后可在设置页修改。
 async function submitRegister() {
   error.value = ''
-  if (!username.value.trim() || !email.value.trim() || !password.value) {
-    error.value = '请填写用户名、邮箱与密码'
+  if (!email.value.trim() || !password.value) {
+    error.value = '请输入邮箱与密码'
     return
   }
   pending.value = true
   try {
     await hgApi.register({
-      username: username.value.trim(),
       email: email.value.trim(),
-      password: password.value,
-      nickname: nickname.value.trim() || username.value.trim()
+      password: password.value
     })
     close()
   } catch (e: unknown) {
@@ -230,19 +227,6 @@ async function guest() {
         >
           <label class="hg-field">
             <UIcon
-              name="i-lucide-user-round"
-              aria-hidden="true"
-            />
-            <input
-              v-model="username"
-              type="text"
-              autocomplete="username"
-              placeholder="用户名"
-              aria-label="用户名"
-            >
-          </label>
-          <label class="hg-field">
-            <UIcon
               name="i-lucide-mail"
               aria-hidden="true"
             />
@@ -282,6 +266,10 @@ async function guest() {
             role="alert"
           >
             {{ error }}
+          </p>
+
+          <p class="hg-auth-note">
+            用户名由系统自动生成，注册后可在设置页修改。
           </p>
 
           <button

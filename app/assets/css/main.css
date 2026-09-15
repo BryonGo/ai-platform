@@ -2231,6 +2231,19 @@ textarea:focus-visible {
   border-color: rgb(251 191 36 / 0.55);
   outline: 0;
 }
+/* 表单内的说明文字（如「用户名由系统自动生成」）：比正文小、不与输入框抢注意力 */
+.field-note {
+  margin: -4px 0 2px;
+  color: var(--muted, #9a8f80);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.field-note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.06);
+  font-size: 11px;
+}
 .field-row {
   display: flex;
   gap: 10px;

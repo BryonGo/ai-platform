@@ -582,13 +582,26 @@ export interface ModelDraftInput {
   safety: 'safe' | 'adult'
 }
 
+/** 当前登录账号的概要信息（对齐 /account/profile 返回）。 */
+export interface ProfileInfo {
+  id: number
+  username: string
+  email: string
+  nickname: string
+  avatar: string
+  user_type: number
+  status: number
+}
+
 export function useHougongApi() {
   const session = useAuthSession()
 
-  async function login(account: string, password: string): Promise<AuthResult> {
+  // 登录只认邮箱（后端口径，2026-09）：用户名是自动生成、可自行修改的展示名，
+  // 不再作为登录标识，所以这里发的字段就是 email，而不是过去的 account 混填。
+  async function login(email: string, password: string): Promise<AuthResult> {
     const data = await apiRequest<AuthResult>('/account/auth/login', {
       method: 'POST',
-      body: { account, password }
+      body: { email, password }
     })
     session.save(data.token, data.user_id)
     return data
@@ -604,18 +617,33 @@ export function useHougongApi() {
     return data
   }
 
-  async function register(input: {
-    username: string
-    email: string
-    password: string
-    nickname: string
-  }): Promise<AuthResult> {
+  /**
+   * 邮箱注册。用户名与展示名都由服务端自动生成（「邮箱前缀 + 随机后缀」，
+   * 用户名即展示名），因此这里只提交邮箱与密码；注册后可在设置页改用户名。
+   */
+  async function register(input: { email: string, password: string }): Promise<AuthResult> {
     const data = await apiRequest<AuthResult>('/account/auth/register', {
       method: 'POST',
       body: { ...input, agree_version: '2026.08' }
     })
     session.save(data.token, data.user_id)
     return data
+  }
+
+  /** 当前账号信息（用户名/邮箱/展示名）。 */
+  async function getProfile(): Promise<ProfileInfo> {
+    return apiRequest<ProfileInfo>('/account/profile')
+  }
+
+  /**
+   * 改用户名。后端会做规则校验（4-32 位字母数字下划线连字符）与全局唯一性校验，
+   * 并把展示名一并跟随；返回改完后的用户名与展示名，直接用于界面回显。
+   */
+  async function updateUsername(username: string): Promise<{ username: string, nickname: string }> {
+    return apiRequest<{ username: string, nickname: string }>('/account/profile/edit', {
+      method: 'POST',
+      body: { username }
+    })
   }
 
   function logout() {
@@ -1062,6 +1090,8 @@ export function useHougongApi() {
     login,
     guestLogin,
     register,
+    getProfile,
+    updateUsername,
     logout,
     listCharacters,
     getCharacter,

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-// 注册原型：契约对齐 go-sdk /api/v1/account/auth/register + /auth/code。
+// 注册：契约对齐 /api/v1/account/auth/register。
+//
+// 只填邮箱与密码 —— 用户名由服务端按「邮箱前缀 + 随机后缀」自动生成，并且就是展示名，
+// 注册后可在设置页自行修改；过去让用户先想一个用户名的做法已取消（2026-09 口径）。
 const email = ref('')
-const username = ref('')
-const nickname = ref('')
 const password = ref('')
 const agreed = ref(false)
 const pending = ref(false)
@@ -10,8 +11,8 @@ const error = ref('')
 
 async function submit() {
   error.value = ''
-  if (!email.value.trim() || !username.value.trim() || password.value.length < 6) {
-    error.value = '请填写邮箱、用户名与密码（6-18 位）'
+  if (!email.value.trim() || password.value.length < 6) {
+    error.value = '请填写邮箱与密码（6-18 位）'
     return
   }
   if (!agreed.value) {
@@ -21,9 +22,7 @@ async function submit() {
   pending.value = true
   try {
     await useHougongApi().register({
-      username: username.value.trim(),
       email: email.value.trim(),
-      nickname: nickname.value.trim() || username.value.trim(),
       password: password.value
     })
     await navigateTo('/')
@@ -66,27 +65,9 @@ async function submit() {
         >
       </label>
 
-      <label class="field">
-        <span>用户名</span>
-        <input
-          v-model="username"
-          type="text"
-          autocomplete="username"
-          minlength="4"
-          maxlength="32"
-          placeholder="4-32 位字母数字下划线"
-        >
-      </label>
-
-      <label class="field">
-        <span>昵称</span>
-        <input
-          v-model="nickname"
-          type="text"
-          maxlength="50"
-          placeholder="作品署名"
-        >
-      </label>
+      <p class="field-note">
+        用户名由系统自动生成（形如 <code>asher_7f3a</code>），注册后可在设置页修改。
+      </p>
 
       <label class="field">
         <span>密码</span>

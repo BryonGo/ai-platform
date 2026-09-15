@@ -1,19 +1,70 @@
 <script setup lang="ts">
-// 设置页：目前只放成人内容相关的偏好与入口确认状态。
+// 设置页：账号（用户名）与成人内容偏好。
 //
-// 产品口径：全站按 18+ 处理，成人内容**默认显示**；这里提供的是
+// 账号部分的口径（2026-09）：注册只填邮箱，用户名由服务端按「邮箱前缀 + 随机后缀」
+// 自动生成，用户可在这里自行修改；用户名同时就是展示名，改名后展示名一并跟随。
+// 成人内容部分：全站按 18+ 处理，成人内容**默认显示**；这里提供
 // "我不想看成人内容"（随时可逆的个人偏好）与"清除本浏览器的入口确认"两个出口。
 const gate = useAdultGate()
 const session = useAuthSession()
+const hgApi = useHougongApi()
 
 useSeoMeta({ title: '设置 · 后宫' })
 
 const message = ref('')
 const errorText = ref('')
 
+// —— 账号：用户名 ——
+const profile = ref<{ username: string, email: string } | null>(null)
+const usernameDraft = ref('')
+const usernamePending = ref(false)
+const usernameMsg = ref('')
+const usernameErr = ref('')
+
+/** 与后端同一套规则（4-32 位字母/数字/下划线/连字符），先在前端拦一次，省一趟请求。 */
+const USERNAME_RE = /^[a-zA-Z0-9_-]{4,32}$/
+
+async function loadProfile() {
+  if (!session.token.value) return
+  try {
+    const info = await hgApi.getProfile()
+    profile.value = { username: info.username, email: info.email }
+    usernameDraft.value = info.username
+  } catch {
+    // 拉不到资料不影响页面其余部分（可能是 token 过期），静默留给后续操作报错
+    profile.value = null
+  }
+}
+
+async function saveUsername() {
+  usernameMsg.value = ''
+  usernameErr.value = ''
+  const next = usernameDraft.value.trim()
+  if (!USERNAME_RE.test(next)) {
+    usernameErr.value = '用户名需 4-32 位，只能包含字母、数字、下划线与连字符'
+    return
+  }
+  if (profile.value && next === profile.value.username) {
+    usernameMsg.value = '用户名没有变化'
+    return
+  }
+  usernamePending.value = true
+  try {
+    const res = await hgApi.updateUsername(next)
+    profile.value = { username: res.username, email: profile.value?.email || '' }
+    usernameDraft.value = res.username
+    usernameMsg.value = `用户名已改为 ${res.username}`
+  } catch (e: unknown) {
+    usernameErr.value = e instanceof Error ? e.message : '修改失败，请稍后重试'
+  } finally {
+    usernamePending.value = false
+  }
+}
+
 onMounted(() => {
   session.load()
   gate.refresh()
+  loadProfile()
 })
 
 async function toggleAdultMode(next: boolean) {
@@ -41,12 +92,74 @@ async function resetGate() {
       <p class="settings-eyebrow">
         偏好设置
       </p>
-      <h1>成人内容</h1>
+      <h1>账号与偏好</h1>
       <p class="settings-sub">
-        本站按 18+ 处理，成人内容默认显示。这里的开关用于按自己的意愿隐藏成人内容
-        （效果包不再列成人条目、作品流中的 r18 作品恢复遮罩），随时可以再打开。
+        账号部分可以修改你的用户名；偏好部分是成人内容的显示开关，
+        本站按 18+ 处理、成人内容默认显示，这里的开关用于按自己的意愿隐藏它，
+        随时可以再打开。
       </p>
     </header>
+
+    <section class="settings-card">
+      <div class="settings-card__head">
+        <h2>用户名</h2>
+        <span
+          class="settings-pill"
+          :class="{ on: !!profile }"
+        >
+          {{ profile ? '已登录' : '未登录' }}
+        </span>
+      </div>
+      <template v-if="!session.token.value">
+        <p class="settings-card__hint">
+          登录后可修改用户名。注册只需邮箱与密码，用户名由系统自动生成（形如
+          <code>asher_7f3a</code>）。
+        </p>
+      </template>
+      <template v-else-if="!profile">
+        <p class="settings-card__hint">
+          正在读取账号信息…
+        </p>
+      </template>
+      <template v-else>
+        <p class="settings-card__hint">
+          用户名就是你的展示名，4-32 位，只能包含字母、数字、下划线与连字符，全站唯一。
+          邮箱（登录账号）为 <strong>{{ profile.email }}</strong>，如需更换请使用「修改邮箱」。
+        </p>
+        <div class="settings-inline">
+          <input
+            v-model="usernameDraft"
+            class="settings-input"
+            type="text"
+            maxlength="32"
+            autocomplete="username"
+            placeholder="输入新的用户名"
+            @keydown.enter.prevent="saveUsername"
+          >
+          <button
+            type="button"
+            class="settings-btn settings-btn--primary"
+            :disabled="usernamePending"
+            @click="saveUsername"
+          >
+            {{ usernamePending ? '保存中…' : '保存用户名' }}
+          </button>
+        </div>
+        <p
+          v-if="usernameMsg"
+          class="settings-inline-msg"
+        >
+          {{ usernameMsg }}
+        </p>
+        <p
+          v-if="usernameErr"
+          class="settings-inline-msg settings-inline-msg--error"
+          role="alert"
+        >
+          {{ usernameErr }}
+        </p>
+      </template>
+    </section>
 
     <section class="settings-card">
       <div class="settings-card__head">
@@ -213,6 +326,46 @@ async function resetGate() {
   font-size: 13px;
   line-height: 1.75;
   color: var(--muted);
+}
+
+.settings-inline {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.settings-input:focus {
+  border-color: rgb(251 191 36 / 0.55);
+  outline: 0;
+}
+
+.settings-inline-msg {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--amber);
+}
+
+.settings-inline-msg--error {
+  color: #fca5a5;
+}
+
+.settings-card__hint code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.06);
+  font-size: 11px;
 }
 
 .settings-btn {
