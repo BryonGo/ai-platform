@@ -23,12 +23,6 @@ function updatedText(ts: number) {
   >
     <template v-if="cover">
       <img
-        class="media-bg"
-        :src="cover"
-        alt=""
-        aria-hidden="true"
-      >
-      <img
         class="media-fg"
         :src="cover"
         :alt="story.title"

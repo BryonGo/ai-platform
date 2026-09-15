@@ -471,31 +471,26 @@
 
 /* 卡片媒体统一适配（全站一套规则）
  *
- * 固定框不随素材变形；图片**完整缩放显示**（contain）；比例对不上的部分用同一张图的
- * 模糊放大层补背景 —— 既不裁内容、也不留黑边、更不会把卡片撑长。
+ * **框的比例与尺寸一律按设计稿固定**（.hg-media.r4x5 / .r16x9 / .r2x3、.fx-thumb、
+ * .story-card、素材卡…）。素材本身什么比例都不影响卡片外观：同一排卡片永远等宽等高。
  *
- * 用法：容器保持原有比例（.hg-media.r9x16 / .fx-thumb / .story-card …），里面两层：
- *   <img class="media-bg" src=…>   背景层（绝对定位铺满 + 模糊压暗）
- *   <img class="media-fg" src=…>   前景层（完整显示）
- * 绝对定位的层（如对比滑块）直接放同一容器，它自带 inset:0，会盖在背景层之上。 */
-/* 选择器带 img 标签：各页面普遍写着 `.xxx img { object-fit: cover }`（0,1,1），
-   只写类名（0,1,0）会被它压过去，前景层就退化成裁切了 —— 实测踩过。 */
-img.media-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(18px) brightness(0.55) saturate(1.1);
-  transform: scale(1.15);
-  pointer-events: none;
-}
+ * 图怎么放进框：**铺满 + 以左上角为基准裁掉溢出**
+ * （object-fit: cover; object-position: left top），因此不会出现黑边或虚化补边。
+ *
+ * 基准取左上角而不是居中：人像/立绘的头都在上方，居中裁剪最容易切到脸；
+ * 从左上角起裁 = 保住脸和上半身，裁掉右侧与下方。
+ *
+ * 用法：容器给好比例类，里面放一层 <img class="media-fg" src=…>。
+ * 绝对定位的层（对比滑块）放同一容器即可，它自带 inset:0，并按同一基准裁切。
+ * 选择器带 img 标签：各页面普遍写着 `.xxx img { object-fit: cover }`（0,1,1），
+ * 只写类名（0,1,0）会被它压过去 —— 实测踩过。 */
 img.media-fg {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: left top;
 }
 
 .hg-badge {

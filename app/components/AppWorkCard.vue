@@ -34,12 +34,6 @@ defineProps<{
   >
     <template v-if="work.image">
       <img
-        class="media-bg"
-        :src="work.image"
-        alt=""
-        aria-hidden="true"
-      >
-      <img
         class="media-fg"
         :src="work.image"
         :alt="work.title"

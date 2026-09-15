@@ -446,15 +446,6 @@ function openContinuePreview(item: ContinueItem) {
           class="hg-card tool-card"
         >
           <div class="hg-media r2x3">
-            <!-- 补背景：同一张图放大铺满 + 模糊，垫在下面（比例对不上时不留黑边） -->
-            <img
-              v-if="tool.cover"
-              class="media-bg"
-              :src="tool.cover"
-              alt=""
-              aria-hidden="true"
-              loading="lazy"
-            >
             <!-- 后台配了「原图 + 效果图」一对就出对比滑块（/effects 与工具页同一套逻辑）；
                  只有一张就退回单图。 -->
             <HgCompareSlider
@@ -463,7 +454,6 @@ function openContinuePreview(item: ContinueItem) {
               :after="tool.cover"
               :alt="tool.label"
               :label="`${tool.label} 原图与效果对比`"
-              fit="contain"
             />
             <img
               v-else-if="tool.cover"
@@ -539,15 +529,6 @@ function openContinuePreview(item: ContinueItem) {
           <!-- 固定 16:9 框，框不随素材变形；素材完整缩放显示，比例对不上的部分用
                同一张图的模糊层补背景（而不是留黑边，也不是把卡片撑长）。 -->
           <div class="hg-media r16x9">
-            <!-- 补背景：同一张图放大铺满 + 模糊，垫在下面 -->
-            <img
-              v-if="item.cover"
-              class="media-bg"
-              :src="item.cover"
-              alt=""
-              aria-hidden="true"
-              loading="lazy"
-            >
             <!-- 有原图时用同坐标对比滑块，而不是并排两张肖像（设计说明第 8 条） -->
             <template v-if="item.compareBefore && item.cover">
               <HgCompareSlider
@@ -555,7 +536,6 @@ function openContinuePreview(item: ContinueItem) {
                 :after="item.cover"
                 :alt="item.title"
                 :label="`${item.title} 原图与效果对比`"
-                fit="contain"
               />
             </template>
             <img
@@ -660,14 +640,6 @@ function openContinuePreview(item: ContinueItem) {
           class="hg-card explore-card"
         >
           <div class="hg-media r4x5">
-            <img
-              v-if="work.cover"
-              class="media-bg"
-              :src="work.cover"
-              alt=""
-              aria-hidden="true"
-              loading="lazy"
-            >
             <img
               v-if="work.cover"
               class="media-fg"
@@ -1065,7 +1037,7 @@ function openContinuePreview(item: ContinueItem) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
-/* 媒体适配（背景层 + 前景层）走全站统一规则，见 hougong3.css 的 .media-bg/.media-fg */
+/* 媒体适配（前景层铺满、左上角起裁）走全站统一规则，见 hougong3.css 的 img.media-fg */
 .media-placeholder {
   display: grid;
   place-items: center;

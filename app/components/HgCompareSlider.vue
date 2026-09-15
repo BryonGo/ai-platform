@@ -122,7 +122,7 @@ function onKeydown(event: KeyboardEvent) {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 0%;
+  object-position: left top;
 }
 .clip {
   position: absolute;

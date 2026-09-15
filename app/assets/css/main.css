@@ -1243,10 +1243,6 @@ textarea:focus-visible {
   mask-composite: exclude;
   animation: gilded-edge 6s linear infinite;
 }
-/* 前景层完整显示（背景层仍按 .media-bg 铺满，见 hougong3.css 的统一规则） */
-.story-card > img.media-fg {
-  object-fit: contain;
-}
 .story-card > img {
   position: absolute;
   inset: 0;

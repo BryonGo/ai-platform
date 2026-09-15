@@ -25,12 +25,6 @@ const cover = computed(() => props.character.coverUrl || props.character.image |
   >
     <template v-if="cover">
       <img
-        class="media-bg"
-        :src="cover"
-        alt=""
-        aria-hidden="true"
-      >
-      <img
         class="media-fg"
         :src="cover"
         :alt="character.name"
@@ -66,9 +60,6 @@ const cover = computed(() => props.character.coverUrl || props.character.image |
   width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
-}
-.character-card > img.media-fg {
-  object-fit: contain;
 }
 .character-placeholder {
   display: grid;
