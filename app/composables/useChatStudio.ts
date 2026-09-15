@@ -200,6 +200,14 @@ export function createChatStudio() {
    * 本地按 image-options。
    */
   const sizeOptions = computed<{ ratio: string, size: string }[]>(() => {
+    // 视频：必须用**视频模型自带的分辨率表**（与提交时的 videoSizeFor 同一份来源）。
+    // 以前这里落到下面的图像尺寸表，于是面板显示 768×1344 而实际出 1280×736。
+    if (mode.value === 'video') {
+      return videoRatios(catalog.value, modelId.value).map((r) => {
+        const size = videoSizeFor(catalog.value, modelId.value, r)
+        return { ratio: r, size: size ? `${size[0]}×${size[1]}` : '' }
+      })
+    }
     if (isCloudImage.value) {
       return cloudRatioOptions(catalog.value, modelId.value, resolution.value)
     }
@@ -209,7 +217,7 @@ export function createChatStudio() {
     })
   })
 
-  /** 面板底部「大小」那一行：当前比例 × 当前档位 = 多少像素。 */
+  /** 面板「分辨率」那一行：当前比例（× 清晰度）= 多少像素。 */
   const sizeLabel = computed(() => {
     const hit = sizeOptions.value.find(o => o.ratio === ratio.value)
     // 云端给的是 "1600x2848"，统一成 × 号显示
