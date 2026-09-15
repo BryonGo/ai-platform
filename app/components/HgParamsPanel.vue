@@ -7,6 +7,8 @@ import type { ComposerMode } from '~/composables/useModelCatalog'
 const props = defineProps<{
   mode: ComposerMode
   count: number
+  /** 数量上限：云端模型用 capabilities.maxOutputs（后台可配），本地底模没有该声明，用 4 */
+  countMax?: number
   seconds: number
   durationList: number[]
   sampling: { steps: number, sampler: string, scheduler: string, cfg: number } | null
@@ -19,6 +21,15 @@ const emit = defineEmits<{
 }>()
 
 const advanced = computed(() => props.mode === 'image' && !!props.sampling && !!props.limits)
+
+/** 数量上限：模型声明的 maxOutputs；没声明（0/缺省）时退回本地约定 4。 */
+const maxCount = computed(() => (props.countMax && props.countMax > 0 ? props.countMax : 4))
+
+/** 手动输入也夹到 [1, maxCount]：数字框的 max 只在 spinner 上生效，键入不拦。 */
+function onCountInput(event: Event) {
+  const raw = Number((event.target as HTMLInputElement).value) || 1
+  emit('update:count', Math.min(Math.max(1, raw), maxCount.value))
+}
 </script>
 
 <template>
@@ -31,9 +42,10 @@ const advanced = computed(() => props.mode === 'image' && !!props.sampling && !!
       <input
         type="number"
         min="1"
-        max="4"
+        :max="maxCount"
+        :title="`最多 ${maxCount} 张（由模型能力 maxOutputs 决定）`"
         :value="count"
-        @input="emit('update:count', Number(($event.target as HTMLInputElement).value) || 1)"
+        @input="onCountInput"
       >
     </label>
 

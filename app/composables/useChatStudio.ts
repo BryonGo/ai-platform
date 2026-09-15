@@ -247,6 +247,23 @@ export function createChatStudio() {
     resolution.value = cloudDefaultQuality(catalog.value, modelId.value) || list[0] || resolution.value
   }, { immediate: true })
 
+  // 数量上限：云端模型声明的 capabilities.maxOutputs（后台可配）。
+  //
+  // 之前 UI 写死 1~4：模型支持 10 张也只能填 4；反过来模型只支持 1 张时界面仍让填 4，
+  // 提交才被后端拒（ChargeRegistered 会拦）。现在上限跟着模型走，本地底模没有该声明，
+  // 仍按约定用 4。
+  const countMax = computed(() => {
+    if (mode.value !== 'image' || selectedModel.value?.channel !== 'cloud') return 4
+    const model = catalog.value?.cloudModels?.find(item => item.id === modelId.value)
+    const declared = model?.capabilities?.maxOutputs ?? 0
+    return declared > 0 ? declared : 4
+  })
+
+  // 换模型/改能力后数量超过上限就收敛，避免拿着一个模型不允许的张数提交
+  watch(countMax, (max) => {
+    if (count.value > max) count.value = max
+  }, { immediate: true })
+
   // 换模型后画幅收敛到"新模型声明的默认画幅"。
   //
   // 顺序：模型声明的默认 → 竖屏兜底(9:16) → 支持列表第一个。
@@ -1042,6 +1059,7 @@ export function createChatStudio() {
     supportedVideoRatios: computed(() => videoRatios(catalog.value, modelId.value)),
     supportedQualities,
     supportedCloudRatios,
+    countMax,
     sizeOptions,
     sizeLabel,
     /** 视频 1K/2K 是否可选：后端每个比例只给一档，因此视频下 2K 不可选 */

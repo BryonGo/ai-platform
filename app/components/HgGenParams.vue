@@ -25,6 +25,8 @@ defineProps<{
   /** 当前比例 + 清晰度对应的**分辨率**文案（如 1024 × 1024），空则显示占位 */
   sizeLabel: string
   count: number
+  /** 数量上限（云端取 capabilities.maxOutputs） */
+  countMax?: number
   seconds: number
   durationList: number[]
   sampling: { steps: number, sampler: string, scheduler: string, cfg: number } | null
@@ -116,6 +118,7 @@ function ratioTitle(item: { value: string, size?: string }) {
     <HgParamsPanel
       :mode="mode"
       :count="count"
+      :count-max="countMax"
       :seconds="seconds"
       :duration-list="durationList"
       :sampling="sampling"
