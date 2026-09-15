@@ -41,7 +41,7 @@ const emblemSrc = '/mock/home/emblem.png'
 const navMain = [
   { to: '/', label: '首页', icon: 'i-lucide-house', color: 'var(--hg3-i-orange)' },
   { to: '/effects', label: '全部工具', icon: 'i-lucide-layout-grid', color: 'var(--hg3-i-coral)' },
-  { to: '', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)', pill: '后续开放' },
+  { to: '/canvas', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)' },
   { to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }
 ]
 // 「我的资产」下的入口。
@@ -120,7 +120,7 @@ const accountWrapRef = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
 // 对话创作页需要占满可视高度（输入器贴底、消息区独立滚动），
 // 因此让主内容区去掉通用内边距，由页面自己排布。
-const isFullBleed = computed(() => route.path.startsWith('/create'))
+const isFullBleed = computed(() => route.path.startsWith('/create') || route.path.startsWith('/canvas'))
 const credits = ref(0)
 const unread = ref(0)
 
@@ -128,6 +128,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/': '首页',
   '/create': '对话创作',
   '/effects': '全部工具',
+  '/canvas': '画布',
   '/assets': '素材',
   '/characters': '角色资产',
   '/works': '我的发布',
