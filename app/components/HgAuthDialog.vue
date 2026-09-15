@@ -77,19 +77,6 @@ async function submitRegister() {
     pending.value = false
   }
 }
-
-async function guest() {
-  error.value = ''
-  pending.value = true
-  try {
-    await hgApi.guestLogin()
-    close()
-  } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : '游客登录失败，请稍后重试'
-  } finally {
-    pending.value = false
-  }
-}
 </script>
 
 <template>
@@ -210,15 +197,6 @@ async function guest() {
             <a href="#">忘记密码</a>
             <span v-if="intent.reason === 'generate'">当前草稿已保留</span>
           </div>
-
-          <button
-            type="button"
-            class="hg-auth-guest"
-            :disabled="pending"
-            @click="guest"
-          >
-            游客一键登录（无需注册）
-          </button>
         </form>
 
         <form
@@ -444,22 +422,6 @@ async function guest() {
 }
 .hg-auth-foot a:hover {
   color: var(--hg3-muted, #9a9791);
-}
-.hg-auth-guest {
-  width: 100%;
-  margin-top: 14px;
-  padding: 9px 0;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--hg3-muted, #9a9791);
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.hg-auth-guest:hover {
-  background: rgb(255 255 255 / 5%);
-  color: var(--hg3-ink, #f2f0ec);
 }
 .hg-auth-note {
   margin: 12px 0 0;

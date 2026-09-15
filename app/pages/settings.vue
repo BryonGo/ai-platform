@@ -224,7 +224,7 @@ async function resetGate() {
         v-if="!session.token.value"
         class="settings-card__hint"
       >
-        这是账号级偏好，请先登录（可用游客一键登录）。
+        这是账号级偏好，请先登录。
       </p>
       <button
         v-else

@@ -607,16 +607,6 @@ export function useHougongApi() {
     return data
   }
 
-  // 游客一键登录：后端自动建临时账号（无密码）返回 token，适合开发/快速体验。
-  async function guestLogin(): Promise<AuthResult> {
-    const data = await apiRequest<AuthResult>('/account/auth/guest', {
-      method: 'POST',
-      body: {}
-    })
-    session.save(data.token, data.user_id)
-    return data
-  }
-
   /**
    * 邮箱注册。用户名与展示名都由服务端自动生成（「邮箱前缀 + 随机后缀」，
    * 用户名即展示名），因此这里只提交邮箱与密码；注册后可在设置页改用户名。
@@ -1088,7 +1078,6 @@ export function useHougongApi() {
 
   return {
     login,
-    guestLogin,
     register,
     getProfile,
     updateUsername,
