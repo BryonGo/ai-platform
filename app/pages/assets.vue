@@ -551,8 +551,8 @@ function onKeydown(e: KeyboardEvent) {
   if (picked.value.length) clearPick()
 }
 
-onMounted(() => {
-  session.load()
+onMounted(async () => {
+  await session.load()
   document.addEventListener('keydown', onKeydown)
   if (!session.token.value) {
     void navigateTo('/auth/login')

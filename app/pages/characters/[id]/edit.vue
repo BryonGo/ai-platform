@@ -13,7 +13,7 @@ const error = ref('')
 const characterId = computed(() => String(route.params.id))
 
 onMounted(async () => {
-  session.load()
+  await session.load()
   if (!session.token.value) {
     await navigateTo('/auth/login')
     return

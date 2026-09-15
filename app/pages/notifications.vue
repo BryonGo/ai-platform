@@ -62,8 +62,8 @@ function kindIcon(kind: string): string {
   return '•'
 }
 
-onMounted(() => {
-  session.load()
+onMounted(async () => {
+  await session.load()
   if (!session.token.value) {
     navigateTo('/auth/login')
     return

@@ -169,7 +169,9 @@ function logout() {
 }
 
 async function loadShellData() {
-  session.load()
+  // load() 内含一次 auto-login：用 HttpOnly Cookie 把内存会话恢复回来，必须 await，
+  // 否则下面的钱包/通知请求会以未登录态发出。
+  await session.load()
   if (!session.token.value) {
     recentSessions.value = MOCK_RECENT
     credits.value = 0

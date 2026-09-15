@@ -17,7 +17,7 @@ function toCard(w: WorkItem) {
 }
 
 async function load() {
-  session.load()
+  await session.load()
   if (!session.token.value) {
     await navigateTo('/auth/login')
     return

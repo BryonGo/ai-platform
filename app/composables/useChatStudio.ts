@@ -434,7 +434,7 @@ export function createChatStudio() {
   }
 
   async function loadCharacters() {
-    session.load()
+    await session.load()
     if (!session.token.value) {
       characters.value = []
       return
@@ -1076,7 +1076,7 @@ export function createChatStudio() {
    *   也不消费草稿 —— 首页只负责把这次输入**写成**草稿再跳创作页。
    */
   async function init(opts: { withSessions?: boolean } = {}) {
-    session.load()
+    await session.load()
     // 目录与模型目录并行拉：工具要先于"默认模型"落位，避免选完工具又被默认模型覆盖模式
     await Promise.all([loadCatalog(), loadCharacters(), tools.ensure()])
     const queryTool = typeof route.query.tool === 'string' ? route.query.tool : ''

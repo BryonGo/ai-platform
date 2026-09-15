@@ -91,9 +91,11 @@ const runningWorks = ref(0)
 
 onMounted(() => {
   // 首页各区块各自立刻取数，**不**排在 SDK 初始化后面。
-  // 为什么可以不 await：studio.init 的第一步 session.load() 是同步的（token 立即可用），
-  // 它内部拉的是目录/角色/工具，与下面三个区块互不依赖；以前那种写法会让探索流、
-  // 继续创作、工具目录全部等一次网络初始化，首屏出现明显的空窗。
+  // studio.init 内部会 await session.load()（此刻它可能发一次 auto-login 用
+  // HttpOnly Cookie 恢复会话），但拉的是目录/角色/工具，与下面三个区块互不依赖；
+  // 以前那种写法会让探索流、继续创作、工具目录全部等一次网络初始化，首屏出现明显的空窗。
+  // 代价：恢复会话的往返与这三个区块并行，它们在那一帧可能仍是未登录视角 —— 首页区块
+  // 本来就允许未登录浏览，因此不影响正确性。
   void studio.init({ withSessions: false }) // withSessions:false —— 首页不读会话/消息
   void toolCatalog.ensure()
   void loadContinue()

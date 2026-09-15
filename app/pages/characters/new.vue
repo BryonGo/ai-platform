@@ -7,8 +7,8 @@ const session = useAuthSession()
 const submitting = ref(false)
 const error = ref('')
 
-onMounted(() => {
-  session.load()
+onMounted(async () => {
+  await session.load()
   if (!session.token.value) {
     navigateTo('/auth/login')
   }

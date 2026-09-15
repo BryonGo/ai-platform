@@ -420,7 +420,7 @@ function download(url: string) {
 }
 
 onMounted(async () => {
-  session.load()
+  await session.load()
   await catalog.ensure()
   // 从效果列表点进来时带着玩法（?template=裸体姿势 对应的 code），要预选上；
   // 否则用户点了"大字型"，进去看到的却是默认玩法。

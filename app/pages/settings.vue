@@ -95,8 +95,8 @@ async function loadVersions() {
   versionLoaded.value = true
 }
 
-onMounted(() => {
-  session.load()
+onMounted(async () => {
+  await session.load()
   gate.refresh()
   loadProfile()
   loadVersions()

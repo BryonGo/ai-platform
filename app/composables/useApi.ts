@@ -1,6 +1,9 @@
 // Hougong 会话与真实后端（go-sdk /api/v1）请求封装。
-// token 存 localStorage；站点头可经 NUXT_PUBLIC_SITE_CODE 覆盖（默认 default，
-// dev 联调；生产部署时指向后宫实际站点）。
+//
+// 凭据策略：token **不再写 localStorage**。登录时后端同时下发 HttpOnly Cookie
+// （脚本读不到、浏览器自动带上），前端只在内存保留一份，供 SSE 等无法自定义请求头
+// 的场景使用 —— 即便页面被注入脚本，也拿不到可长期复读的凭据。
+// 站点头可经 NUXT_PUBLIC_SITE_CODE 覆盖（默认 default，dev 联调；生产部署时指向后宫实际站点）。
 
 export interface ApiEnvelope<T> {
   code: number
@@ -8,28 +11,57 @@ export interface ApiEnvelope<T> {
   data: T
 }
 
+// legacyTokenKey 旧版落盘的凭据键名。迁移后主动清理，避免历史用户机器上遗留的
+// token 继续被任意脚本读取。
+const legacyTokenKey = 'hg:token'
+
+// restoreOnce 保证会话恢复在整个应用生命周期内只请求一次。
+let restoreOnce: Promise<void> | null = null
+
 export function useAuthSession() {
   const token = useState<string>('hg:token', () => '')
   const uid = useState<number>('hg:uid', () => 0)
 
-  function load() {
-    if (!import.meta.client) return
-    token.value = localStorage.getItem('hg:token') || ''
-  }
-  function save(t: string, userId: number) {
+  // acceptSession 写入登录态，只进内存 —— 持久化正是凭据可被 XSS 读走的根因。
+  function acceptSession(t: string, userId: number) {
     token.value = t
     uid.value = userId
-    if (import.meta.client) {
-      localStorage.setItem('hg:token', t)
-      // 注意：uid 仅作内存态，不再持久化到 localStorage（它从未用于授权判断，
-      // 持久化只是多余的暴露面）。
+  }
+
+  // restoreSession 用 HttpOnly Cookie 里的凭据换回内存态。
+  //
+  // 刷新页面后内存 token 必然丢失，靠 Cookie 续：后端 auto-login 在 token 为空时
+  // 支持改用 Cookie 校验并重签，因此无需在本地保存任何凭据。
+  function restoreSession(): Promise<void> {
+    if (!import.meta.client || token.value) return Promise.resolve()
+    if (!restoreOnce) {
+      restoreOnce = apiRequest<{ token: string, user_id: number }>('/account/auth/auto-login', {
+        method: 'POST', body: {}
+      }).then((data) => {
+        if (data?.token) acceptSession(data.token, data.user_id || 0)
+      }).catch(() => {
+        /* 未登录或已过期：保持未登录态即可，不必打扰用户 */
+      })
     }
+    return restoreOnce
+  }
+
+  async function load() {
+    if (!import.meta.client) return
+    // 迁移：清掉旧版本落盘的凭据
+    localStorage.removeItem(legacyTokenKey)
+    await restoreSession()
+  }
+  function save(t: string, userId: number) {
+    acceptSession(t, userId)
+    restoreOnce = null
   }
   function clear() {
     token.value = ''
     uid.value = 0
+    restoreOnce = null
     if (import.meta.client) {
-      localStorage.removeItem('hg:token')
+      localStorage.removeItem(legacyTokenKey)
     }
   }
   return { token, uid, load, save, clear }
@@ -75,7 +107,10 @@ export async function apiRequest<T = unknown>(
   const timer = setTimeout(() => ctrl.abort(), 90000)
   let resp: Response
   try {
-    resp = await fetch(apiBase() + path, { method: opts.method || 'GET', headers, body, signal: ctrl.signal })
+    // credentials: 'include' —— 凭据在 HttpOnly Cookie 里，必须允许浏览器带上。
+    resp = await fetch(apiBase() + path, {
+      method: opts.method || 'GET', headers, body, signal: ctrl.signal, credentials: 'include'
+    })
   } finally {
     clearTimeout(timer)
   }

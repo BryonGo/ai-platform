@@ -150,8 +150,8 @@ function addResourceUrl() {
   mcForm.value.resourceUrlInput = ''
 }
 
-onMounted(() => {
-  session.load()
+onMounted(async () => {
+  await session.load()
   if (!session.token.value) {
     navigateTo('/auth/login')
     return
