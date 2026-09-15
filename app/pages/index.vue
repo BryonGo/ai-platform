@@ -316,9 +316,12 @@ function openContinuePreview(item: ContinueItem) {
         aria-hidden="true"
       >
         <span class="hero-glow" />
-        <!-- 人物素材：新背景素材未定稿（交接文档第 4 节），此处用已确认的妲己资产占位 -->
+        <!-- 背景主视觉：妲己九尾（2048×960，由黑底 JPEG 亮度键控转出带 alpha 的 WebP）。
+             构图已按安全区确认：主视觉在横向 50%~70%、纵向上 30% 以内；
+             左侧渐隐区只放烟雾，下方 64% 被输入框覆盖且自身向下淡出。
+             换图时保持同一构图约定即可（见 docs/HERO-BACKGROUND-SPEC.md）。 -->
         <img
-          src="/images/daji-three-tail-cutout-v2.webp"
+          src="/images/daji-hero-alpha.webp"
           alt=""
         >
       </div>
@@ -748,12 +751,18 @@ function openContinuePreview(item: ContinueItem) {
   /* 背景化：等比 cover 取景到头部+上身，绝不拉伸 */
   object-fit: cover;
   object-position: 58% 0%;
+  /* 两级渐隐：纵向把底边切断处藏掉（素材是半身像，底边是硬切）；
+     横向只做很轻的一段（素材本身已是带 alpha 的抠像，左侧烟雾是画面内容，
+     压太狠会把烟雾吃掉；34% 的硬渐隐是给不透底素材用的）；
+     右侧/顶部/左侧的收口已经**烘焙进素材自身**（见 docs 的素材说明）：
+     CSS 渐隐在到达 box 边界前仍留有可观不透明度，素材右缘又恰有较亮的烟雾与星点，
+     结果会在内容列右边界留下一条可见竖缝；把 smoothstep 做进 alpha 才能精确收到 0。 */
   -webkit-mask-image:
     linear-gradient(180deg, #000 40%, transparent 92%),
-    linear-gradient(90deg, transparent 0%, #000 34%);
+    linear-gradient(90deg, transparent 0%, #000 12%);
   mask-image:
     linear-gradient(180deg, #000 40%, transparent 92%),
-    linear-gradient(90deg, transparent 0%, #000 34%);
+    linear-gradient(90deg, transparent 0%, #000 12%);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
 }
