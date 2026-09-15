@@ -7,15 +7,14 @@
 //   · no-store —— 被 Cloudflare / 浏览器缓存住的话，检测会永远返回旧版本（等于没做）；
 //   · 版本取运行时 NUXT_PUBLIC_BUILD_VERSION（compose 传镜像 tag），服务器上重启容器即生效，
 //     不需要把版本号写进代码里；
-//   · startedAt 是进程启动时间，用它一眼分辨"是不是换了容器"（滚动发布排查用）。
-const startedAt = new Date().toISOString()
-
+//   · startedAt 是进程启动时间，用它一眼分辨"是不是换了容器"（滚动发布排查用）；
+//   · 必须同时存在 version.head.ts —— 只写 .get.ts 时 HEAD 会 404，
+//     因为 Nitro 的方法路由按文件后缀绑定，详见 server/utils/version.ts。
 export default defineEventHandler((event) => {
-  setHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-  setHeader(event, 'Pragma', 'no-cache')
+  setVersionCacheHeaders(event)
   const config = useRuntimeConfig(event)
   return {
     version: String(config.public.buildVersion || 'dev'),
-    startedAt
+    startedAt: versionStartedAt
   }
 })
