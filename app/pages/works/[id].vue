@@ -88,6 +88,41 @@ async function load() {
   }
 }
 
+// ── 发布到社区 ──
+// 生成结果落在 hougong_work，首页探索流读的是 platform_work（publication）——
+// 两个模型各管一段，这里做的是"把这部作品发布到社区"这一步（封面取作品的产物资产）。
+const publishOpen = ref(false)
+const publishPending = ref(false)
+const publishMsg = ref('')
+
+async function submitPublish(payload: { mode: 'draft' | 'publish', title: string, content: string, contentRating: string }) {
+  if (publishPending.value || !work.value) return
+  publishPending.value = true
+  error.value = ''
+  publishMsg.value = ''
+  try {
+    const editor = await api.saveWorkDraft({
+      title: payload.title,
+      content: payload.content,
+      coverAssetId: work.value.assetId || undefined,
+      contentRating: payload.contentRating || undefined
+    })
+    if (payload.mode === 'draft') {
+      publishMsg.value = '已保存草稿，可在「我的发布」里继续编辑'
+      publishOpen.value = false
+      return
+    }
+    if (!editor?.id) throw new Error('保存草稿失败：后端未返回作品 id')
+    const published = await api.publishWork(editor.id)
+    publishMsg.value = `已发布《${published.title}》`
+    publishOpen.value = false
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '发布失败'
+  } finally {
+    publishPending.value = false
+  }
+}
+
 // 删除作品（后端 DELETE /hougong/works/{id}，此前前端没有入口）
 async function removeWork() {
   if (!work.value) return
@@ -234,6 +269,12 @@ function markOrientation(event: Event) {
           {{ error }}
         </p>
         <p
+          v-else-if="publishMsg"
+          class="empty-tip"
+        >
+          {{ publishMsg }}
+        </p>
+        <p
           v-else-if="coverNote"
           class="empty-tip"
         >
@@ -286,6 +327,17 @@ function markOrientation(event: Event) {
           >
             {{ work.favorite ? '取消收藏' : '收藏' }}
           </button>
+          <button
+
+            type="button"
+
+            :disabled="publishPending"
+
+            @click="publishOpen = true"
+          >
+            发布到社区
+          </button>
+
           <button
             v-if="work.characterId && work.assetId"
             type="button"
@@ -357,6 +409,14 @@ function markOrientation(event: Event) {
         />
       </div>
     </section>
+    <HgPublishDialog
+      v-model:open="publishOpen"
+      :cover-url="work?.imageUrl || ''"
+      :cover-name="work?.title || ''"
+      :initial-title="work?.title || ''"
+      :pending="publishPending"
+      @submit="submitPublish"
+    />
   </div>
 
   <div

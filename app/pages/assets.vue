@@ -396,6 +396,55 @@ async function runBatch(action: 'hide' | 'unhide') {
   notice.value = `${verb}：成功 ${res.affected} 个，失败 ${failed} 个 —— ${head}${failed > 3 ? ' 等' : ''}`
 }
 
+// ── 发布到社区 ──
+// 走 platform 的 publication 模型（work/edit → work/publish）：首页「探索」流读的就是它。
+// 与 /hougong/works（生成结果入库）是两套模型，这里只负责"发布"这一步。
+const publishOpen = ref(false)
+const publishPending = ref(false)
+/** 发布用的封面资产：选中的第一张图片，没有图片就用第一个选中项。 */
+const publishCover = ref<AssetItem | null>(null)
+
+function askPublish() {
+  const selected = picked.value
+    .map(id => items.value.find(x => x.id === id))
+    .filter((x): x is AssetItem => !!x)
+  if (!selected.length) return
+  publishCover.value = selected.find(a => isImage(a)) || selected[0] || null
+  publishOpen.value = true
+}
+
+/**
+ * 提交发布。两步是后端契约决定的：先 work/edit 落草稿（封面在这一步写库），
+ * 再 work/publish 置为 published —— 合成一步会在"草稿/发布"之间丢掉状态。
+ */
+async function submitPublish(payload: { mode: 'draft' | 'publish', title: string, content: string, contentRating: string }) {
+  if (publishPending.value) return
+  publishPending.value = true
+  error.value = ''
+  try {
+    const cover = publishCover.value
+    const editor = await api.saveWorkDraft({
+      title: payload.title,
+      content: payload.content,
+      coverAssetId: cover?.id,
+      contentRating: payload.contentRating || undefined
+    })
+    if (payload.mode === 'draft') {
+      notice.value = '已保存草稿，可在「我的发布」里继续编辑并发布'
+      publishOpen.value = false
+      return
+    }
+    if (!editor?.id) throw new Error('保存草稿失败：后端未返回作品 id')
+    const work = await api.publishWork(editor.id)
+    notice.value = `已发布《${work.title}》，首页探索流即可看到`
+    publishOpen.value = false
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '发布失败'
+  } finally {
+    publishPending.value = false
+  }
+}
+
 // ── 导出（工程包）──
 // 选中若干资产 → POST /platform/export 打成 ZIP（**异步**）→ 轮询到终态取 downloadUrl。
 const exporting = ref(false)
@@ -899,6 +948,14 @@ onUnmounted(() => {
           <button
             type="button"
             class="assets-btn"
+            :disabled="batchBusy"
+            @click="askPublish"
+          >
+            发布作品
+          </button>
+          <button
+            type="button"
+            class="assets-btn"
             :disabled="exporting"
             @click="runExport"
           >
@@ -933,6 +990,14 @@ onUnmounted(() => {
       :pending="batchBusy"
       :progress="batchProgress"
       @confirm="doDelete"
+    />
+
+    <HgPublishDialog
+      v-model:open="publishOpen"
+      :cover-url="publishCover?.url || ''"
+      :cover-name="publishCover ? displayName(publishCover) : ''"
+      :pending="publishPending"
+      @submit="submitPublish"
     />
 
     <HgMediaPreview

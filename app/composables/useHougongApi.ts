@@ -368,6 +368,34 @@ export interface PublicationWork {
   publishedAt: number
 }
 
+/**
+ * 作品编辑器（后端 WorkEditor）：草稿/已发布作品的可编辑字段。
+ *
+ * 与 PublicationWork 的区别：编辑器带 state/title/content/rating/tags，但**不带封面 URL**
+ * —— 封面是展示口径（签发地址），只在 WorkSummary/WorkDetail 里出现。
+ */
+export interface WorkEditor {
+  id: string
+  state: string
+  title: string
+  content: string
+  contentRating: string | null
+  tags: PlatformTag[]
+  updatedAt: number
+}
+
+/** 保存作品草稿入参（对应后端 WorkSaveReq）。 */
+export interface WorkSaveInput {
+  id?: string | number
+  title?: string
+  content?: string
+  tagIds?: number[]
+  /** 封面资产 id，必须是本人资产；缺省/0 = 不改动现有封面。 */
+  coverAssetId?: string | number
+  /** 分级 sfw/r15/r18；缺省 = 不改。 */
+  contentRating?: string
+}
+
 export interface PublicationPost {
   id: string
   title: string
@@ -668,7 +696,8 @@ export function useHougongApi() {
   async function setCharacterCover(id: number | string, assetId: number | string): Promise<CharacterItem> {
     return apiRequest<CharacterItem>(`/hougong/characters/${id}/cover`, {
       method: 'PUT',
-      body: { assetId: Number(assetId) || 0 }
+      // 同类精度问题：资产 id 是雪花 id，必须按字符串发（见 saveWorkDraft 注释）。
+      body: { assetId: String(assetId || '0') }
     })
   }
 
@@ -958,6 +987,65 @@ export function useHougongApi() {
   async function getWork(id: string): Promise<PublicationWork> {
     return apiRequest(`/platform/work/${id}`)
   }
+
+  /**
+   * 取作品编辑器（缺省 id 取当前草稿，可能为 null）。
+   *
+   * 后端草稿是「每个账号一份」的语义：不传 id 时返回当前草稿而不是新建，
+   * 因此「打开发布框」不能假设一定有数据回来。
+   */
+  async function getWorkEditor(id?: string | number): Promise<WorkEditor | null> {
+    const q = id ? `?id=${id}` : ''
+    const res = await apiRequest<{ work: WorkEditor | null }>(`/platform/work/edit${q}`)
+    return res.work || null
+  }
+
+  /**
+   * 保存作品草稿（不发布）。返回 null 表示"空草稿已被丢弃"（后端按空入参丢弃）。
+   *
+   * 封面在这一步落库（coverAssetId），发布时才有图 —— 探索流卡片用的就是它。
+   */
+  async function saveWorkDraft(input: WorkSaveInput): Promise<WorkEditor | null> {
+    const body: Record<string, unknown> = {}
+    if (input.title !== undefined) body.title = input.title
+    if (input.content !== undefined) body.content = input.content
+    if (input.tagIds) body.tagIds = input.tagIds
+    // 雪花 id 必须以**字符串**发：Number("1471022339713873920") 会丢精度成 …874000，
+    // 后端按这个 id 查资产必然查不到（实测报「封面资产不存在或不属于当前账号」）。
+    // 后端字段是 uint64，GoFrame 的 gconv 能直接把十进制字符串转成整数，不会损失精度。
+    if (input.id) body.id = String(input.id)
+    if (input.coverAssetId) body.coverAssetId = String(input.coverAssetId)
+    if (input.contentRating) body.contentRating = input.contentRating
+    const res = await apiRequest<{ work: WorkEditor | null }>('/platform/work/edit', { method: 'POST', body })
+    return res.work || null
+  }
+
+  /** 发布作品（缺省 id 发布当前草稿），返回发布后的作品详情（含 coverUrl）。 */
+  async function publishWork(id?: string | number): Promise<PublicationWork> {
+    // 同样用字符串传 id（理由见 saveWorkDraft 的注释）。
+    return apiRequest('/platform/work/publish', { method: 'POST', body: id ? { id: String(id) } : {} })
+  }
+
+  /** 取消发布（published → unpublished）。 */
+  async function unpublishWork(id: string | number): Promise<void> {
+    await apiRequest(`/platform/work/${id}/unpublish`, { method: 'POST', body: {} })
+  }
+
+  /** 隐藏/恢复作品（作者本人或管理员）。 */
+  async function setWorkHidden(id: string | number, hidden: boolean): Promise<void> {
+    await apiRequest(`/platform/work/${id}/hidden`, { method: 'POST', body: { hidden } })
+  }
+
+  /** 删除作品。 */
+  async function deleteWork(id: string | number): Promise<void> {
+    await apiRequest(`/platform/work/${id}`, { method: 'DELETE' })
+  }
+
+  /** 我发布的作品（scope=owned，含草稿/未发布/隐藏状态）。 */
+  async function listMyPublishedWorks(page = 1, pageSize = 20): Promise<{ items: PublicationWork[], total: number }> {
+    return listWorksFeed(page, pageSize, 'owned')
+  }
+
   async function listPosts(page = 1, pageSize = 20): Promise<PublicationPost[]> {
     const res = await apiRequest<{ items: PublicationPost[] }>(`/platform/post?page=${page}&pageSize=${pageSize}`)
     return res.items || []
@@ -1182,6 +1270,13 @@ export function useHougongApi() {
     getExport,
     listExports,
     listWorksFeed,
+    getWorkEditor,
+    saveWorkDraft,
+    publishWork,
+    unpublishWork,
+    setWorkHidden,
+    deleteWork,
+    listMyPublishedWorks,
     getWork,
     listPosts,
     listComments,
