@@ -239,17 +239,25 @@ export function createChatStudio() {
     resolution.value = cloudDefaultQuality(catalog.value, modelId.value) || list[0] || resolution.value
   }, { immediate: true })
 
-  // 换模型/换分辨率后，画幅收敛到"这个模型在这个档位下支持的"那个。
+  // 换模型后画幅收敛到"新模型声明的默认画幅"。
   //
   // 顺序：模型声明的默认 → 竖屏兜底(9:16) → 支持列表第一个。
-  // 原来是 list.includes(ratio) 就 return、否则取 list[0] —— 两个问题：
-  //   · 11 个模型声明了 default.ratio 却从没被读过，后台改了不起作用；
-  //   · list[0] 是 1:1（比例表按方图打头），默认落在方图上。
-  // 现在刻意**不再**因为"当前值恰好被支持"就跳过：切模型时要按新模型的声明重算，
-  // 否则从 Krea 切到 Seedream 会一直停在上一个模型的画幅上。
-  watch([supportedCloudRatios, resolution, modelId], () => {
+  // 为什么单独监听 modelId：原来这个 watcher 把 resolution 也放在依赖里，于是
+  // **用户点一下清晰度（1K↔2K），画幅就被拽回模型默认值** —— 实测「9:16 不动、点 2K
+  // 变成别的画幅」。清晰度与画幅是两个独立选择，换档不该改画幅。
+  watch(modelId, () => {
     const list = supportedCloudRatios.value
     if (!list.length) return
+    const next = pickRatio(list, cloudDefaultRatio(catalog.value, modelId.value))
+    if (next && next !== ratio.value) ratio.value = next
+  })
+
+  // 清晰度/能力变化：只在当前画幅**不被支持**时才收敛（换模型已由上面处理）。
+  // 11 个模型声明了 default.ratio 却从没被读过的问题由上面那处解决：
+  // 后台改默认值在**换模型**时生效，而不是在用户调清晰度时突袭。
+  watch([supportedCloudRatios, resolution], () => {
+    const list = supportedCloudRatios.value
+    if (!list.length || list.includes(ratio.value)) return
     const next = pickRatio(list, cloudDefaultRatio(catalog.value, modelId.value))
     if (next && next !== ratio.value) ratio.value = next
   }, { immediate: true })
@@ -1064,7 +1072,7 @@ export function provideChatStudio() {
  * 拆出来是确定性行为：只认「负面词 / 负面提示词 / negative prompt」这个标记，
  * 标记之前是正向、之后是负面。认不出就原样返回，不改用户输入。
  */
-export function splitNegativePrompt(text: string): { prompt: string; negative: string } {
+export function splitNegativePrompt(text: string): { prompt: string, negative: string } {
   const raw = text || ''
   const re = /(^|\n)\s*(负面词|负面提示词|negative\s*prompt)\s*[:：]?\s*/i
   const m = raw.match(re)
