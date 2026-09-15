@@ -6,6 +6,7 @@
 // "我传了图、点了生成、结果在哪"变成一段需要读的流水账。自由对话创作仍在 /create。
 //
 // 前端只认工具 code：预置提示词、LoRA、工作流都由后端拼并在建任务时冻结。
+import { FEATURES } from '~/config/features'
 import { toolNotice } from '~/data/tool-notice'
 
 useSeoMeta({ title: '创作工具 · 后宫' })
@@ -502,11 +503,15 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
               {{ c.name }}{{ c.alias ? ` · ${c.alias}` : '' }}
             </option>
           </select>
+          <!-- 角色资产入口撤下期间不能让人"去角色资产创建一个"（那是个死胡同），
+               按开关给一句能落地的话；功能恢复后自动变回原来的引导。 -->
           <p
             v-else
             class="mask-warn"
           >
-            你还没有角色，先去「角色资产」创建一个再来用这个工具。
+            {{ FEATURES.characterAssets
+              ? '你还没有角色，先去「角色资产」创建一个再来用这个工具。'
+              : '这个工具需要角色资产；角色资产入口暂时下线，恢复后再来使用。' }}
           </p>
         </template>
 

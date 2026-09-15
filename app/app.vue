@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
 import { HOME_TOOLS } from '~/data/hougong-home'
+import { FEATURES } from '~/config/features'
 import AppAgeGate from './components/AppAgeGate.vue'
 
 useHead({
@@ -43,14 +44,19 @@ const navMain = [
   { to: '', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)', pill: '后续开放' },
   { to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }
 ]
+// 「我的资产」下的入口。
+//
+// 图片/视频原来是两个平级入口，但它们指向**同一个页面**（只差一个 kind 查询参数），
+// 而页面本身叫「素材」—— 三套叫法互相不一致。现在收敛成：一个「素材」入口，
+// 图片/视频在页面内做成页签（一处管理、多选可跨类型）。
 const navAssets = [
-  { to: '/assets', label: '图片', icon: 'i-lucide-image', color: 'var(--hg3-i-blue)' },
-  { to: '/assets?kind=video', label: '视频', icon: 'i-lucide-video', color: 'var(--hg3-i-coral)' },
-  { to: '/characters', label: '角色资产', icon: 'i-lucide-user-round', color: 'var(--hg3-i-green)' },
+  { to: '/assets', label: '素材', icon: 'i-lucide-images', color: 'var(--hg3-i-blue)' },
+  // 角色资产的入口按 FEATURES.characterAssets 决定是否出现；页面与接口都还在，
+  // 直接访问 /characters 依旧可用（见 config/features.ts）。
+  { to: '/characters', label: '角色资产', icon: 'i-lucide-user-round', color: 'var(--hg3-i-green)', feature: 'characterAssets' as const },
   { to: '/works', label: '我的发布', icon: 'i-lucide-send', color: 'var(--hg3-i-amber)' }
-]
+].filter(item => !item.feature || FEATURES[item.feature])
 const navBottom = [
-  { to: '/models', label: '模型', icon: 'i-lucide-box', color: 'var(--hg3-i-blue)' },
   { to: '/notifications', label: '通知', icon: 'i-lucide-bell', color: 'var(--hg3-i-coral)' },
   { to: '/settings', label: '设置', icon: 'i-lucide-settings', color: 'var(--hg3-i-gray)' }
 ]
@@ -73,11 +79,11 @@ const SEARCH_PAGES = [
   { label: '对话创作', to: '/create' },
   { label: '全部工具', to: '/effects' },
   { label: '我的资产', to: '/assets' },
-  { label: '角色资产', to: '/characters' },
-  { label: '探索作品', to: '/works' },
+  { label: '角色资产', to: '/characters', feature: 'characterAssets' as const },
+  { label: '我的发布', to: '/works' },
   { label: '钱包与账单', to: '/wallet' },
-  { label: '模型目录', to: '/models' }
-]
+  { label: '设置', to: '/settings' }
+].filter(item => !item.feature || FEATURES[item.feature])
 
 const searchResults = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -122,11 +128,10 @@ const PAGE_NAMES: Record<string, string> = {
   '/': '首页',
   '/create': '对话创作',
   '/effects': '全部工具',
-  '/assets': '我的资产',
+  '/assets': '素材',
   '/characters': '角色资产',
-  '/works': '探索',
+  '/works': '我的发布',
   '/wallet': '钱包与账单',
-  '/models': '模型',
   '/notifications': '通知',
   '/stories': '故事',
   '/auth/login': '登录',
@@ -485,6 +490,7 @@ watch(() => route.fullPath, () => {
                   class="hg-account-menu"
                 >
                   <NuxtLink
+                    v-if="FEATURES.characterAssets"
                     to="/characters"
                     @click="accountOpen = false"
                   >
@@ -503,7 +509,7 @@ watch(() => route.fullPath, () => {
                     钱包与账单
                   </NuxtLink>
                   <NuxtLink
-                    to="/models"
+                    to="/settings"
                     @click="accountOpen = false"
                   >
                     偏好设置

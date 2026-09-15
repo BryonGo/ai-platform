@@ -311,6 +311,10 @@ export interface SnippetItem {
 
 export interface AssetItem {
   id: string
+  /** 原始文件名（上传时落库；生成产物没有文件名，为空串）。资产库展示与搜索靠它。 */
+  name?: string
+  /** 资产类型：image/video/audio/zip/manifest/file */
+  kind?: string
   origin: string
   status: string
   mimeType: string
@@ -850,9 +854,45 @@ export function useHougongApi() {
   }
 
   // ── 资产库（asset）──
-  async function listAssets(hidden = false, page = 1, pageSize = 100): Promise<AssetItem[]> {
-    const res = await apiRequest<{ items: AssetItem[] }>(`/platform/asset?hidden=${hidden ? 1 : 0}&page=${page}&pageSize=${pageSize}`)
-    return res.items || []
+  /**
+   * 资产库列表。
+   *
+   * 过滤与排序**全部交给服务端**（kind/origin/keyword/sort）：分页下在前端过滤只能过滤
+   * "已加载的那几页"，翻到第 3 页才出现的一张视频，用前端页签是永远看不到的。
+   * 同时返回 total——无限滚动要靠它判断"到底了"，只看 items.length 会在整页边界漏判。
+   */
+  async function listAssets(q: {
+    hidden?: boolean
+    kind?: string
+    origin?: string
+    keyword?: string
+    sort?: 'new' | 'old' | 'large'
+    page?: number
+    pageSize?: number
+  } = {}): Promise<{ items: AssetItem[], total: number }> {
+    const params = new URLSearchParams()
+    params.set('hidden', q.hidden ? '1' : '0')
+    if (q.kind && q.kind !== 'all') params.set('kind', q.kind)
+    if (q.origin && q.origin !== 'all') params.set('origin', q.origin)
+    if (q.keyword) params.set('keyword', q.keyword)
+    if (q.sort) params.set('sort', q.sort)
+    params.set('page', String(q.page || 1))
+    params.set('pageSize', String(q.pageSize || 24))
+    const res = await apiRequest<{ items?: AssetItem[], total?: number }>(`/platform/asset?${params.toString()}`)
+    return { items: res.items || [], total: Number(res.total) || 0 }
+  }
+
+  /**
+   * 批量操作资产（删除/隐藏/恢复）。
+   *
+   * 一次请求做完，而不是前端循环 N 次单条接口：后者在 50 张时要 50 个往返，中途失败还会
+   * 留下"删了一半"的状态，用户根本看不出删没删干净。后端逐条回报失败原因。
+   */
+  async function batchAssets(
+    ids: string[],
+    action: 'delete' | 'hide' | 'unhide'
+  ): Promise<{ ok: boolean, affected: number, failed: { id: string, reason: string }[] }> {
+    return apiRequest('/platform/asset/batch', { method: 'POST', body: { ids, action } })
   }
   async function removeAsset(id: string): Promise<void> {
     await apiRequest(`/platform/asset/${id}`, { method: 'DELETE' })
@@ -1132,6 +1172,7 @@ export function useHougongApi() {
     snippetCategories,
     snippetList,
     listAssets,
+    batchAssets,
     removeAsset,
     setAssetHidden,
     assetSelect,

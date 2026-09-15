@@ -119,12 +119,6 @@ function priceText(option: UserModelOption) {
 
     <footer>
       <span>{{ filtered.length }} 个模型</span>
-      <NuxtLink
-        to="/models"
-        @click="emit('close')"
-      >
-        查看全部模型 →
-      </NuxtLink>
     </footer>
   </div>
 </template>

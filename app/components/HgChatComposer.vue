@@ -86,11 +86,14 @@ const mediaAssets = ref<{ id: string, url: string, name: string, kind: 'image' |
 
 async function loadMediaAssets() {
   if (mediaAssets.value.length) return
-  const list = await useHougongApi().listAssets(true, 1, 60).catch(() => [])
-  mediaAssets.value = list.map(asset => ({
+  // 这里要的是"可用素材"（hidden=false），旧签名把第一个参数当 hidden 传了 true，
+  // 于是引用面板列出的是**已隐藏**的素材 —— 与资产库口径正好相反。
+  const { items } = await useHougongApi().listAssets({ hidden: false, page: 1, pageSize: 60 }).catch(() => ({ items: [] }))
+  mediaAssets.value = items.map(asset => ({
     id: asset.id,
     url: asset.url,
-    name: `素材 ${String(asset.id).slice(-4)}`,
+    // 有原始文件名就显示它（后端已落库），没有才退回「素材 xxxx」
+    name: asset.name || `素材 ${String(asset.id).slice(-4)}`,
     kind: (asset.mimeType || '').startsWith('video/') ? 'video' as const : 'image' as const
   }))
 }
