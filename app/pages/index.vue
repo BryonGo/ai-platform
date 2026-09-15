@@ -111,18 +111,6 @@ onBeforeUnmount(() => {
 const continueItems = ref<ContinueItem[]>([])
 const continueLoading = ref(true)
 
-/**
- * 素材方向标注：竖图/方图铺满竖框（微裁，不留黑边），
- * 横图用 contain 上下留黑（通用手机短视频处理）。
- */
-function markOrientation(event: Event) {
-  const el = event.target as HTMLImageElement | null
-  if (!el) return
-  const host = el.closest('.hg-media, .media-frame')
-  if (!host) return
-  host.classList.toggle('is-landscape', el.naturalWidth > el.naturalHeight)
-}
-
 function relativeTime(ts: number) {
   if (!ts) return ''
   const diff = Date.now() - ts
@@ -537,22 +525,34 @@ function openContinuePreview(item: ContinueItem) {
           :key="item.id"
           class="hg-card continue-card"
         >
-          <!-- 竖屏为主：9:16 容器；横屏素材等比 contain，上下留黑不裁切 -->
-          <div class="hg-media r9x16 letterbox">
+          <!-- 固定 16:9 框，框不随素材变形；素材完整缩放显示，比例对不上的部分用
+               同一张图的模糊层补背景（而不是留黑边，也不是把卡片撑长）。 -->
+          <div class="hg-media r16x9">
+            <!-- 补背景：同一张图放大铺满 + 模糊，垫在下面 -->
+            <img
+              v-if="item.cover"
+              class="media-bg"
+              :src="item.cover"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+            >
             <!-- 有原图时用同坐标对比滑块，而不是并排两张肖像（设计说明第 8 条） -->
-            <HgCompareSlider
-              v-if="item.compareBefore && item.cover"
-              :before="item.compareBefore"
-              :after="item.cover"
-              :alt="item.title"
-              :label="`${item.title} 原图与效果对比`"
-            />
+            <template v-if="item.compareBefore && item.cover">
+              <HgCompareSlider
+                :before="item.compareBefore"
+                :after="item.cover"
+                :alt="item.title"
+                :label="`${item.title} 原图与效果对比`"
+                fit="contain"
+              />
+            </template>
             <img
               v-else-if="item.cover"
+              class="media-fg"
               :src="item.cover"
               :alt="item.title"
               loading="lazy"
-              @load="markOrientation"
             >
             <div
               v-else
@@ -1045,14 +1045,23 @@ function openContinuePreview(item: ContinueItem) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
-/* 竖屏为主：竖图/方图铺满（只微小裁切），横图才上下留黑 */
-.letterbox {
-  background: #000;
-}
-.letterbox img {
+/* 固定框内的素材适配：
+   背景层把同一张图放大铺满 + 模糊，前景层 contain 完整显示 ——
+   比例对不上的部分看到的是虚化的同一画面，而不是两条黑边。 */
+.media-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  filter: blur(16px) brightness(0.55) saturate(1.1);
+  transform: scale(1.2);
+  pointer-events: none;
 }
-.letterbox.is-landscape img {
+.media-fg {
+  position: relative;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .media-placeholder {
