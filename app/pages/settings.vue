@@ -61,10 +61,45 @@ async function saveUsername() {
   }
 }
 
+// —— 版本信息（页面底部展示）——
+//
+// 两侧版本都要：前台是「换镜像」发布、API 是「宿主换二进制」发布，两条链彼此独立，
+// 并排显示才能一眼看出是不是只发了半边（与控制台用户菜单的口径一致）。
+//   前台版本：/api/version（本服务 Nuxt 运行时返回 NUXT_PUBLIC_BUILD_VERSION）
+//   接口版本：/api/backend-version（服务端代问 API，见该路由注释）
+const frontVersion = ref('')
+// 刻意**不做**「两个版本一致吗」的判断：前台是换镜像发布（tag 形如 20260915182431-4b893f7），
+// API 是换宿主二进制发布（tag 形如 20260915-71113a3），两条链的编号规则与仓库都不同，
+// 比相等必然天天报不一致。并排显示、由人判断，与控制台用户菜单的口径一致。
+const apiVersion = ref<{ version: string, commit: string, buildTime: string, startedAt: string } | null>(null)
+const versionLoaded = ref(false)
+
+async function loadVersions() {
+  try {
+    const front = await $fetch<{ version?: string }>('/api/version', { query: { t: Date.now() } })
+    frontVersion.value = String(front?.version || '')
+  } catch {
+    frontVersion.value = ''
+  }
+  try {
+    const back = await $fetch<{ version?: string, commit?: string, buildTime?: string, startedAt?: string }>('/api/backend-version')
+    apiVersion.value = {
+      version: String(back?.version || ''),
+      commit: String(back?.commit || ''),
+      buildTime: String(back?.buildTime || ''),
+      startedAt: String(back?.startedAt || '')
+    }
+  } catch {
+    apiVersion.value = null
+  }
+  versionLoaded.value = true
+}
+
 onMounted(() => {
   session.load()
   gate.refresh()
   loadProfile()
+  loadVersions()
 })
 
 async function toggleAdultMode(next: boolean) {
@@ -250,6 +285,23 @@ async function resetGate() {
     >
       {{ errorText }}
     </p>
+
+    <footer class="settings-version">
+      <span class="settings-version__label">版本</span>
+      <span class="settings-version__item">
+        前台
+        <code>{{ frontVersion || (versionLoaded ? '未知' : '读取中…') }}</code>
+      </span>
+      <span class="settings-version__sep">·</span>
+      <span
+        class="settings-version__item"
+        :title="apiVersion ? `构建时间 ${apiVersion.buildTime || '未知'}｜进程启动 ${apiVersion.startedAt || '未知'}` : ''"
+      >
+        接口
+        <code>{{ apiVersion?.version || (versionLoaded ? '未知' : '读取中…') }}</code>
+        <em v-if="apiVersion?.commit">（{{ apiVersion.commit }}）</em>
+      </span>
+    </footer>
   </div>
 </template>
 
@@ -398,5 +450,42 @@ async function resetGate() {
 
 .settings-flash--error {
   color: #fca5a5;
+}
+
+/* 底部版本行：只做「一眼核对发布」用，刻意压低存在感（小字、弱色、与正文分隔） */
+.settings-version {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.settings-version__label {
+  margin-right: 2px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-version__item code {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.04);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.settings-version__item em {
+  font-style: normal;
+  color: var(--faint);
+}
+
+.settings-version__sep {
+  color: var(--line);
 }
 </style>
