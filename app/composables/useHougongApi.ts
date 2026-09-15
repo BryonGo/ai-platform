@@ -1254,6 +1254,46 @@ export function useHougongApi() {
     return () => es.close()
   }
 
+  /** 保存镜头（编辑器用）：不存在就按「集 + 镜号」创建。 */
+  function saveCanvasShot(input: {
+    episodeId: string
+    idx: number
+    shotSize?: string
+    camera?: string
+    frames?: number
+    resolution?: string
+    scene?: string
+    keyframePrompt?: string
+    h3Prompt?: { description: string, soundscape: string, music: string }
+  }) {
+    return apiRequest<{ id: string, status: string }>('/hougong/canvas/shot', { method: 'POST', body: input })
+  }
+
+  /** 逐镜审核：pick=选为定稿 / approve=通过 / reject=驳回重跑。 */
+  function reviewCanvasShot(input: { episodeId: string, idx: number, action: 'pick' | 'approve' | 'reject', assetId?: string }) {
+    return apiRequest<{ status: string, selectedAssetId: string }>('/hougong/canvas/shot/review', { method: 'POST', body: input })
+  }
+
+  /**
+   * 提交渲染：keyframe=出候选关键帧 / preview=预览 / final=定稿。
+   *
+   * 返回的是**平台任务**（进度与产物都走任务链路）。注意 count 会被服务端按模型能力夹住：
+   * 一次只出一张的模型（nano-banana-2、grok 这类）传 3 也只会出 1，响应里的 count 是实际张数。
+   */
+  function renderCanvasShot(input: {
+    episodeId: string
+    idx: number
+    stage: 'keyframe' | 'preview' | 'final'
+    modelId: string
+    count?: number
+    clientKey?: string
+  }) {
+    return apiRequest<{ taskId: string, status: string, reservedCredits: number, count: number }>(
+      '/hougong/canvas/shot/render',
+      { method: 'POST', body: input }
+    )
+  }
+
   /**
    * 画布总览。storyId/episodeId 传 0 取该账号最近的系列与第一集。
    *
@@ -1271,6 +1311,9 @@ export function useHougongApi() {
   return {
     login,
     getCanvasOverview,
+    saveCanvasShot,
+    reviewCanvasShot,
+    renderCanvasShot,
     register,
     getProfile,
     updateUsername,

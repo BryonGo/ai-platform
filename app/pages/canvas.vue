@@ -26,7 +26,6 @@ import {
   FRAME_GRID,
   MOCK_EPISODE,
   MOCK_SERIES,
-  RENDER_TIERS,
   SHOT_STATUS,
   creditsToYuan,
   framesToSeconds,
@@ -43,6 +42,21 @@ const hgApi = useHougongApi()
 
 /** 是否在用本地示例数据（后端 empty=true 或读失败时为 true）。 */
 const mockMode = ref(true)
+
+/** 目录里的可选模型：关键帧用图像模型，预览/定稿用视频模型。 */
+const imageModels = ref<{ id: string, name: string }[]>([])
+const videoModels = ref<{ id: string, name: string }[]>([])
+const pickedModel = ref('')
+
+async function loadModels() {
+  try {
+    const cat = await hgApi.getCatalog()
+    imageModels.value = (cat.cloudModels || []).map(m => ({ id: m.id, name: m.name }))
+    videoModels.value = (cat.videoModels || []).filter(m => m.available !== false).map(m => ({ id: m.id, name: m.name }))
+  } catch {
+    /* 目录读不到就先不给选：提交时服务端会明确要求选模型 */
+  }
+}
 
 const episode = ref<CanvasEpisode>(structuredClone(MOCK_EPISODE))
 const series = ref<CanvasSeries>(structuredClone(MOCK_SERIES))
@@ -79,6 +93,10 @@ const selectedId = ref<string>(shots.value[3]?.id ?? '')
 const tier = ref<RenderTier>('final')
 const draftFrames = ref<number>(158)
 const toast = ref('')
+const busy = ref(false)
+
+/** 当前集的 id（真实数据来自后端；示例数据下为空串）。 */
+const episodeId = computed(() => episode.value.id ?? '')
 
 /** 画布只在宽屏挂载：窄屏下容器 display:none，Vue Flow 量不到尺寸只会刷警告。 */
 const wideScreen = ref(true)
@@ -86,6 +104,7 @@ const wideScreen = ref(true)
 const mobileDetailOpen = ref(false)
 onMounted(() => {
   void loadCanvas()
+  void loadModels()
   const mq = window.matchMedia('(min-width: 761px)')
   wideScreen.value = mq.matches
   mq.addEventListener('change', (e) => {
@@ -191,57 +210,78 @@ function applyToSelected(patch: Partial<CanvasShot>, message: string) {
   flash(message)
 }
 
-function pickCandidate(c: ShotCandidate) {
+/** 提交渲染：走平台任务链路，返回任务 id；产物与花费由读模型自动回挂。 */
+async function submitRender(stage: 'keyframe' | 'preview' | 'final') {
   const s = selected.value
   if (!s) return
-  activeCandidateId.value = c.id
-  s.candidates.forEach((x) => {
-    x.picked = x.id === c.id
-  })
-  flash(`已把「${c.note ?? c.stage}」设为定稿`)
+  if (mockMode.value) {
+    flash('当前是示例数据：先有真实的一集（或让后端生成）才能提交渲染')
+    return
+  }
+  if (!pickedModel.value) {
+    flash('请先选择模型')
+    return
+  }
+  busy.value = true
+  try {
+    const res = await hgApi.renderCanvasShot({
+      episodeId: episodeId.value,
+      idx: s.index,
+      stage,
+      modelId: pickedModel.value,
+      count: stage === 'keyframe' ? 3 : undefined
+    })
+    const clamped = stage === 'keyframe' && res.count && res.count < 3
+    flash(clamped
+      ? `已提交（任务 #${res.taskId}）：该模型一次只出 ${res.count} 张，可再点一次补候选`
+      : `已提交渲染（任务 #${res.taskId}，预占 ${res.reservedCredits} 分）`)
+    // 任务在跑：等一会儿再刷新，能立刻看到候选与花费
+    window.setTimeout(() => void loadCanvas(), 12000)
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '提交失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 关键帧：一镜一次出 3 张候选（模型不支持多张时服务端会夹到 1）。 */
+function rerollKeyframes() {
+  return submitRender('keyframe')
 }
 
 function renderTier(next: RenderTier) {
   tier.value = next
+  return submitRender(next === 'preview' ? 'preview' : 'final')
+}
+
+/** 审核动作：pick=选为定稿 / approve=通过 / reject=驳回重跑。 */
+async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   const s = selected.value
   if (!s) return
-  const cost = next === 'preview' ? 18 : 96
-  s.costCredits += cost
-  s.renders += 1
-  s.status = next === 'preview' ? 'preview_rendered' : 'approved'
-  s.candidates.push({
-    id: `${s.id}-${next}-${s.renders}`,
-    stage: next === 'preview' ? 'preview' : 'final',
-    url: s.candidates[0]?.url ?? '',
-    note: RENDER_TIERS[next].resolution,
-    picked: next === 'final'
-  })
-  s.updatedAt = '刚刚'
-  flash(next === 'preview' ? `已提交预览渲染（¥${(cost / 100).toFixed(2)}）` : `已提交定稿渲染（¥${(cost / 100).toFixed(2)}）`)
-}
-
-function rejectShot() {
-  applyToSelected({ status: 'rejected' }, '已驳回，可重新生成关键帧')
-}
-
-function approveShot() {
-  applyToSelected({ status: 'approved' }, '已通过，进入合成队列')
-}
-
-/** 一次出 3 张关键帧（方案 S5 的默认动作）。 */
-function rerollKeyframes() {
-  const s = selected.value
-  if (!s) return
-  s.costCredits += 42
-  s.status = 'keyframe_ready'
-  s.candidates = [0, 1, 2].map(i => ({
-    id: `${s.id}-k${Date.now()}-${i}`,
-    stage: 'keyframe' as const,
-    url: s.candidates[i]?.url ?? s.candidates[0]?.url ?? '',
-    note: `候选 ${i + 1}`
-  }))
-  s.updatedAt = '刚刚'
-  flash('已重新生成 3 张候选关键帧（¥0.42）')
+  if (mockMode.value) {
+    // 示例数据下只改本地状态，保证交互能被评审
+    if (action === 'reject') applyToSelected({ status: 'rejected' }, '已驳回（示例数据，未提交）')
+    else applyToSelected({ status: 'approved' }, '已通过（示例数据，未提交）')
+    return
+  }
+  try {
+    const res = await hgApi.reviewCanvasShot({
+      episodeId: episodeId.value, idx: s.index, action, assetId
+    })
+    s.status = res.status as CanvasShot['status']
+    if (action === 'pick') {
+      s.candidates.forEach((c) => {
+        c.picked = c.id === assetId
+      })
+      flash('已选为定稿')
+    } else if (action === 'reject') {
+      flash('已驳回，可重新提交渲染')
+    } else {
+      flash('已通过，进入合成队列')
+    }
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '操作失败')
+  }
 }
 </script>
 
@@ -493,10 +533,25 @@ function rerollKeyframes() {
           </button>
         </div>
 
+        <label class="cv-model">
+          <span>模型</span>
+          <select v-model="pickedModel">
+            <option value="">
+              选择模型…
+            </option>
+            <option
+              v-for="m in selected.candidates.some(c => c.stage !== 'keyframe') ? videoModels : imageModels"
+              :key="m.id"
+              :value="m.id"
+            >{{ m.name }}</option>
+          </select>
+        </label>
+
         <div class="cv-actions">
           <button
             type="button"
             class="cv-btn"
+            :disabled="busy"
             @click="rerollKeyframes"
           >
             <UIcon name="i-lucide-refresh-cw" /> 重出关键帧
@@ -505,6 +560,7 @@ function rerollKeyframes() {
             type="button"
             class="cv-btn"
             :class="{ 'is-on': tier === 'preview' }"
+            :disabled="busy"
             @click="renderTier('preview')"
           >
             <UIcon name="i-lucide-play" /> 预览 ¥0.18
@@ -513,34 +569,37 @@ function rerollKeyframes() {
             type="button"
             class="cv-btn cv-btn--primary"
             :class="{ 'is-on': tier === 'final' }"
+            :disabled="busy"
             @click="renderTier('final')"
           >
             <UIcon name="i-lucide-clapperboard" /> 定稿 ¥0.96
           </button>
         </div>
 
-        <div
-          v-if="activeCandidate"
-          class="cv-actions cv-actions--review"
-        >
+        <!-- 审核行常驻：驳回/通过不需要先有候选（"这一批都不用" 本身就是一种审核结论），
+             只有"选为定稿"要求先选中一张。 -->
+        <div class="cv-actions cv-actions--review">
           <button
             type="button"
             class="cv-btn"
-            @click="activeCandidate && pickCandidate(activeCandidate)"
+            :disabled="busy || !activeCandidate"
+            @click="activeCandidate && review('pick', activeCandidate.id)"
           >
             <UIcon name="i-lucide-check-check" /> 选为定稿
           </button>
           <button
             type="button"
             class="cv-btn"
-            @click="rejectShot"
+            :disabled="busy"
+            @click="review('reject')"
           >
             <UIcon name="i-lucide-x" /> 驳回重跑
           </button>
           <button
             type="button"
             class="cv-btn cv-btn--ghost"
-            @click="approveShot"
+            :disabled="busy"
+            @click="review('approve')"
           >
             <UIcon name="i-lucide-arrow-right" /> 通过
           </button>
@@ -1020,6 +1079,27 @@ function rerollKeyframes() {
   background: var(--hg3-ok);
   color: #06231a;
   font-size: 10px;
+}
+.cv-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hg3-faint);
+  font-size: 11px;
+}
+.cv-model select {
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+  background: var(--hg3-tile);
+  color: var(--hg3-ink);
+  font-size: 12px;
+}
+.cv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .cv-actions {
   display: grid;
