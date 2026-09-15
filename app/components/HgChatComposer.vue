@@ -298,6 +298,14 @@ function patchSampling(patch: Record<string, number | string>) {
         </span>
       </div>
 
+      <!-- 已选参考图：**独立一行排在输入框上方**，有图才出现；每张可单独删。
+           「+」仍在输入框左侧原地不动（用户要求：＋图不动），加图不会让它左右移动。 -->
+      <HgReferenceStrip
+        :items="studio.references.value"
+        :max="studio.referenceMax.value"
+        @remove="studio.removeReference($event)"
+      />
+
       <!-- 正文行：图片方框在**文字之外**（用户反馈：图在文字流里鼠标不好点、光标不好放），
            有图时正文一侧加分隔线，见 .composer-body.has-media -->
       <div
@@ -306,10 +314,9 @@ function patchSampling(patch: Record<string, number | string>) {
       >
         <HgComposerMedia
           v-if="studio.referenceAllowed.value"
-          :items="studio.references.value"
           :max="studio.referenceMax.value"
+          :disabled="!studio.canAddReference.value"
           @files="studio.addReferenceFiles($event)"
-          @remove="studio.removeReference($event)"
         />
 
         <div class="editor">

@@ -961,6 +961,8 @@ export function createChatStudio() {
         template: activeTemplate.value || undefined
       })
       created = String(created2.id)
+      // 送出去了就从输入器撤掉，跟提示词一样「聊天以后消失」；失败时保留（下面的 catch 会恢复草稿）
+      clearReferences()
       taskMessage.taskId = created
       taskMessage.status = (created2.status as StudioStatus) || 'queued'
       // 待后端契约：createTask 目前**没有** sessionId 入参，任务归属仍由后端
