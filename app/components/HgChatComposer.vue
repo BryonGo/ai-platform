@@ -101,11 +101,6 @@ const characterName = computed(() => studio.selectedCharacter.value?.name || '')
 /** 模板选择浮层开关（模板只在工具支持时才有内容）。 */
 const tplOpen = ref(false)
 
-/** 公共图片方框选好文件后落到 studio（上传在建任务时按需做，见 submitGeneration）。 */
-function onMediaFile(file: File) {
-  studio.setReferenceFile(file)
-}
-
 /**
  * D3/D6 点击委托：输入框里除了正文和按钮之外，还有大片"看着是输入区、点了没反应"的空白
  * （顶部内边距、正文下半、媒体框与正文之间的 12px 间隙、chips 行空白、工具栏空隙）。
@@ -236,7 +231,7 @@ function patchSampling(patch: Record<string, number | string>) {
         <UIcon name="i-lucide-chevron-down" />
       </button>
       <span
-        v-if="studio.toolNeedsImage.value && !studio.reference.value.preview"
+        v-if="studio.toolNeedsImage.value && studio.referenceCount.value === 0"
         class="tool-hint"
       >该工具需要先选一张图</span>
     </div>
@@ -279,7 +274,7 @@ function patchSampling(patch: Record<string, number | string>) {
       @click="focusEditorFromContainer"
     >
       <div
-        v-if="characterName || studio.reference.value.preview || studio.selectedLoras.value.length"
+        v-if="characterName || studio.referenceCount.value > 0 || studio.selectedLoras.value.length"
         class="ref-row"
       >
         <span
@@ -307,14 +302,14 @@ function patchSampling(patch: Record<string, number | string>) {
            有图时正文一侧加分隔线，见 .composer-body.has-media -->
       <div
         class="composer-body"
-        :class="{ 'has-media': !!studio.reference.value.preview }"
+        :class="{ 'has-media': studio.referenceCount.value > 0 }"
       >
         <HgComposerMedia
           v-if="studio.referenceAllowed.value"
-          :preview="studio.reference.value.preview"
-          :name="studio.reference.value.name"
-          @file="onMediaFile"
-          @clear="studio.clearReference()"
+          :items="studio.references.value"
+          :max="studio.referenceMax.value"
+          @files="studio.addReferenceFiles($event)"
+          @remove="studio.removeReference($event)"
         />
 
         <div class="editor">

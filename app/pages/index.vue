@@ -142,8 +142,8 @@ const STATUS_TEXT: Record<string, { status: ContinueItem['status'], text: string
 function submitLanding() {
   notice.value = ''
   const text = promptText(studio.promptModel.value)
-  const reference = studio.reference.value
-  if (!text.trim() && !reference.file && !reference.assetId) {
+  const references = studio.references.value
+  if (!text.trim() && references.length === 0) {
     notice.value = '请先描述这一幕。'
     return
   }
@@ -157,8 +157,8 @@ function submitLanding() {
     mode: studio.mode.value,
     ratio: studio.ratio.value,
     durationSeconds: studio.seconds.value,
-    uploadName: reference.name,
-    file: reference.file,
+    uploadName: references[0]?.name || '',
+    files: references.map(item => item.file).filter((f): f is File => !!f),
     // 已选模型一并交接，避免用户在对话页重选（交接文档第 4 节）
     modelId: studio.selectedModel.value?.id,
     modelChannel: studio.selectedModel.value?.channel

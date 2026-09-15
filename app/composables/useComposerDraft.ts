@@ -7,8 +7,11 @@ export interface ComposerDraft {
   ratio: string
   /** 视频时长（秒），与创作页 videoSeconds 一致 */
   durationSeconds: number
+  /** 参考图（可多张，数量上限由所选模型的 maxInputs 决定）。uploadName 为第一张的文件名，兼容旧用法。 */
   uploadName: string
-  file: File | null
+  files: File[]
+  /** @deprecated 单图时代的字段，仅旧调用方读取；新代码用 files。 */
+  file?: File | null
   /**
    * 首页已选模型。交接文档第 4 节要求首页把描述、模式、已选模型、参数与引用
    * 一并交给对话页，跳转本身不产生第二次任务。

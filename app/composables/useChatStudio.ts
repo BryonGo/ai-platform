@@ -135,12 +135,13 @@ export function createChatStudio() {
   const seconds = ref(5)
   const modelId = ref('')
   const characterId = ref('')
-  const reference = ref<{ file: File | null, name: string, preview: string, assetId: string }>({
-    file: null,
-    name: '',
-    preview: '',
-    assetId: ''
-  })
+  /**
+   * 参考图列表。支持多张：云端图像模型能收几张由后台声明的 capabilities.maxInputs 决定
+   * （GPT Image 2 = 16），视频 i2v 只吃首帧因此固定 1 张，本地底模没有该能力声明。
+   * 之前只有一个 reference 单值，模型支持 16 张也只能传 1 张。
+   */
+  interface StudioReference { file: File | null, name: string, preview: string, assetId: string }
+  const references = ref<StudioReference[]>([])
   const catalog = ref<Catalog | null>(null)
   const characters = ref<CharacterItem[]>([])
   const notice = ref('')
@@ -320,8 +321,25 @@ export function createChatStudio() {
    */
   // 参考图是"输入"而不是"图片模型的附加能力"：视频、云端图生图，以及**需要图的工具**
   // （放大/脱衣/换脸…）都必须允许上传。少了最后一项，选完工具会发现传不了图。
-  const referenceAllowed = computed(() =>
-    mode.value === 'video' || selectedModel.value?.channel === 'cloud' || toolNeedsImage.value)
+  /**
+   * 参考图上限：跟模型能力走。
+   * - 视频（i2v）：**只有首帧**，恒为 1（协议里第一张是 first_frame，多传会改变语义）；
+   * - 云端图像：capabilities.maxInputs（后台可配），0/缺省表示不接受参考图 → 入口不出现；
+   * - 本地底模：只有「需要图的工具」才有参考图，固定 1。
+   */
+  const referenceMax = computed(() => {
+    if (mode.value === 'video') return 1
+    if (selectedModel.value?.channel === 'cloud') {
+      const model = catalog.value?.cloudModels?.find(item => item.id === modelId.value)
+      const declared = model?.capabilities?.maxInputs ?? 0
+      return declared > 0 ? declared : 0
+    }
+    return toolNeedsImage.value ? 1 : 0
+  })
+
+  const referenceAllowed = computed(() => referenceMax.value > 0)
+  const referenceCount = computed(() => references.value.length)
+  const canAddReference = computed(() => referenceCount.value < referenceMax.value)
 
   const quote = computed(() => quoteModel(catalog.value, selectedModel.value, {
     ratio: ratio.value,
@@ -330,7 +348,7 @@ export function createChatStudio() {
   }))
   const costText = computed(() => quote.value === null ? '费用待确认' : `${quote.value.amount} ${quote.value.unit}`)
 
-  const canSend = computed(() => !!prompt.value.trim() || !!reference.value.assetId || !!reference.value.file)
+  const canSend = computed(() => !!prompt.value.trim() || referenceCount.value > 0)
 
   /* ---------------- 会话与消息 ---------------- */
 
@@ -586,28 +604,52 @@ export function createChatStudio() {
 
   async function uploadReference(file: File) {
     const up = await hgApi.uploadAsset(file)
-    reference.value = {
+    references.value = [{
       file: null,
       name: file.name || '参考图',
       preview: URL.createObjectURL(file),
       assetId: up.assetId
+    }]
+  }
+
+  /** 追加参考图（多选时一次多张）。超出模型上限的**静默丢弃**，UI 也会禁用添加入口。 */
+  function addReferenceFiles(files: File[]) {
+    const room = Math.max(0, referenceMax.value - references.value.length)
+    for (const file of files.slice(0, room)) {
+      references.value.push({ file, name: file.name, preview: URL.createObjectURL(file), assetId: '' })
+    }
+    if (files.length > room) {
+      notice.value = `这个模型最多接受 ${referenceMax.value} 张参考图，多余的已忽略。`
     }
   }
 
-  function setReferenceFile(file: File) {
-    if (reference.value.preview) URL.revokeObjectURL(reference.value.preview)
-    reference.value = { file, name: file.name, preview: URL.createObjectURL(file), assetId: '' }
+  /** 素材库选图 / 「继续修改」：沿用它的 assetId，不重复上传。 */
+  function addReferenceFromAsset(asset: StudioAsset, name = '素材') {
+    if (!canAddReference.value) {
+      notice.value = `这个模型最多接受 ${referenceMax.value} 张参考图。`
+      return
+    }
+    if (references.value.some(r => r.assetId === asset.id)) return
+    references.value.push({ file: null, name, preview: asset.url, assetId: asset.id })
   }
 
-  /** 把已有产物设为下一步的引用对象（「继续修改」/「生成视频」用），沿用它的 assetId，不重复上传。 */
+  /** 把已有产物设为下一步的引用对象（「继续修改」/「生成视频」用）—— 单张语义，替换整组。 */
   function setReferenceFromAsset(asset: StudioAsset) {
-    if (reference.value.preview && reference.value.preview.startsWith('blob:')) URL.revokeObjectURL(reference.value.preview)
-    reference.value = { file: null, name: '上一张产物', preview: asset.url, assetId: asset.id }
+    clearReferences()
+    references.value = [{ file: null, name: '上一张产物', preview: asset.url, assetId: asset.id }]
   }
 
-  function clearReference() {
-    if (reference.value.preview) URL.revokeObjectURL(reference.value.preview)
-    reference.value = { file: null, name: '', preview: '', assetId: '' }
+  function removeReference(index: number) {
+    const hit = references.value[index]
+    if (hit?.preview?.startsWith('blob:')) URL.revokeObjectURL(hit.preview)
+    references.value.splice(index, 1)
+  }
+
+  function clearReferences() {
+    for (const r of references.value) {
+      if (r.preview?.startsWith('blob:')) URL.revokeObjectURL(r.preview)
+    }
+    references.value = []
   }
 
   /** 状态类提问：用真实任务状态回答，不创建任务。 */
@@ -723,7 +765,8 @@ export function createChatStudio() {
       meta.mode === 'image' ? meta.count : '',
       meta.modelId,
       characterId.value,
-      reference.value.assetId
+      // 参考图全部参与指纹：多图时换掉其中一张就该算不同意图
+      references.value.map(r => r.assetId || r.name).join(',')
     ].join('|')
   }
 
@@ -832,8 +875,8 @@ export function createChatStudio() {
       kind: 'text',
       text: text || '（仅参考图）根据附件生成',
       time: Date.now(),
-      attachment: reference.value.preview
-        ? { name: reference.value.name || '参考图', url: reference.value.preview, assetId: reference.value.assetId }
+      attachment: references.value[0]?.preview
+        ? { name: references.value[0].name || '参考图', url: references.value[0].preview, assetId: references.value[0].assetId }
         : undefined
     }
     const taskMessage: StudioMessage = {
@@ -858,11 +901,19 @@ export function createChatStudio() {
     let created: string | null = null
     try {
       const sessionId = await ensureSession(text)
-      let refAssetId = reference.value.assetId
-      if (!refAssetId && reference.value.file) {
-        const up = await hgApi.uploadAsset(reference.value.file)
-        refAssetId = up.assetId
+      // 逐张补上传：素材库来的已有 assetId，本地选的先传成资产（顺序即 content 顺序，别打乱）
+      const refAssetIds: string[] = []
+      for (const r of references.value) {
+        if (r.assetId) {
+          refAssetIds.push(r.assetId)
+          continue
+        }
+        if (!r.file) continue
+        const up = await hgApi.uploadAsset(r.file)
+        r.assetId = up.assetId
+        refAssetIds.push(up.assetId)
       }
+      const refAssetId = refAssetIds[0] ?? ''
       if (mode.value === 'video' && !refAssetId) {
         throw new Error('视频生成请先上传首帧图片，或从素材库选择')
       }
@@ -872,7 +923,7 @@ export function createChatStudio() {
         throw new Error('该工具需要先选择一张图片，或从素材库选择')
       }
       // 本地文生图模型不支持参考图：即使界面上残留了引用也不下发
-      if (!referenceAllowed.value) refAssetId = ''
+      if (!referenceAllowed.value) refAssetIds.length = 0
       const splitPrompt = splitNegativePrompt(text)
       if (splitPrompt.negative) {
         notice.value = '已把「负面词 …」拆到负面提示词，提交时按负面词生效。'
@@ -904,7 +955,7 @@ export function createChatStudio() {
           : undefined,
         modelId: modelId.value || undefined,
         characterId: characterId.value || undefined,
-        refAssetIds: refAssetId ? [refAssetId] : [],
+        refAssetIds,
         // 工具与模板只传 code；预置由后端拼（前端不碰提示词预置/LoRA/工作流）
         tool: activeTool.value || undefined,
         template: activeTemplate.value || undefined
@@ -981,7 +1032,10 @@ export function createChatStudio() {
     ratio.value = draft.ratio
     if (typeof draft.durationSeconds === 'number' && draft.durationSeconds > 0) seconds.value = draft.durationSeconds
     promptModel.value = draft.prompt ? { parts: [{ kind: 'text', text: draft.prompt }] } : { parts: [] }
-    if (draft.file) setReferenceFile(draft.file)
+    // 参考图随草稿交接（多张时全部带过来，仍受当前模型的 maxInputs 约束）
+    const draftFiles = draft.files?.length ? draft.files : (draft.file ? [draft.file] : [])
+    clearReferences()
+    if (draftFiles.length) addReferenceFiles(draftFiles)
     // 首页已选模型：按通道恢复（不可用时保持未选，不静默换成别的模型）
     if (draft.modelId) {
       const hit = modelOptions.value.find(item => item.id === draft.modelId)
@@ -1044,17 +1098,18 @@ export function createChatStudio() {
   useUpdateBlocker(() =>
     runningMessages.value.length > 0
     || !!prompt.value.trim()
-    || !!reference.value.file
-    || !!reference.value.assetId)
+    || referenceCount.value > 0)
 
   return {
     // 输入器
-    mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId, reference, notice,
+    mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId,
+    references, referenceMax, referenceCount, canAddReference, notice,
     // 创作工具
     activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,
     selectedLoras, loraOptions,
     costText, quote, canSend, referenceAllowed,
+    addReferenceFiles, addReferenceFromAsset, removeReference, clearReferences, setReferenceFromAsset,
     /** 当前视频模型支持的比例（用于 UI 置灰） */
     supportedVideoRatios: computed(() => videoRatios(catalog.value, modelId.value)),
     supportedQualities,
@@ -1072,7 +1127,7 @@ export function createChatStudio() {
     runningMessages, runningTask, duplicate, confirmDuplicate, dismissDuplicate, viewDuplicate,
     // 动作
     init, send, cancel, retry, openSession, newSession, renameSession, archiveSession,
-    setReferenceFile, clearReference, uploadReference, setReferenceFromAsset,
+    uploadReference,
     statusLabel
   }
 }
