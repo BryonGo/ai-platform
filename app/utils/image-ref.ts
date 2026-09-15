@@ -2,15 +2,17 @@
 //
 // 背景（用户需求）：草稿里要能写「参考 @图1 的光线，@图2 的构图」。
 // 上游只按**顺序**收到几张图，看不到我们的编号，所以 `@图N` 最终必须变成一句
-// 上游读得懂的话；不同模型对「第 N 张」的遵循度不一样，措辞需要逐家实测后再定稿
-// （见 docs —— 先用中文「参考图N」，实测后可能按模型切换英文 the Nth reference image）。
+// 上游读得懂的话。措辞是真实调用实测过的（2026-09-15，8/8 通过）：中文「参考图N」在
+// Seedream 5.0 Pro / GPT Image 2 / Nano Banana 2 上都准确对号，2 图与 3 图场景均成立，
+// 英文 "the Nth reference image" 同样成立 —— 因此**不按模型分化**，统一「参考图N」。
+// 实测方法与结论见 docs/REFERENCE-IMAGE-MENTION.md，复现命令见 aicodcms/hack/aiword。
 //
 // 为什么复用 snippet 原子节点：编辑器的超级标签节点已经具备「原子 chip + 序列化 +
 // 外部回填」的全部能力（见 enhancement-mark.ts），换的只是数据来源（参考图而不是
 // 角色/服装那些远端标签），编辑器本身不用改。
 import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
 
-/** 给上游看的措辞。集中在这里，实测后改一处即可（含下面的引用正则）。 */
+/** 给上游看的措辞。集中在这里，改动时同步下面的引用正则（已实测，见文件头）。 */
 export function imageRefWording(index: number): string {
   return `参考图${index}`
 }
