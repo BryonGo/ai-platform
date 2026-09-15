@@ -446,8 +446,17 @@ function openContinuePreview(item: ContinueItem) {
           class="hg-card tool-card"
         >
           <div class="hg-media r2x3">
+            <!-- 补背景：同一张图放大铺满 + 模糊，垫在下面（比例对不上时不留黑边） -->
+            <img
+              v-if="tool.cover"
+              class="media-bg"
+              :src="tool.cover"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+            >
             <!-- 后台配了「原图 + 效果图」一对就出对比滑块（/effects 与工具页同一套逻辑）；
-                 只有一张就退回单图。素材是 2:3，容器也是 2:3，两边都不裁。 -->
+                 只有一张就退回单图。 -->
             <HgCompareSlider
               v-if="tool.coverBefore && tool.cover"
               :before="tool.coverBefore"
@@ -457,6 +466,7 @@ function openContinuePreview(item: ContinueItem) {
             />
             <img
               v-else-if="tool.cover"
+              class="media-fg"
               :src="tool.cover"
               :alt="tool.label"
               loading="lazy"
@@ -651,6 +661,15 @@ function openContinuePreview(item: ContinueItem) {
           <div class="hg-media r9x16">
             <img
               v-if="work.cover"
+              class="media-bg"
+              :src="work.cover"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+            >
+            <img
+              v-if="work.cover"
+              class="media-fg"
               :src="work.cover"
               :alt="work.title"
               loading="lazy"
@@ -1045,25 +1064,7 @@ function openContinuePreview(item: ContinueItem) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
-/* 固定框内的素材适配：
-   背景层把同一张图放大铺满 + 模糊，前景层 contain 完整显示 ——
-   比例对不上的部分看到的是虚化的同一画面，而不是两条黑边。 */
-.media-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(16px) brightness(0.55) saturate(1.1);
-  transform: scale(1.2);
-  pointer-events: none;
-}
-.media-fg {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
+/* 媒体适配（背景层 + 前景层）走全站统一规则，见 hougong3.css 的 .media-bg/.media-fg */
 .media-placeholder {
   display: grid;
   place-items: center;

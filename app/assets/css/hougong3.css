@@ -461,6 +461,33 @@
   aspect-ratio: 2 / 3;
 }
 
+/* 卡片媒体统一适配（全站一套规则）
+ *
+ * 固定框不随素材变形；图片**完整缩放显示**（contain）；比例对不上的部分用同一张图的
+ * 模糊放大层补背景 —— 既不裁内容、也不留黑边、更不会把卡片撑长。
+ *
+ * 用法：容器保持原有比例（.hg-media.r9x16 / .fx-thumb / .story-card …），里面两层：
+ *   <img class="media-bg" src=…>   背景层（绝对定位铺满 + 模糊压暗）
+ *   <img class="media-fg" src=…>   前景层（完整显示）
+ * 绝对定位的层（如对比滑块）直接放同一容器，它自带 inset:0，会盖在背景层之上。 */
+.media-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) brightness(0.55) saturate(1.1);
+  transform: scale(1.15);
+  pointer-events: none;
+}
+.media-fg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .hg-badge {
   position: absolute;
   top: 6px;

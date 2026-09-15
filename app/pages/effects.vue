@@ -208,6 +208,15 @@ onMounted(() => {
           <div class="fx-thumb fx-thumb--sm">
             <img
               v-if="tool.cover"
+              class="media-bg"
+              :src="tool.cover"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+            >
+            <img
+              v-if="tool.cover"
+              class="media-fg"
               :src="tool.cover"
               alt=""
               loading="lazy"
@@ -303,6 +312,7 @@ onMounted(() => {
           />
           <img
             v-else-if="tool.cover"
+            class="media-fg"
             :src="tool.cover"
             alt=""
             loading="lazy"
@@ -376,6 +386,7 @@ onMounted(() => {
 .fx-thumb { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border: 1px solid var(--hg-line); border-radius: 12px; background: #141416; }
 .fx-thumb--sm { aspect-ratio: 4 / 5; }
 .fx-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fx-thumb img.media-fg { object-fit: contain; }
 .fx-thumb-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #141416 70%); color: var(--hg-muted); }
 .fx-thumb-fallback svg { width: 34px; height: 34px; }
 .fx-card:hover .fx-thumb { border-color: var(--hg-accent); }
