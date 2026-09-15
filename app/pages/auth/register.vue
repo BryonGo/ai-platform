@@ -9,10 +9,23 @@ const agreed = ref(false)
 const pending = ref(false)
 const error = ref('')
 
+/**
+ * 密码强度基线：与后端同一口径（≥8 位且同时含字母与数字）。
+ *
+ * 后端在 2026-09-15 的 fix(security) 里加了这条校验（注册/游客升级/改密/重置密码都走它），
+ * 前端此前只判 ≥6 位、错误文案还写「6-18 位」—— 用户按前端规则填 6 位会被服务端拒，
+ * 报错还来自后端，看起来像"前端没问题但注册失败"。这里对齐，避免两端口径漂移。
+ */
+const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
+
 async function submit() {
   error.value = ''
-  if (!email.value.trim() || password.value.length < 6) {
-    error.value = '请填写邮箱与密码（6-18 位）'
+  if (!email.value.trim() || !password.value) {
+    error.value = '请填写邮箱与密码'
+    return
+  }
+  if (!PASSWORD_RE.test(password.value)) {
+    error.value = '密码至少 8 位，且需同时包含字母与数字'
     return
   }
   if (!agreed.value) {
@@ -75,7 +88,7 @@ async function submit() {
           v-model="password"
           type="password"
           autocomplete="new-password"
-          placeholder="至少 8 位"
+          placeholder="至少 8 位，含字母与数字"
         >
       </label>
 
