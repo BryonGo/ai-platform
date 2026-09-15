@@ -1,4 +1,5 @@
 import type { Catalog, CharacterItem, HougongTask, SessionItem } from './useHougongApi'
+import { missingImageRefs } from '~/utils/image-ref'
 import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
@@ -881,6 +882,12 @@ export function createChatStudio() {
    * 传输层幂等：一次逻辑提交只生成一个 clientKey，网络重试复用同一个。
    */
   async function submitGeneration(meta: RunMeta, text: string) {
+    // 提示词里引用了不存在的参考图（用户删过图）：**不重编号、不擅自改文字**，
+    // 提交前提示一句就继续（用户选的方案 ②）—— 悄悄重编号会让提示词的意思变掉。
+    const missing = missingImageRefs(text, references.value.length)
+    if (missing.length) {
+      notice.value = `提示词里的 ${missing.map(n => `@图${n}`).join('、')} 已不存在（当前 ${references.value.length} 张参考图），生成结果可能不符合预期。`
+    }
     const clientKey = makeId('hg')
     const userMessage: StudioMessage = {
       id: makeId('u'),

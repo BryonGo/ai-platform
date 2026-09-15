@@ -27,29 +27,9 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Prompt): void
-  // 点分类菜单某一项 → 父组件打开该分类的标签卡片弹层。
+  // @ 触发 → 父组件弹「参考图选择」（图片/视频模式都只有参考图，没有远端超级标签）
   (e: 'open-category', category: string): void
 }>()
-
-// 第一级分类菜单（对齐 PeachArt snippet-menu）。
-const baseCategories = [
-  { key: 'character', label: '角色', description: '选择角色并保留完整特征' },
-  { key: 'clothing', label: '服装', description: '选择一套完整搭配' },
-  { key: 'background', label: '背景', description: '选择画面所在场景' },
-  { key: 'pose', label: '姿势', description: '选择动作与构图姿势' },
-  { key: 'style', label: '画风', description: '选择艺术家风格' }
-]
-
-// 「成人」分类只在服务端说 canUseAdult 时才出现在菜单里。
-// 这里不是权限判断（真正的闸在服务端：未过年龄门/未开成人模式时那个分类根本不下发），
-// 而是不给用户一个点进去必然空手而归的入口。
-const gate = useAdultGate()
-const categories = computed(() => (gate.status.value.canUseAdult
-  ? [...baseCategories, { key: 'adult', label: '成人', description: '成人向提示词（仅你可见）' }]
-  : baseCategories))
-
-const menuOpen = ref(false)
-const menuActive = ref(0)
 
 /**
  * 纯文本粘贴：把换行变成**段内硬换行**（hardBreak），整段仍是一个段落。
@@ -118,7 +98,6 @@ watch(() => props.modelValue, (value) => {
   const next = JSON.stringify(value)
   if (current === next) return
   snippetTarget.value = null
-  menuOpen.value = false
   editor.value.commands.setContent(promptToDocument(value), { emitUpdate: false })
 })
 
@@ -135,7 +114,10 @@ watch(() => props.placeholder, (text) => {
   e.view.dispatch(e.state.tr)
 })
 
-// —— @ 触发：输入 @ / ＠ 时在光标处插入 '@' 并打开第一级分类菜单。
+// —— @ 触发：输入 @ / ＠ 时在光标处插入 '@'，并让父组件弹「参考图选择」。
+//
+// 这里**不再**弹角色/服装/背景/姿势/画风那一级分类菜单（用户要求图片与视频模式都去掉）：
+// 图片创作里要引用的是用户自己传的参考图，跟站点远端标签库无关。
 function tryTriggerSnippet() {
   const e = editor.value
   if (!e || props.disabled) return
@@ -144,14 +126,7 @@ function tryTriggerSnippet() {
   e.chain().focus().insertContent('@').run()
   // '@' 占 [from, from+1)，记录该区间供 applySnippet 替换。
   snippetTarget.value = { kind: 'insert', from, to: from + 1 }
-  menuActive.value = 0
-  menuOpen.value = true
-}
-
-// 点分类菜单某一项 → 进入第二级（父组件弹层）。
-function chooseCategory(key: string) {
-  menuOpen.value = false
-  emit('open-category', key)
+  emit('open-category', 'imageref')
 }
 
 // 第二级选中某个标签后：替换 @ 触发位置为 snippet 节点。
@@ -164,7 +139,6 @@ function applySnippet(source: SnippetSnapshot) {
   if (!node) return
   e.chain().focus().insertContentAt({ from: target.from, to: target.to }, node).run()
   snippetTarget.value = null
-  menuOpen.value = false
 }
 
 // 取消（菜单/第二级弹层关闭且未选中）：删除刚插入的 '@' 并清 target。
@@ -173,7 +147,6 @@ function cancelSnippet() {
   const t = snippetTarget.value
   if (!t || !e) {
     snippetTarget.value = null
-    menuOpen.value = false
     return
   }
   if (t.kind === 'insert') {
@@ -183,35 +156,9 @@ function cancelSnippet() {
     }
   }
   snippetTarget.value = null
-  menuOpen.value = false
-}
-
-// 关闭菜单：若 @ 触发位置仍是刚插入的 '@'（未选中任何项），清除它。
-function closeMenu() {
-  cancelSnippet()
 }
 
 // 键盘导航（菜单打开时）：↑↓ 移动、Enter 选中、Backspace 清除 @、Escape 关闭。
-function onMenuKeydown(event: KeyboardEvent) {
-  if (!menuOpen.value) return
-  if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    menuActive.value = (menuActive.value + 1) % categories.value.length
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    menuActive.value = (menuActive.value - 1 + categories.value.length) % categories.value.length
-  } else if (event.key === 'Enter') {
-    event.preventDefault()
-    const cat = categories.value[menuActive.value]
-    if (cat) chooseCategory(cat.key)
-  } else if (event.key === 'Backspace') {
-    event.preventDefault()
-    closeMenu()
-  } else if (event.key === 'Escape') {
-    event.preventDefault()
-    closeMenu()
-  }
-}
 
 // 点击已有 snippet 节点 → 删除它（PeachArt 是弹出预览菜单，此处简化为点击删除，可再 @ 重选）。
 function onEditorClick(event: MouseEvent) {
@@ -223,7 +170,6 @@ function onEditorClick(event: MouseEvent) {
   const node = e.state.doc.nodeAt(pos)
   if (node?.type.name !== snippetNodeName) return
   e.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run()
-  menuOpen.value = false
 }
 
 // 让父组件能拿纯文本（snippet → 英文，用于提交）。
@@ -254,36 +200,6 @@ onBeforeUnmount(() => {
       :editor="editor"
       class="prompt-editor__content"
     />
-    <!-- 第一级分类菜单：浮在编辑器上方 -->
-    <div
-      v-if="menuOpen"
-      class="snippet-menu"
-      @keydown="onMenuKeydown"
-      @click.stop
-    >
-      <div class="snippet-menu__head">
-        <span class="snippet-menu__title">超级 Tag</span>
-        <span class="snippet-menu__hint">选择一个画面要素</span>
-      </div>
-      <div class="snippet-menu__list">
-        <button
-          v-for="(c, i) in categories"
-          :key="c.key"
-          type="button"
-          class="snippet-menu__item"
-          :class="{ active: menuActive === i }"
-          @mouseenter="menuActive = i"
-          @click="chooseCategory(c.key)"
-        >
-          <span class="snippet-menu__at">@{{ c.label }}</span>
-          <span class="snippet-menu__desc">{{ c.description }}</span>
-          <span
-            class="snippet-menu__arrow"
-            aria-hidden="true"
-          >›</span>
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 

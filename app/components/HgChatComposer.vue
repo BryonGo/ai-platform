@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import PromptEditor from '~/components/prompt/promptEditor.vue'
-import SnippetPicker from '~/components/prompt/snippetPicker.vue'
 import LoraPicker from '~/components/selection/loraPicker.vue'
-import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
+import { imageRefSnapshot } from '~/utils/image-ref'
 import { RATIO_OPTIONS } from '~/data/image-options'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
@@ -45,7 +44,6 @@ function onSend() {
 }
 const isNarrow = useIsNarrow()
 const { onGlowPointerMove } = useGlowPointer()
-/* @ 唤出的五类标签：分类弹层由 SnippetPicker 承载（复用旧创作页的现成组件） */
 const loraOpen = ref(false)
 
 /** LoRA 按**底模 family** 过滤，没选底模就无从过滤——先明确提示，而不是弹一个空面板 */
@@ -56,18 +54,23 @@ function openLora() {
   }
   loraOpen.value = true
 }
-const snippetPickerOpen = ref(false)
-const snippetCategory = ref('character')
+/** @ 唤出的参考图选择器：列出已上传的参考图，选中即插入 `@图N` */
+const imageRefOpen = ref(false)
 const promptEditorRef = ref<InstanceType<typeof PromptEditor> | null>(null)
 
-function onOpenCategory(category: string) {
-  snippetCategory.value = category
-  snippetPickerOpen.value = true
+function onOpenCategory() {
+  imageRefOpen.value = true
 }
 
-function onApplySnippet(source: SnippetSnapshot) {
-  promptEditorRef.value?.applySnippet(source)
-  snippetPickerOpen.value = false
+function onPickImageRef(index: number) {
+  promptEditorRef.value?.applySnippet(imageRefSnapshot(index))
+  imageRefOpen.value = false
+}
+
+function onCloseImageRef() {
+  imageRefOpen.value = false
+  // 关掉选择器但没选图：把刚插入的 '@' 撤掉，别在提示词里留一个孤零零的 @
+  promptEditorRef.value?.cancelSnippet()
 }
 const modelSheet = ref(false)
 const paramsSheet = ref(false)
@@ -502,11 +505,11 @@ function patchSampling(patch: Record<string, number | string>) {
       @close="loraOpen = false"
     />
 
-    <SnippetPicker
-      :open="snippetPickerOpen"
-      :category="snippetCategory"
-      @close="snippetPickerOpen = false"
-      @apply="onApplySnippet"
+    <HgImageRefPicker
+      :open="imageRefOpen"
+      :items="studio.references.value"
+      @pick="onPickImageRef"
+      @close="onCloseImageRef"
     />
 
     <HgBottomSheet
