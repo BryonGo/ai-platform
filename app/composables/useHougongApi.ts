@@ -255,6 +255,41 @@ export interface Catalog {
   rates?: CatalogRates
 }
 
+/** 画布（织幕一期）总览。字段与 go-sdk `api/v1/hougong/canvas.go` 一一对应。 */
+export interface CanvasOverview {
+  series: {
+    id: string
+    title: string
+    logline: string
+    episodes: { id: string, title: string, status: 'todo' | 'running' | 'done', index: number }[]
+  }
+  episode: { id: string, title: string, status: string, index: number, budgetCredits: number }
+  shots: {
+    id: string
+    index: number
+    shotSize: string
+    camera: string
+    frames: number
+    resolution: string
+    scene: string
+    characters: { speaker: string, asset: string, views: string[] }[]
+    dialogue: { speaker: string, lang: string, start: string, line: string }[]
+    keyframePrompt: string
+    h3Prompt: { description: string, soundscape: string, music: string }
+    status: 'draft' | 'keyframe_ready' | 'preview_rendered' | 'approved' | 'rejected'
+    candidates: { id: string, stage: 'keyframe' | 'preview' | 'final', url: string, note: string, picked: boolean }[]
+    costCredits: number
+    renders: number
+    updatedAt: string
+    selectedAssetId: string
+  }[]
+  costs: { stage: string, credits: number }[]
+  /** H3 合法帧数，由服务端下发（校验器/工作流/界面共用同一份网格） */
+  frameGrid: number[]
+  /** 该账号还没有画布数据：前端据此退回本地示例数据 */
+  empty: boolean
+}
+
 export interface HougongTask {
   id: number | string
   type: string
@@ -1219,8 +1254,23 @@ export function useHougongApi() {
     return () => es.close()
   }
 
+  /**
+   * 画布总览。storyId/episodeId 传 0 取该账号最近的系列与第一集。
+   *
+   * 后端先落读模型（候选产物与花费都从平台任务账推导），写侧随后补；
+   * `empty=true` 表示该账号还没有画布数据，前端用示例数据兜底。
+   */
+  function getCanvasOverview(storyId = 0, episodeId = 0) {
+    const qs = new URLSearchParams()
+    if (storyId) qs.set('storyId', String(storyId))
+    if (episodeId) qs.set('episodeId', String(episodeId))
+    const query = qs.toString()
+    return apiRequest<CanvasOverview>(`/hougong/canvas/overview${query ? `?${query}` : ''}`)
+  }
+
   return {
     login,
+    getCanvasOverview,
     register,
     getProfile,
     updateUsername,

@@ -32,14 +32,49 @@ import {
   framesToSeconds,
   pendingCount,
   totalCost,
+  type CanvasEpisode,
+  type CanvasSeries,
   type CanvasShot,
   type RenderTier,
   type ShotCandidate
 } from '~/data/hougong-canvas'
 
-const episode = MOCK_EPISODE
-const series = MOCK_SERIES
+const hgApi = useHougongApi()
+
+/** 是否在用本地示例数据（后端 empty=true 或读失败时为 true）。 */
+const mockMode = ref(true)
+
+const episode = ref<CanvasEpisode>(structuredClone(MOCK_EPISODE))
+const series = ref<CanvasSeries>(structuredClone(MOCK_SERIES))
 const shots = ref<CanvasShot[]>(structuredClone(MOCK_EPISODE.shots))
+const frameGrid = ref<number[]>([...FRAME_GRID])
+
+/**
+ * 拉后端数据；`empty` 或失败就保持示例数据。
+ *
+ * 为什么保留示例兜底：写侧（生成分镜、提交渲染）还没接，绝大多数账号此刻确实没有
+ * 画布数据 —— 直接给空页面既看不出设计，也没法评审。真实数据一旦存在就自动切换。
+ */
+async function loadCanvas() {
+  try {
+    const data = await hgApi.getCanvasOverview()
+    if (!data || data.empty || !data.shots?.length) return
+    mockMode.value = false
+    series.value = data.series as unknown as CanvasSeries
+    episode.value = {
+      id: data.episode.id,
+      title: data.episode.title,
+      budgetCredits: data.episode.budgetCredits,
+      shots: [],
+      costs: data.costs
+    }
+    shots.value = data.shots as unknown as CanvasShot[]
+    if (data.frameGrid?.length) frameGrid.value = data.frameGrid
+    selectedId.value = shots.value[3]?.id ?? shots.value[0]?.id ?? ''
+  } catch {
+    /* 读失败保持示例数据，不打扰用户 */
+  }
+}
 const selectedId = ref<string>(shots.value[3]?.id ?? '')
 const tier = ref<RenderTier>('final')
 const draftFrames = ref<number>(158)
@@ -50,6 +85,7 @@ const wideScreen = ref(true)
 /** 窄屏详情抽屉开关（宽屏常驻，不用这个）。 */
 const mobileDetailOpen = ref(false)
 onMounted(() => {
+  void loadCanvas()
   const mq = window.matchMedia('(min-width: 761px)')
   wideScreen.value = mq.matches
   mq.addEventListener('change', (e) => {
@@ -224,6 +260,11 @@ function rerollKeyframes() {
         </span>
       </div>
       <div class="cv-head-right">
+        <span
+          v-if="mockMode"
+          class="cv-mock"
+          title="写侧还没接：这一集是本地示例数据"
+        >示例数据</span>
         <span class="cv-stat"><b>{{ progress }}%</b> 已定稿</span>
         <span class="cv-stat"><b>{{ creditsToYuan(spent) }}</b> / 预算 {{ creditsToYuan(episode.budgetCredits) }}</span>
       </div>
@@ -298,7 +339,7 @@ function rerollKeyframes() {
                   <img
                     v-if="data.shot.candidates.length"
                     class="media-fg"
-                    :src="data.shot.candidates[0].url"
+                    :src="data.shot.candidates[0]?.url"
                     alt=""
                   >
                   <span
@@ -358,7 +399,7 @@ function rerollKeyframes() {
               <img
                 v-if="s.candidates.length"
                 class="media-fg"
-                :src="s.candidates[0].url"
+                :src="s.candidates[0]?.url"
                 alt=""
               >
             </span>
@@ -511,7 +552,7 @@ function rerollKeyframes() {
           </p>
           <div class="cv-frames">
             <button
-              v-for="f in FRAME_GRID"
+              v-for="f in frameGrid"
               :key="f"
               type="button"
               :class="['cv-frame', { 'is-active': draftFrames === f }]"
@@ -522,7 +563,7 @@ function rerollKeyframes() {
             </button>
           </div>
           <p
-            v-if="!FRAME_GRID.includes(draftFrames as never)"
+            v-if="!frameGrid.includes(draftFrames)"
             class="cv-warn"
           >
             不在网格上的帧数会被上游静默吸附，务必从上面这 15 个值里选。
@@ -620,6 +661,13 @@ function rerollKeyframes() {
   font-size: 15px;
   font-weight: 600;
   color: var(--hg3-ink);
+}
+.cv-mock {
+  padding: 3px 8px;
+  border: 1px dashed var(--hg3-line-strong);
+  border-radius: 999px;
+  color: var(--hg3-faint);
+  font-size: 11px;
 }
 .cv-pending {
   display: inline-flex;

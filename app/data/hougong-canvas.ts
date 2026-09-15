@@ -107,6 +107,11 @@ export interface CanvasSeries {
 
 const IMG = ['/mock/home/explore-01.png', '/mock/home/explore-02.png', '/mock/home/explore-03.png', '/mock/home/explore-04.png']
 
+/** 安全取图：索引越界时回到第一张（示例数据不该因为取图崩掉）。 */
+function pic(i: number): string {
+  return IMG[i % IMG.length] ?? IMG[0] ?? ''
+}
+
 function shot(
   index: number,
   shotSize: string,
@@ -122,16 +127,16 @@ function shot(
   const candidates: ShotCandidate[] = []
   if (status !== 'draft') {
     candidates.push(
-      { id: `E01-S${index}-k1`, stage: 'keyframe', url: IMG[index % IMG.length], note: '候选 1' },
-      { id: `E01-S${index}-k2`, stage: 'keyframe', url: IMG[(index + 1) % IMG.length], note: '候选 2' },
-      { id: `E01-S${index}-k3`, stage: 'keyframe', url: IMG[(index + 2) % IMG.length], note: '候选 3' }
+      { id: `E01-S${index}-k1`, stage: 'keyframe', url: pic(index), note: '候选 1' },
+      { id: `E01-S${index}-k2`, stage: 'keyframe', url: pic(index + 1), note: '候选 2' },
+      { id: `E01-S${index}-k3`, stage: 'keyframe', url: pic(index + 2), note: '候选 3' }
     )
   }
   if (status === 'preview_rendered' || status === 'approved') {
-    candidates.push({ id: `E01-S${index}-p1`, stage: 'preview', url: IMG[(index + 1) % IMG.length], note: '432×768' })
+    candidates.push({ id: `E01-S${index}-p1`, stage: 'preview', url: pic(index + 1), note: '432×768' })
   }
   if (status === 'approved') {
-    candidates.push({ id: `E01-S${index}-f1`, stage: 'final', url: IMG[index % IMG.length], note: '768×1344', picked: true })
+    candidates.push({ id: `E01-S${index}-f1`, stage: 'final', url: pic(index), note: '768×1344', picked: true })
   }
   return {
     id: `E01-S${String(index).padStart(2, '0')}`,

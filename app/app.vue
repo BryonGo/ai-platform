@@ -278,10 +278,6 @@ watch(() => route.fullPath, () => {
                   aria-hidden="true"
                 />
                 <span class="hg-nav-label">{{ item.label }}</span>
-                <span
-                  v-if="item.pill"
-                  class="hg-nav-pill"
-                >{{ item.pill }}</span>
               </button>
             </template>
 
