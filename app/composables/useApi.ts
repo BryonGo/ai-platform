@@ -15,14 +15,14 @@ export function useAuthSession() {
   function load() {
     if (!import.meta.client) return
     token.value = localStorage.getItem('hg:token') || ''
-    uid.value = Number(localStorage.getItem('hg:uid') || 0)
   }
   function save(t: string, userId: number) {
     token.value = t
     uid.value = userId
     if (import.meta.client) {
       localStorage.setItem('hg:token', t)
-      localStorage.setItem('hg:uid', String(userId))
+      // 注意：uid 仅作内存态，不再持久化到 localStorage（它从未用于授权判断，
+      // 持久化只是多余的暴露面）。
     }
   }
   function clear() {
@@ -30,7 +30,6 @@ export function useAuthSession() {
     uid.value = 0
     if (import.meta.client) {
       localStorage.removeItem('hg:token')
-      localStorage.removeItem('hg:uid')
     }
   }
   return { token, uid, load, save, clear }
