@@ -69,9 +69,10 @@ const frameGrid = ref<number[]>([...FRAME_GRID])
  * 为什么保留示例兜底：写侧（生成分镜、提交渲染）还没接，绝大多数账号此刻确实没有
  * 画布数据 —— 直接给空页面既看不出设计，也没法评审。真实数据一旦存在就自动切换。
  */
-async function loadCanvas() {
+async function loadCanvas(episodeID = '') {
   try {
-    const data = await hgApi.getCanvasOverview()
+    // 直接传字符串 id（不要 Number()：雪花 id 会被舍入，切集就会切不过去）
+    const data = await hgApi.getCanvasOverview('', episodeID)
     if (!data || data.empty || !data.shots?.length) return
     mockMode.value = false
     series.value = data.series as unknown as CanvasSeries
@@ -97,6 +98,8 @@ const busy = ref(false)
 
 /** 当前集的 id（真实数据来自后端；示例数据下为空串）。 */
 const episodeId = computed(() => episode.value.id ?? '')
+/** 当前系列的 id：新建集时挂在它下面，不再另建系列。 */
+const seriesId = computed(() => (mockMode.value ? '' : series.value.id))
 
 /** 画布只在宽屏挂载：窄屏下容器 display:none，Vue Flow 量不到尺寸只会刷警告。 */
 const wideScreen = ref(true)
@@ -210,6 +213,73 @@ function applyToSelected(patch: Partial<CanvasShot>, message: string) {
   flash(message)
 }
 
+/* ---------------- 新建一集 ---------------- */
+
+const newOpen = ref(false)
+const newTitle = ref('')
+const newCount = ref(15)
+const newFrames = ref(158)
+const newJSON = ref('')
+const newBusy = ref(false)
+
+/** 打开新建对话框（默认 15 镜 × 158 帧，与方案里的一集规格一致）。 */
+function openNewEpisode() {
+  newTitle.value = ''
+  newCount.value = 15
+  newFrames.value = 158
+  newJSON.value = ''
+  newOpen.value = true
+}
+
+/** 建集：粘贴了 JSON 就按分镜导入，否则生成空镜。 */
+async function submitNewEpisode() {
+  const shots = parseStoryboard(newJSON.value)
+  if (shots === false) return
+  newBusy.value = true
+  try {
+    const res = await hgApi.createCanvasEpisode({
+      storyId: mockMode.value ? '' : seriesId.value,
+      seriesTitle: '未命名系列',
+      title: newTitle.value,
+      shotCount: shots ? undefined : newCount.value,
+      frames: shots ? undefined : newFrames.value,
+      shots: shots || undefined
+    })
+    newOpen.value = false
+    flash(`已建${res.title}（${res.shotIds.length} 镜）${res.issues?.length ? '，有 ' + res.issues.length + ' 条提醒' : ''}`)
+    // 切到新建的这一集：否则画布还停在上一次看的那一集，用户会以为没建成
+    await loadCanvas(res.episodeId)
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '建集失败')
+  } finally {
+    newBusy.value = false
+  }
+}
+
+/** 解析粘贴的分镜 JSON；空串返回 null（表示走"生成空镜"），解析失败返回 false。 */
+function parseStoryboard(text: string): Record<string, unknown>[] | null | false {
+  const raw = text.trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    const shots = Array.isArray(parsed) ? parsed : parsed?.shots
+    if (!Array.isArray(shots) || !shots.length) {
+      flash('分镜 JSON 里没有 shots 数组')
+      return false
+    }
+    return shots as Record<string, unknown>[]
+  } catch {
+    flash('分镜 JSON 解析失败，请检查格式')
+    return false
+  }
+}
+
+/** 切集：左栏点哪一集就看哪一集。 */
+function switchEpisode(id: string) {
+  if (id === episodeId.value) return
+  void loadCanvas(id)
+}
+
 /** 提交渲染：走平台任务链路，返回任务 id；产物与花费由读模型自动回挂。 */
 async function submitRender(stage: 'keyframe' | 'preview' | 'final') {
   const s = selected.value
@@ -303,8 +373,15 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
         <span
           v-if="mockMode"
           class="cv-mock"
-          title="写侧还没接：这一集是本地示例数据"
+          title="还没有真实数据：这一集是本地示例数据"
         >示例数据</span>
+        <button
+          type="button"
+          class="cv-new"
+          @click="openNewEpisode"
+        >
+          <UIcon name="i-lucide-plus" /> 新建一集
+        </button>
         <span class="cv-stat"><b>{{ progress }}%</b> 已定稿</span>
         <span class="cv-stat"><b>{{ creditsToYuan(spent) }}</b> / 预算 {{ creditsToYuan(episode.budgetCredits) }}</span>
       </div>
@@ -321,6 +398,10 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
             v-for="ep in series.episodes"
             :key="ep.id"
             :class="['cv-ep', { 'is-active': ep.id === episode.id }]"
+            role="button"
+            tabindex="0"
+            @click="switchEpisode(ep.id)"
+            @keydown.enter="switchEpisode(ep.id)"
           >
             <span
               class="cv-ep-dot"
@@ -677,6 +758,76 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
       </aside>
     </div>
 
+    <!-- 新建一集：给标题与镜头数生成空镜，或直接粘贴分镜 JSON 导入 -->
+    <div
+      v-if="newOpen"
+      class="cv-dialog-mask"
+      @click.self="newOpen = false"
+    >
+      <div class="cv-dialog">
+        <h3 class="cv-dialog-title">
+          新建一集
+        </h3>
+        <label class="cv-dialog-field">
+          <span>集标题</span>
+          <input
+            v-model="newTitle"
+            placeholder="留空则按「第 N 集」生成"
+          >
+        </label>
+        <div class="cv-dialog-row">
+          <label class="cv-dialog-field">
+            <span>镜头数</span>
+            <input
+              v-model.number="newCount"
+              type="number"
+              min="1"
+              max="60"
+            >
+          </label>
+          <label class="cv-dialog-field">
+            <span>默认帧数（H3 网格）</span>
+            <select v-model.number="newFrames">
+              <option
+                v-for="f in frameGrid"
+                :key="f"
+                :value="f"
+              >{{ f }} · {{ framesToSeconds(f) }}s</option>
+            </select>
+          </label>
+        </div>
+        <label class="cv-dialog-field">
+          <span>分镜 JSON（可选：填了就按分镜导入，忽略上面的镜头数）</span>
+          <textarea
+            v-model="newJSON"
+            rows="6"
+            placeholder="[{&quot;idx&quot;:1,&quot;frames&quot;:158,&quot;keyframePrompt&quot;:&quot;…&quot;}] 或 {&quot;shots&quot;:[…]}}"
+          />
+        </label>
+        <p class="cv-dialog-hint">
+          导入会先过校验器（帧数必须在 H3 网格上、台词不超过镜头时长、角色必须已在资产库），
+          有阻断问题会整批拒绝并列出原因。
+        </p>
+        <div class="cv-dialog-actions">
+          <button
+            type="button"
+            class="cv-btn"
+            @click="newOpen = false"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="cv-btn cv-btn--primary"
+            :disabled="newBusy"
+            @click="submitNewEpisode"
+          >
+            {{ newBusy ? '提交中…' : '创建' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <p
       v-if="toast"
       class="cv-toast"
@@ -780,6 +931,7 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   list-style: none;
 }
 .cv-ep {
+  cursor: pointer;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
@@ -1189,6 +1341,78 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   font-size: 11px;
 }
 
+.cv-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hg3-accent-line);
+  border-radius: 999px;
+  background: var(--hg3-accent-soft);
+  color: var(--hg3-accent-hi);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cv-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgb(8 9 11 / 62%);
+}
+.cv-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(520px, 92vw);
+  padding: 18px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 16px;
+  background: var(--hg3-well);
+}
+.cv-dialog-title {
+  margin: 0;
+  color: var(--hg3-ink);
+  font-size: 15px;
+}
+.cv-dialog-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.cv-dialog-field {
+  display: grid;
+  gap: 6px;
+  color: var(--hg3-faint);
+  font-size: 11px;
+}
+.cv-dialog-field input,
+.cv-dialog-field select,
+.cv-dialog-field textarea {
+  padding: 8px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+  background: var(--hg3-tile);
+  color: var(--hg3-ink);
+  font-size: 12px;
+  font-family: inherit;
+}
+.cv-dialog-field textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.cv-dialog-hint {
+  margin: 0;
+  color: var(--hg3-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.cv-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .cv-toast {
   position: absolute;
   bottom: 20px;

@@ -1254,6 +1254,30 @@ export function useHougongApi() {
     return () => es.close()
   }
 
+  /**
+   * 新建一集：给标题与镜头数就生成空镜，给 shots 就按分镜导入。
+   *
+   * 导入会先在服务端过 §4.1 校验器（帧数网格、台词时长、角色引用…），
+   * **有阻断级问题整批拒绝**，返回的 issues 是非阻断提醒（如逐镜配乐）。
+   */
+  function createCanvasEpisode(input: {
+    storyId?: string
+    seriesTitle?: string
+    title?: string
+    shotCount?: number
+    frames?: number
+    shots?: Record<string, unknown>[]
+  }) {
+    return apiRequest<{
+      storyId: string
+      episodeId: string
+      title: string
+      index: number
+      shotIds: string[]
+      issues: string[] | null
+    }>('/hougong/canvas/episode', { method: 'POST', body: input })
+  }
+
   /** 保存镜头（编辑器用）：不存在就按「集 + 镜号」创建。 */
   function saveCanvasShot(input: {
     episodeId: string
@@ -1300,7 +1324,9 @@ export function useHougongApi() {
    * 后端先落读模型（候选产物与花费都从平台任务账推导），写侧随后补；
    * `empty=true` 表示该账号还没有画布数据，前端用示例数据兜底。
    */
-  function getCanvasOverview(storyId = 0, episodeId = 0) {
+  function getCanvasOverview(storyId: string | number = '', episodeId: string | number = '') {
+    // **id 全程按字符串传**：集/镜的 id 是雪花 id（19 位），超过 JS 的安全整数，
+    // 中间只要过一次 Number() 就会被舍入，后端拿到的就是另一个 id（表现为"切集切不过去"）。
     const qs = new URLSearchParams()
     if (storyId) qs.set('storyId', String(storyId))
     if (episodeId) qs.set('episodeId', String(episodeId))
@@ -1312,6 +1338,7 @@ export function useHougongApi() {
     login,
     getCanvasOverview,
     saveCanvasShot,
+    createCanvasEpisode,
     reviewCanvasShot,
     renderCanvasShot,
     register,
