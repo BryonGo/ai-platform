@@ -50,9 +50,10 @@ y=960│                                      │
 满幅方图会露出一块比页面亮的矩形。转法见 `scripts/hero-alpha.py`：
 
 ```bash
-python3 scripts/hero-alpha.py public/images/daji-hero-2048x960.jpg \
+# 只有 WebP 进 public/（页面引用它）；源图与 PNG 交付件放 docs/ 下，不打进产物
+python3 scripts/hero-alpha.py docs/design/artwork/daji-hero-2048x960.jpg \
   --out-webp public/images/daji-hero-alpha.webp \
-  --out-png  public/images/daji-hero-alpha.png
+  --out-png  docs/design/artwork/daji-hero-alpha.png
 ```
 
 脚本做三件事：
@@ -82,7 +83,7 @@ python3 scripts/hero-alpha.py public/images/daji-hero-2048x960.jpg \
 
 | 文件 | 用途 |
 | --- | --- |
-| `public/images/daji-hero-2048x960.jpg` | 出图方交付的原始 JPEG（2048×960，保留作源文件） |
-| `public/images/daji-hero-alpha.webp` | **页面在用**：1512×708 带 alpha |
-| `public/images/daji-hero-alpha.png` | 同上的 PNG 版（交付/兜底，页面不引用） |
+| `public/images/daji-hero-alpha.webp` | **页面在用**：1512×708 带 alpha，466 KB |
+| `docs/design/artwork/daji-hero-2048x960.jpg` | 出图方交付的原始 JPEG（2048×960，保留作源文件） |
+| `docs/design/artwork/daji-hero-alpha.png` | PNG 版（交付/兜底），**刻意不放在 `public/`**：它 1.5 MB 且页面不引用，放进 `public/` 会白白打进构建产物 |
 | `public/images/daji-three-tail-cutout-v2.webp` | 早期占位素材，已不再被页面引用 |
