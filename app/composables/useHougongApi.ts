@@ -355,7 +355,9 @@ export interface PublicationWork {
   id: string
   title: string
   state: string
-  contentRating: string
+  /** 作者（后端 PublicationUser：id/displayName/avatarUrl）。作品的作者展示靠它。 */
+  author?: { id: string, displayName: string, avatarUrl: string | null }
+  contentRating: string | null
   coverUrl: string | null
   tags: PlatformTag[]
   stats: { likes: number, favorites: number, comments: number, remixes: number }
@@ -896,9 +898,22 @@ export function useHougongApi() {
   }
 
   // ── 发布（work/post/comment/tag/report）──
-  async function listWorksFeed(page = 1, pageSize = 20): Promise<PublicationWork[]> {
-    const res = await apiRequest<{ items: PublicationWork[] }>(`/platform/work?page=${page}&pageSize=${pageSize}`)
-    return res.items || []
+  /**
+   * 作品流（灵感广场）。
+   *
+   * `scope` 是后端**必填**参数（v:"required|in:author,owned,model,favorites,explore"）：
+   * 之前这里没传，请求必然被校验拦下 —— 首页探索流因此一直只能吃 mock。
+   * 另返回 total：分页要靠它判断「到底了」，只按 items.length 判断会在整页边界漏判。
+   */
+  async function listWorksFeed(
+    page = 1,
+    pageSize = 20,
+    scope: 'explore' | 'owned' | 'favorites' = 'explore'
+  ): Promise<{ items: PublicationWork[], total: number }> {
+    const res = await apiRequest<{ items?: PublicationWork[], total?: number }>(
+      `/platform/work?scope=${scope}&page=${page}&pageSize=${pageSize}`
+    )
+    return { items: res.items || [], total: Number(res.total) || 0 }
   }
   async function getWork(id: string): Promise<PublicationWork> {
     return apiRequest(`/platform/work/${id}`)

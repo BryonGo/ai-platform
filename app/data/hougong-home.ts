@@ -36,6 +36,8 @@ export interface ExploreWork {
   avatar?: string
   cover: string
   category: string
+  /** 作品标签名（真实作品来自接口，用于分类筛选） */
+  tags?: string[]
   badge?: '热门' | '最新'
   badgeBaked?: boolean
   /** 视频作品的时长角标，如 00:24 */
@@ -109,63 +111,7 @@ export const EXPLORE_FIRST_BATCH: ExploreWork[] = [
   { id: 'mock-4', title: '光与香的诗', author: 'Lily 设计', cover: '/mock/home/explore-04.png', category: '推荐', badge: '热门', badgeBaked: true, duration: '00:34', mock: true }
 ]
 
-/** 后续批次用项目内已有的模型封面真图，避免无限滚动时反复出现同样 4 张 */
-const COVER_POOL = [
-  '00751fe7-8569-4afa-a6f6-f479bdfce472.avif',
-  '0a2261f3-167e-4aae-8037-37102dcbed20.avif',
-  '13394b76-0835-4438-b142-15451456c41e.avif',
-  '20f18646-82f8-421f-ba17-fc214ebdfba2.avif',
-  '2b602dff-e21b-4fd7-9a81-946692b3e1b0.avif',
-  '31780670-b797-420e-8206-be7adf49efcd.avif',
-  '39460a16-6513-49e2-9ca7-f92f1f6f64e2.avif',
-  '417545ae-57e5-480a-8313-63293b5ec78f.avif',
-  '492ccab1-2f41-4bd3-9525-077c7b0d0bb7.avif',
-  '531e2d91-8254-4245-941f-e098f15d6efe.avif',
-  '5b487e67-40ef-4c8d-b054-0051a57cf32d.avif',
-  '5ebee605-f034-46ec-b861-66e37a4eeda5.avif',
-  '656d09af-d211-45fc-89c5-e2bf6ed65b0c.avif',
-  '6ddb565f-5ea9-44b9-ac9c-fa1842716afc.avif',
-  '7882381e-44bf-4ff3-bdbf-cc79b50eb1c5.avif',
-  '7f32c2e3-dfee-40d9-b0a5-70f6f33bfc9d.avif',
-  '871e7e10-ee32-41c5-9bdd-f511cd84e7b0.avif',
-  '91cb626d-f083-4610-bb94-48d01ecf42ba.avif',
-  '9b22782a-d9f3-4df2-9be9-20deecdfbfd1.avif',
-  'a20ac0f6-4a5b-487b-b15b-a43bf9243285.avif',
-  'a9d6f187-fa71-4515-9e61-c5f0663f9aaa.avif',
-  'aebabb24-0968-45ae-ae63-30f2574d82f1.avif',
-  'bb3663d6-16d7-4434-a64f-72d26606b724.avif',
-  'c3354215-d700-4e06-9f49-007538b09bde.avif',
-  'cb1b073c-de70-4c65-9608-b54a535d31f9.avif',
-  'd50a0b9b-6261-4ef7-a7e8-b09190f8ed5a.avif',
-  'deeb9ccb-58d5-4146-98cf-eb4f203a543b.avif',
-  'e5f9f9a4-d2cb-4c08-8ebc-f6294ddbfce3.avif',
-  'f071148d-b40e-48ae-ab67-e081ef08589f.avif',
-  'f51a34a3-2e8f-45c2-8ec6-7e558513409d.avif',
-  'fd88e25d-2816-4800-a254-a9aa4632bcfc.avif'
-]
-
-const FILLER_AUTHORS = ['镜中月', '拾光者', '一只狐狸', '夜航船', '木子设计', '青岚', '南风工作室', '秋声']
-const FILLER_TITLES = ['雨停之后', '城市的夜', '她的侧影', '旧梦如画', '雪落长安', '海与灯塔', '黄昏车站', '归途', '琉璃时光', '风起时', '月下独行', '沉默的夏天']
-
 /**
  * 生成探索流的第 n 批（n ≥ 2）。纯展示 mock，分页语义与真实接口一致：
  * 追加返回、空数组表示没有更多。
  */
-export function exploreBatch(category: ExploreCategory, page: number, size = 4): ExploreWork[] {
-  if (page < 2) return EXPLORE_FIRST_BATCH
-  const offset = ((page - 2) * size) % COVER_POOL.length
-  return Array.from({ length: size }, (_, index) => {
-    const cursor = offset + index
-    const cover = COVER_POOL[cursor % COVER_POOL.length]!
-    return {
-      id: `mock-${category}-${page}-${index}`,
-      title: FILLER_TITLES[cursor % FILLER_TITLES.length]!,
-      author: FILLER_AUTHORS[cursor % FILLER_AUTHORS.length]!,
-      cover: `/model-covers/${cover}`,
-      category,
-      badge: page % 2 === 0 ? '热门' as const : '最新' as const,
-      duration: index % 3 === 0 ? '00:18' : undefined,
-      mock: true
-    }
-  })
-}

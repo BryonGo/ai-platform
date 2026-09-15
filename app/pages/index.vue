@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import {
   EXPLORE_CATEGORIES,
+  EXPLORE_FIRST_BATCH,
   HOME_CONTINUE_MOCK,
   HOME_TOOLS,
   TOOL_TABS,
-  exploreBatch,
   type ToolKind,
   type ContinueItem,
   type ExploreCategory,
   type ExploreWork
 } from '~/data/hougong-home'
 import { promptText } from '~/components/prompt/enhancement-mark'
-import type { WorkItem } from '~/composables/useHougongApi'
+import type { PublicationWork, WorkItem } from '~/composables/useHougongApi'
 
 const hgApi = useHougongApi()
 const session = useAuthSession()
@@ -217,6 +217,33 @@ let requestId = 0
 
 const PAGE_SIZE = 4
 
+/**
+ * 后端作品 → 首页展示结构。
+ *
+ * 角标是**推导**出来的，不是后端字段：有互动量算「热门」，否则七天内的作品算「最新」，
+ * 都没有就不打角标 —— 不打无意义的角标比硬凑一个诚实。
+ * 时长角标这里给不出（作品摘要没有时长字段），留给真正带视频元数据的接口。
+ */
+function toExploreWork(work: PublicationWork): ExploreWork {
+  const likes = work.stats?.likes ?? 0
+  const publishedMs = Number(work.publishedAt || 0) * 1000 // 后端是 Unix 秒
+  const badge: ExploreWork['badge'] = likes >= 5
+    ? '热门'
+    : (publishedMs && Date.now() - publishedMs < 7 * 24 * 3600 * 1000 ? '最新' : undefined)
+  return {
+    id: String(work.id),
+    title: work.title || '未命名作品',
+    author: work.author?.displayName || '',
+    avatar: work.author?.avatarUrl || undefined,
+    cover: work.coverUrl || '',
+    category: '推荐',
+    tags: (work.tags || []).map(tag => tag.name),
+    badge,
+    badgeBaked: false,
+    mock: false
+  }
+}
+
 async function loadExplore(reset = false) {
   if (reset) {
     requestId += 1
@@ -233,20 +260,29 @@ async function loadExplore(reset = false) {
     exploreItems.value = []
   }
   try {
-    // 本地 mock 是同步数据，直接取 —— 不再包一层「像在请求」的 180ms 延时：
-    // 首页首屏探索流即时出内容（后续页仍由下面的 IntersectionObserver 触发）。
-    // 接真实 listWorksFeed 时这里恢复成 await。
-    const batch = exploreBatch(exploreCategory.value, targetPage, PAGE_SIZE)
+    const { items, total } = await hgApi.listWorksFeed(targetPage, PAGE_SIZE, 'explore')
     if (token !== requestId) return
-    if (!batch.length) {
-      exploreDone.value = true
-      return
-    }
+    const batch = items.map(toExploreWork)
     exploreItems.value = targetPage === 1 ? batch : [...exploreItems.value, ...batch]
     explorePage.value = targetPage
-    if (exploreItems.value.length >= PAGE_SIZE * 8) exploreDone.value = true
+    // 「到底了」按接口给的 total 判断（只按 items.length 判断会在整页边界漏判）
+    if (!batch.length || exploreItems.value.length >= total || exploreItems.value.length >= PAGE_SIZE * 8) {
+      exploreDone.value = true
+    }
+    // 全站还没有已发布作品（或首次请求失败）时，用示例内容兜住首屏：
+    // 首页是产品门面，空一块比"示例内容"更糟；示例条目标了 mock，不会与真作品混淆。
+    if (targetPage === 1 && !exploreItems.value.length) {
+      exploreItems.value = EXPLORE_FIRST_BATCH
+      exploreDone.value = true
+    }
   } catch {
-    if (token === requestId) exploreError.value = '加载失败，请重试。'
+    if (token === requestId) {
+      exploreError.value = '加载失败，请重试。'
+      if (!exploreItems.value.length) {
+        exploreItems.value = EXPLORE_FIRST_BATCH
+        exploreDone.value = true
+      }
+    }
   } finally {
     if (token === requestId) {
       exploreLoading.value = false
@@ -255,11 +291,23 @@ async function loadExplore(reset = false) {
   }
 }
 
+/**
+ * 分类切换：**只筛已加载的内容，不重新取数**。
+ * 后端 explore 流只支持 scope/page/pageSize，没有分类/标签参数，重新请求拿到的还是同一批；
+ * 假装"服务端按分类过滤"只会让用户以为筛过了。真正的服务端筛选需要后端给 feed 加 tag 参数。
+ */
 function switchCategory(category: ExploreCategory) {
-  if (exploreCategory.value === category) return
   exploreCategory.value = category
-  void loadExplore(true)
 }
+
+/** 展示用列表：分类按标签名匹配（「推荐」= 全部）。 */
+const exploreVisible = computed(() => {
+  if (exploreCategory.value === '推荐') return exploreItems.value
+  const target = exploreCategory.value
+  return exploreItems.value.filter(item =>
+    item.category === target || item.tags?.some(tag => tag === target)
+  )
+})
 
 onMounted(() => {
   if (!sentinel.value) return
@@ -594,7 +642,7 @@ function openContinuePreview(item: ContinueItem) {
 
       <div class="explore-grid">
         <article
-          v-for="work in exploreItems"
+          v-for="work in exploreVisible"
           :key="work.id"
           class="hg-card explore-card"
         >
