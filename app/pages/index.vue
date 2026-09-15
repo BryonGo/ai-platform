@@ -659,7 +659,7 @@ function openContinuePreview(item: ContinueItem) {
           :key="work.id"
           class="hg-card explore-card"
         >
-          <div class="hg-media r9x16">
+          <div class="hg-media r4x5">
             <img
               v-if="work.cover"
               class="media-bg"
