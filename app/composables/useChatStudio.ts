@@ -185,7 +185,11 @@ export function createChatStudio() {
       本地 comfy 模型仍用固定 1K/2K（那是 width/height 的口径，与云端 quality 不是一回事）。 */
   const isCloudImage = computed(() => mode.value === 'image' && selectedModel.value?.channel === 'cloud')
   const supportedQualities = computed<string[]>(() => {
-    if (!isCloudImage.value) return ['1K', '2K']
+    if (!isCloudImage.value) {
+      // 本地底模：models.json 声明了 qualities 就按它收窄，没声明用约定 1K/2K
+      const declared = catalog.value?.models?.find(item => item.id === modelId.value)?.qualities
+      return declared?.length ? declared : ['1K', '2K']
+    }
     const list = cloudQualities(catalog.value, modelId.value)
     return list.length ? list : ['1K', '2K']
   })
@@ -212,9 +216,18 @@ export function createChatStudio() {
     if (isCloudImage.value) {
       return cloudRatioOptions(catalog.value, modelId.value, resolution.value)
     }
-    return RATIO_OPTIONS.map((o) => {
-      const [w, h] = sizeFor(o.value, resolution.value)
-      return { ratio: o.value, size: `${w}×${h}` }
+    // 本地底模：models.json 声明了 ratios/sizes 就按它收窄（工作流能出哪些画幅由运营声明），
+    // 没声明才用前端标准的 8 档与尺寸换算表。
+    const local = catalog.value?.models?.find(item => item.id === modelId.value)
+    const declaredRatios = local?.ratios?.length ? local.ratios : RATIO_OPTIONS.map(o => o.value)
+    return declaredRatios.map((ratio) => {
+      const declared = local?.sizes?.[ratio]
+      if (declared?.length === 2) {
+        const factor = resolution.value === '2K' ? 2 : 1
+        return { ratio, size: `${declared[0] * factor}×${declared[1] * factor}` }
+      }
+      const [w, h] = sizeFor(ratio, resolution.value)
+      return { ratio, size: `${w}×${h}` }
     })
   })
 

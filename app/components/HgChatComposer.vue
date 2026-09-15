@@ -148,7 +148,31 @@ const resolutionOptions = computed(() => {
   return usable.map(value => ({ value, label: value, icon: 'i-lucide-aperture' }))
 })
 
-const samplingLimits = computed(() => studio.catalog.value?.sampling ?? null)
+/**
+ * 采样器/调度器候选与 steps/cfg 范围。
+ *
+ * 默认用全局口径（catalog.sampling）；底模自己声明了就覆盖 —— models.json 的 sampling 里
+ * 可选写 samplers / schedulers / stepsMin / stepsMax / cfgMin / cfgMax / cfgStep，
+ * 给「这个底模只允许某些采样器、步数区间更窄」留出口。
+ */
+const samplingLimits = computed(() => {
+  const global = studio.catalog.value?.sampling ?? null
+  const declared = studio.catalog.value?.models?.find(item => item.id === studio.modelId.value)?.sampling
+  if (!declared) return global
+  const numbers = {
+    stepsMin: declared.stepsMin ?? global?.stepsMin ?? 4,
+    stepsMax: declared.stepsMax ?? global?.stepsMax ?? 50,
+    cfgMin: declared.cfgMin ?? global?.cfgMin ?? 0,
+    cfgMax: declared.cfgMax ?? global?.cfgMax ?? 10,
+    cfgStep: declared.cfgStep ?? global?.cfgStep ?? 0.1
+  }
+  return {
+    steps: declared.steps,
+    ...numbers,
+    samplers: declared.samplers?.length ? declared.samplers : (global?.samplers ?? []),
+    schedulers: declared.schedulers?.length ? declared.schedulers : (global?.schedulers ?? [])
+  }
+})
 
 function patchSampling(patch: Record<string, number | string>) {
   const base = studio.sampling.value ?? {

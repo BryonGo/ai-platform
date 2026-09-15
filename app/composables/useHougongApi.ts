@@ -139,7 +139,26 @@ export interface CatalogItem {
   /** 不可用原因（后台停用原文 / 文件未就绪 / 家族无工作流）；可用时后端不下发 */
   unavailableReason?: string
   weight?: { default: number, min: number, max: number }
-  sampling?: { steps: number, sampler: string, scheduler: string, cfg: number }
+  sampling?: {
+    steps: number
+    sampler: string
+    scheduler: string
+    cfg: number
+    /** 以下为**可选**的按模型约束：声明了就覆盖全局 sampling，没声明用全局 */
+    samplers?: string[]
+    schedulers?: string[]
+    stepsMin?: number
+    stepsMax?: number
+    cfgMin?: number
+    cfgMax?: number
+    cfgStep?: number
+  }
+  /** 底模声明的画幅（可选，留空=用前端默认 8 档） */
+  ratios?: string[]
+  /** 底模声明的清晰度档（可选，留空=用默认 1K/2K） */
+  qualities?: string[]
+  /** 底模声明的尺寸表（可选，形如 {"16:9":[1344,768]}，指 1K 下的像素） */
+  sizes?: Record<string, [number, number]>
 }
 
 export interface CloudModel {
