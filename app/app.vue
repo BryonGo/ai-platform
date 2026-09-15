@@ -16,6 +16,20 @@ useSeoMeta({
 const route = useRoute()
 const session = useAuthSession()
 const hgApi = useHougongApi()
+
+/* 侧栏底部展示的版本号：客户端（前台产物）与服务端（Go API）各一个。
+   两条发布链彼此独立，并排显示用于一眼核对「这次是不是只发了半边」；
+   刻意不判断两者是否相等（编号规则与仓库都不同，比相等没有意义）。 */
+const {
+  clientVersion,
+  serverVersion,
+  serverCommit,
+  serverBuildTime,
+  serverStartedAt,
+  loading: versionLoading,
+  failed: versionFailed,
+  load: loadVersions
+} = useAppVersions()
 const { open: authOpen, openDialog } = useAuthDialog()
 
 /* 品牌徽标：从品牌母版裁出的狐狸头像（public/mock/home/emblem.png）。
@@ -170,6 +184,8 @@ async function loadShellData() {
 }
 
 onMounted(loadShellData)
+// 版本号只在客户端取：SSR 阶段取到的内网版本对浏览器没有意义，也会拖慢首屏。
+onMounted(() => loadVersions())
 // 登录弹窗关闭或成功后刷新顶栏余额 / 最近会话
 watch(authOpen, (value, previous) => {
   if (previous && !value) void loadShellData()
@@ -369,6 +385,23 @@ watch(() => route.fullPath, () => {
               </button>
             </template>
           </nav>
+          <!-- 版本号：就放在「设置」下面（底部导航之后、协议链接之前）。
+               服务端/客户端分开显示 —— 两条发布链独立，可能只发了半边。 -->
+          <div
+            class="hg-rail-version"
+            :title="`服务端构建时间 ${serverBuildTime || '未知'}｜进程启动 ${serverStartedAt || '未知'}`"
+          >
+            <p class="hg-rail-version__row">
+              <span>服务端</span>
+              <code>{{ serverVersion || (versionLoading ? '…' : (versionFailed ? '未知' : '—')) }}</code>
+              <em v-if="serverCommit">{{ serverCommit }}</em>
+            </p>
+            <p class="hg-rail-version__row">
+              <span>客户端</span>
+              <code>{{ clientVersion || (versionLoading ? '…' : (versionFailed ? '未知' : '—')) }}</code>
+            </p>
+          </div>
+
           <!-- 协议链接固定在侧栏底部稳定位置，不随信息流滚动（首页设计说明第 4 条批注） -->
           <p class="hg-legal">
             <a href="#">隐私政策</a>

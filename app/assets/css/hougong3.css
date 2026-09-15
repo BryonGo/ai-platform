@@ -224,6 +224,37 @@
 .hg-rail-foot {
   padding: 8px 10px 12px;
 }
+/* 侧栏版本号：放在「设置」下面。刻意低调（小字、弱色、等宽），
+   它服务于排查「这次到底发的哪一版」，不该跟导航抢注意力。 */
+.hg-rail-version {
+  padding: 8px 12px 0;
+  color: var(--hg3-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.hg-rail-version__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+.hg-rail-version__row span {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+.hg-rail-version__row code {
+  overflow: hidden;
+  color: var(--hg3-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hg-rail-version__row em {
+  color: var(--hg3-faint);
+  font-style: normal;
+  font-size: 9px;
+}
 .hg-legal {
   display: flex;
   gap: 12px;
