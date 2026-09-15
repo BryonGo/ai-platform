@@ -89,9 +89,12 @@ const toolTabs = computed(() => {
 /** 进行中的任务数（来自真实作品状态；mock 兜底时按 mock 里「生成中」的条数） */
 const runningWorks = ref(0)
 
-onMounted(async () => {
-  // withSessions:false —— 首页不读会话/消息，只把目录与默认模型准备好给输入器
-  await studio.init({ withSessions: false })
+onMounted(() => {
+  // 首页各区块各自立刻取数，**不**排在 SDK 初始化后面。
+  // 为什么可以不 await：studio.init 的第一步 session.load() 是同步的（token 立即可用），
+  // 它内部拉的是目录/角色/工具，与下面三个区块互不依赖；以前那种写法会让探索流、
+  // 继续创作、工具目录全部等一次网络初始化，首屏出现明显的空窗。
+  void studio.init({ withSessions: false }) // withSessions:false —— 首页不读会话/消息
   void toolCatalog.ensure()
   void loadContinue()
   void loadExplore(true)
@@ -230,11 +233,10 @@ async function loadExplore(reset = false) {
     exploreItems.value = []
   }
   try {
-    // 显式的异步边界：真实探索流契约落地后这里换成 listWorksFeed，
-    // 失败时保留已有结果并允许重试。
-    const batch = await new Promise<ExploreWork[]>((resolve) => {
-      setTimeout(() => resolve(exploreBatch(exploreCategory.value, targetPage, PAGE_SIZE)), 180)
-    })
+    // 本地 mock 是同步数据，直接取 —— 不再包一层「像在请求」的 180ms 延时：
+    // 首页首屏探索流即时出内容（后续页仍由下面的 IntersectionObserver 触发）。
+    // 接真实 listWorksFeed 时这里恢复成 await。
+    const batch = exploreBatch(exploreCategory.value, targetPage, PAGE_SIZE)
     if (token !== requestId) return
     if (!batch.length) {
       exploreDone.value = true
