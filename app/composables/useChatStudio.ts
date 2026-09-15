@@ -1013,8 +1013,13 @@ export function createChatStudio() {
       await hgApi.cancelTask(message.taskId)
       // 后端返回后重新读一次真实状态，不靠 UI 点击即判定已取消
       const task = await hgApi.getTask(message.taskId).catch(() => null)
-      if (task) message.status = (task.status as StudioStatus) || message.status
-      if (message.status !== 'cancelled') message.status = 'cancelled'
+      if (task) {
+        // 后端返回了真实状态，直接采用（可能仍为 running/succeeded 等）
+        message.status = (task.status as StudioStatus) || message.status
+      } else if (message.status !== 'cancelled') {
+        // 读不到后端状态时保守标记为已取消（用户已发起取消请求）
+        message.status = 'cancelled'
+      }
     } catch (e: unknown) {
       notice.value = e instanceof Error ? e.message : '取消失败'
     }
