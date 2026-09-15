@@ -6,11 +6,8 @@ import type { SnippetSnapshot } from '~/components/prompt/enhancement-mark'
 import { RATIO_OPTIONS } from '~/data/image-options'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
-/** 当前就地展开的选项面板（'' 表示收起）：不再用浮层遮挡输入框 */
-const pickerOpen = ref<'' | 'params'>('')
-function togglePicker(key: 'params') {
-  pickerOpen.value = pickerOpen.value === key ? '' : key
-}
+/** 「自定义」浮窗的展开状态：输入框沉底，面板必须向上弹，否则一展开就跑到屏幕外 */
+const paramsOpen = ref(false)
 const studio = useChatStudio()
 
 /**
@@ -370,36 +367,70 @@ function patchSampling(patch: Record<string, number | string>) {
           v-if="isNarrow"
           type="button"
           class="hg-chip"
-          aria-label="生成参数"
+          aria-label="自定义生成参数"
           @click="paramsSheet = true"
         >
           <HgRatioIcon
             :ratio="studio.ratio.value"
             :size="18"
           />
-          <span>参数</span>
-        </button>
-        <button
-          v-else
-          type="button"
-          class="hg-chip"
-          :aria-expanded="pickerOpen === 'params'"
-          aria-label="生成参数"
-          @click="togglePicker('params')"
-        >
-          <HgRatioIcon
-            :ratio="studio.ratio.value"
-            :size="18"
-          />
-          <span>参数</span>
+          <span>自定义</span>
           <span class="chip-name">{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
-          <UIcon
-            name="i-lucide-chevron-down"
-            class="hg-chevron"
-            :class="{ up: pickerOpen === 'params' }"
-            aria-hidden="true"
-          />
         </button>
+        <!-- 自定义：比例 / 分辨率 / 模型支持的参数都收在这一个浮窗里。
+             必须 side=top —— 输入框在页面底部，向下展开会直接落到屏幕外。 -->
+        <UPopover
+          v-else
+          v-model:open="paramsOpen"
+          :ui="{ content: 'ring-0 bg-transparent shadow-none rounded-xl p-0' }"
+          :content="{ side: 'top', align: 'center', sideOffset: 10, collisionPadding: 12 }"
+        >
+          <button
+            type="button"
+            class="hg-chip"
+            :aria-expanded="paramsOpen"
+            aria-label="自定义生成参数"
+          >
+            <HgRatioIcon
+              :ratio="studio.ratio.value"
+              :size="18"
+            />
+            <span>自定义</span>
+            <span class="chip-name">{{ studio.ratio.value }} · {{ studio.resolution.value }}</span>
+            <UIcon
+              name="i-lucide-chevron-down"
+              class="hg-chevron"
+              :class="{ up: paramsOpen }"
+              aria-hidden="true"
+            />
+          </button>
+          <template #content>
+            <div class="param-pop">
+              <HgGenParams
+                :mode="studio.mode.value"
+                :ratio="studio.ratio.value"
+                :ratios="ratioOptions"
+                :resolution="studio.resolution.value"
+                :resolutions="resolutionOptions"
+                :size-label="studio.sizeLabel.value"
+                :count="studio.count.value"
+                :seconds="studio.seconds.value"
+                :duration-list="studio.durationList.value"
+                :sampling="studio.sampling.value"
+                :limits="samplingLimits"
+                :lora-visible="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
+                :lora-selected="studio.selectedLoras.value.length"
+                @update:ratio="studio.ratio.value = $event"
+                @update:resolution="studio.resolution.value = $event"
+                @update:count="studio.count.value = $event"
+                @update:seconds="studio.seconds.value = $event"
+                @patch:sampling="patchSampling"
+                @open:lora="openLora()"
+                @close="paramsOpen = false"
+              />
+            </div>
+          </template>
+        </UPopover>
 
         <div class="send-wrap">
           <button
@@ -417,31 +448,6 @@ function patchSampling(patch: Record<string, number | string>) {
           <small class="cost-note">{{ studio.costText.value }}</small>
         </div>
       </div>
-
-      <!-- 参数面板：比例 / 分辨率 / 大小 / 模型支持的参数（只列模型真的支持的项） -->
-      <HgGenParams
-        v-if="pickerOpen === 'params'"
-        :mode="studio.mode.value"
-        :ratio="studio.ratio.value"
-        :ratios="ratioOptions"
-        :resolution="studio.resolution.value"
-        :resolutions="resolutionOptions"
-        :size-label="studio.sizeLabel.value"
-        :count="studio.count.value"
-        :seconds="studio.seconds.value"
-        :duration-list="studio.durationList.value"
-        :sampling="studio.sampling.value"
-        :limits="samplingLimits"
-        :lora-visible="studio.mode.value === 'image' && studio.selectedModel.value?.channel !== 'cloud'"
-        :lora-selected="studio.selectedLoras.value.length"
-        @update:ratio="studio.ratio.value = $event"
-        @update:resolution="studio.resolution.value = $event"
-        @update:count="studio.count.value = $event"
-        @update:seconds="studio.seconds.value = $event"
-        @patch:sampling="patchSampling"
-        @open:lora="openLora()"
-        @close="pickerOpen = ''"
-      />
     </div>
 
     <p
@@ -774,7 +780,16 @@ function patchSampling(patch: Record<string, number | string>) {
   cursor: not-allowed;
 }
 .param-pop {
-  width: min(280px, calc(100vw - 24px));
+  /* 宽：跟输入框同量级，窄视口自动收；高：超出即内部滚动，绝不把面板顶到屏幕外。
+     300px 起步是因为比例网格一列放 4 个形状图标才不挤。 */
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--hg-line);
+  border-radius: 12px;
+  background: var(--hg-card);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
 }
 .mention-panel {
   position: absolute;
