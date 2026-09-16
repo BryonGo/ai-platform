@@ -184,11 +184,26 @@ function submitLanding() {
     durationSeconds: studio.seconds.value,
     uploadName: references[0]?.name || '',
     files: references.map(item => item.file).filter((f): f is File => !!f),
+    // 参考图按**原顺序**整组交接：从素材库选的图没有 File，只传 files 会把它整批丢掉，
+    // 而「@图1 / @图2」的编号就是靠这个顺序（素材库图 + 本地文件混排也要对得上）。
+    references: references.map(item => item.file
+      ? { file: item.file, name: item.name }
+      : { assetId: item.assetId, url: item.preview, name: item.name }),
     // 已选模型一并交接，避免用户在对话页重选（交接文档第 4 节）
     modelId: studio.selectedModel.value?.id,
-    modelChannel: studio.selectedModel.value?.channel
+    modelChannel: studio.selectedModel.value?.channel,
+    // 工具/玩法也必须交接：参考图上限由「模型 + 工具」共同决定，
+    // 只交模型的话创作页的 toolNeedsImage 还是 false，图会被判成"超限"丢掉。
+    toolCode: studio.activeTool.value || undefined,
+    templateCode: studio.activeTemplate.value || undefined
   })
-  void navigateTo('/create')
+  // 工具同时走 URL（创作页 init 会读 route.query.tool/template 并按工具落位模型与参数），
+  // 与草稿里的字段互为兜底：刷新页面/直接深链时 URL 仍然有效。
+  const query = new URLSearchParams()
+  if (studio.activeTool.value) query.set('tool', studio.activeTool.value)
+  if (studio.activeTemplate.value) query.set('template', studio.activeTemplate.value)
+  const suffix = query.toString()
+  void navigateTo(suffix ? `/create?${suffix}` : '/create')
 }
 
 async function loadContinue() {

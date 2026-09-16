@@ -1,4 +1,5 @@
 import type { Catalog, CharacterItem, HougongTask, SessionItem } from './useHougongApi'
+import type { ComposerDraft } from './useComposerDraft'
 import { missingImageRefs } from '~/utils/image-ref'
 import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
@@ -1131,6 +1132,57 @@ export function createChatStudio() {
 
   /* ---------------- 初始化 ---------------- */
 
+  /**
+   * 按草稿里的**原顺序**还原参考图（本地文件与素材库资产混排也要保持编号）。
+   *
+   * 为什么不用 addReferenceFiles 一把梭：那个函数是"用户现选一批文件"的语义
+   * （只认 File、不管顺序之外的东西），而草稿里可能混着素材库资产（没有 File）。
+   *
+   * 必须在**模型与工具落位之后**调用：参考图上限 referenceMax 由模型/工具决定，
+   * 顺序反了就会按默认模型的上限（本地图模 + 无工具 = 0 张）把用户的图整批裁掉。
+   */
+  function restoreDraftReferences(draft: ComposerDraft | null) {
+    type DraftRef = { file?: File | null, assetId?: string, url?: string, name?: string }
+    const ordered: DraftRef[] = draft?.references?.length
+      ? draft.references
+      : (draft?.files?.length ? draft.files : (draft?.file ? [draft.file] : []))
+          .map(file => ({ file }))
+    clearReferences()
+    if (!ordered.length) return 0
+
+    const room = Math.max(0, referenceMax.value)
+    let added = 0
+    for (const item of ordered) {
+      if (added >= room) break
+      if (item.file) {
+        if (item.file.size > MAX_UPLOAD_BYTES) continue
+        references.value.push({
+          file: item.file,
+          name: item.file.name,
+          preview: URL.createObjectURL(item.file),
+          assetId: ''
+        })
+        added += 1
+      } else if (item.assetId || item.url) {
+        references.value.push({
+          file: null,
+          name: item.name || '素材',
+          preview: item.url || '',
+          assetId: item.assetId || ''
+        })
+        added += 1
+      }
+    }
+    // 带不过来的部分必须说清楚：以前是静默丢弃，用户只看到"图没了"，
+    // 连"为什么没的、该怎么办"都不知道（线上反馈就是这么来的）。
+    if (added < ordered.length) {
+      notice.value = room === 0
+        ? `草稿里有 ${ordered.length} 张参考图，但当前模型/工具不接受参考图，没能带过来：先选一个支持参考图的模型或工具，再重新添加。`
+        : `这个模型最多接受 ${room} 张参考图，草稿里超出的 ${ordered.length - added} 张没有带过来。`
+    }
+    return added
+  }
+
   function applyDraft() {
     const draft = takeDraft()
     if (!draft) return false
@@ -1138,15 +1190,21 @@ export function createChatStudio() {
     ratio.value = draft.ratio
     if (typeof draft.durationSeconds === 'number' && draft.durationSeconds > 0) seconds.value = draft.durationSeconds
     promptModel.value = draft.prompt ? { parts: [{ kind: 'text', text: draft.prompt }] } : { parts: [] }
-    // 参考图随草稿交接（多张时全部带过来，仍受当前模型的 maxInputs 约束）
-    const draftFiles = draft.files?.length ? draft.files : (draft.file ? [draft.file] : [])
-    clearReferences()
-    if (draftFiles.length) addReferenceFiles(draftFiles)
+
+    // ── 先把"决定参考图上限"的状态落位，再挂图 ──
+    // 顺序很关键：referenceMax 由 模型 + 工具 + 模式 共同决定（本地图模无工具时是 0 张），
+    // 之前是"先挂图、后恢复模型/工具"，于是挂图那一刻上限还是默认模型的 0 ——
+    // 首页传过来的参考图被整批丢掉，创作页的 @ 自然也就列不出图了。
+    if (draft.toolCode && tools.get(draft.toolCode)) {
+      setTool(draft.toolCode)
+      if (draft.templateCode) setTemplate(draft.templateCode)
+    }
     // 首页已选模型：按通道恢复（不可用时保持未选，不静默换成别的模型）
     if (draft.modelId) {
       const hit = modelOptions.value.find(item => item.id === draft.modelId)
       if (hit?.available) modelId.value = hit.id
     }
+    restoreDraftReferences(draft)
     return true
   }
 
