@@ -333,6 +333,7 @@ function patchSampling(patch: Record<string, number | string>) {
       <HgReferenceStrip
         :items="studio.references.value"
         :max="studio.referenceMax.value"
+        :roles="studio.referenceRoles.value"
         @remove="studio.removeReference($event)"
       />
 

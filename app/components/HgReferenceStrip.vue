@@ -11,9 +11,18 @@ withDefaults(defineProps<{
   items?: { preview: string, name?: string }[]
   /** 该模型能收几张（> 1 时显示 N/上限） */
   max?: number
+  /**
+   * 每张图的角色标注，与 items 同序；空数组则不显示。
+   *
+   * 视频多参下第 1 张是首帧、其余是 ref_image_0/1/2…，两者语义完全不同。
+   * 不标出来的话，用户加了 3 张图没人知道哪张在管什么，
+   * 出图不对时也分不清是"没生效"还是"自己理解错了角色"。
+   */
+  roles?: string[]
 }>(), {
   items: () => [],
-  max: 1
+  max: 1,
+  roles: () => []
 })
 
 const emit = defineEmits<{ remove: [index: number] }>()
@@ -34,6 +43,10 @@ const emit = defineEmits<{ remove: [index: number] }>()
         :src="item.preview"
         :alt="item.name || '参考图'"
       >
+      <span
+        v-if="roles[index]"
+        class="ref-thumb__role"
+      >{{ roles[index] }}</span>
       <button
         type="button"
         class="ref-thumb__clear"
@@ -87,6 +100,21 @@ const emit = defineEmits<{ remove: [index: number] }>()
   background: rgb(0 0 0 / 62%);
   color: #fff;
   cursor: pointer;
+}
+/* 角色角标压在缩略图下沿：图片本身要保持可辨认，所以用小字 + 半透明底，
+   不做整块遮罩（遮挡会让人认不出是哪张图，反而更难核对）。 */
+.ref-thumb__role {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1px 0 2px;
+  border-radius: 0 0 13px 13px;
+  background: rgb(0 0 0 / 58%);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
 }
 .ref-strip__count {
   font-size: 12px;

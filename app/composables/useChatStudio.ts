@@ -76,6 +76,25 @@ export interface StudioMessage {
 const TERMINAL: StudioStatus[] = ['succeeded', 'failed', 'cancelled']
 const RUNNING: StudioStatus[] = ['creating', 'queued', 'running', 'reconciling']
 
+/**
+ * 本地视频（comfy i2v）首帧之外还能带几张多参参考图。
+ *
+ * 与后端 `workflow.MaxRefImages` **必须同值**，那个常量又是照着 comfy85 上
+ * MiniMaxH3AudioConditioningT8.ref_images 的 autogrow 声明（min=0, max=9）写的。
+ * 三处任何一处改了另两处不改，表现都是"界面让加、提交被后端拒"或反过来
+ * "后端收得下、界面加不进来"。
+ */
+const VIDEO_REF_MAX = 9
+
+/**
+ * 单张上传图片的体积上限。
+ *
+ * 与后端**同值**：asset/controller.go `maxAssetUploadBytes`（权威入口 POST /platform/asset）
+ * 与 hougong/task.go `maxMediaUploadBytes` 都是 15 << 20。
+ * 前端这份只负责"别让用户白等一次上传"，真正的拒绝仍在后端。
+ */
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+
 /** 状态类提问：这类消息不能创建计费任务（交接文档第 4 节）。 */
 const STATUS_QUESTION = /好了吗|好了没|好没好|完成了吗|完成了没|进度|怎么样|到哪了|还要多久|多久能|生成完了|跑完了|出图了吗|可以了吗/
 
@@ -182,6 +201,16 @@ export function createChatStudio() {
 
   const modelOptions = computed(() => buildModelOptions(catalog.value, mode.value))
   const selectedModel = computed(() => modelOptions.value.find(item => item.id === modelId.value))
+  /**
+   * 所选视频模型是不是本地 comfy 那条。
+   *
+   * 视频模式下本地与云端在 modelOptions 里都是 channel='video'（见 buildModelOptions），
+   * 分不出执行器，所以只能看 catalog 里的 engine —— 多参（ref_images）目前只有本地
+   * 工作流接了，云端要不要放行得先确认中转站收不收多图，见 referenceMax。
+   */
+  const videoLocal = computed(() =>
+    mode.value === 'video' && catalog.value?.videoModels?.find(item => item.id === modelId.value)?.engine === 'comfy'
+  )
   /** 云端图像模型的清晰度档 / 比例档：都来自模型行 capabilities（后台可配）。
       本地 comfy 模型仍用固定 1K/2K（那是 width/height 的口径，与云端 quality 不是一回事）。 */
   const isCloudImage = computed(() => mode.value === 'image' && selectedModel.value?.channel === 'cloud')
@@ -337,18 +366,34 @@ export function createChatStudio() {
   // （放大/脱衣/换脸…）都必须允许上传。少了最后一项，选完工具会发现传不了图。
   /**
    * 参考图上限：跟模型能力走。
-   * - 视频（i2v）：**只有首帧**，恒为 1（协议里第一张是 first_frame，多传会改变语义）；
+   * - 视频（i2v，本地 comfy）：1 张首帧 + VIDEO_REF_MAX 张多参参考图；
+   * - 视频（云端）：仍为 1。云端执行器其实已经把 snapshot.inputs **整组**当
+   *   RefImages 下发了（executor/cloud.go videoRequest），所以放开只是改这里；
+   *   但中转站的 seedance 到底收不收多图没有实测过，没验证就不放 ——
+   *   放开的代价是用户按多图提交、上游报错，白等一轮。
    * - 云端图像：capabilities.maxInputs（后台可配），0/缺省表示不接受参考图 → 入口不出现；
    * - 本地底模：只有「需要图的工具」才有参考图，固定 1。
    */
   const referenceMax = computed(() => {
-    if (mode.value === 'video') return 1
+    if (mode.value === 'video') return videoLocal.value ? 1 + VIDEO_REF_MAX : 1
     if (selectedModel.value?.channel === 'cloud') {
       const model = catalog.value?.cloudModels?.find(item => item.id === modelId.value)
       const declared = model?.capabilities?.maxInputs ?? 0
       return declared > 0 ? declared : 0
     }
     return toolNeedsImage.value ? 1 : 0
+  })
+
+  /**
+   * 这一镜是否有"首帧之外"的角色分配。
+   *
+   * 只有本地 comfy 视频走 ref_images：第 1 张是首帧，其余按顺序是 ref_image_0/1/2…。
+   * UI 上把角色标出来是必要的 —— 否则用户加了 3 张图，没人知道哪张在管什么，
+   * 出图不对也无从判断是"没生效"还是"角色理解错了"。
+   */
+  const referenceRoles = computed<string[]>(() => {
+    if (mode.value !== 'video') return []
+    return references.value.map((_, i) => (i === 0 ? '首帧' : `参考${i}`))
   })
 
   const referenceAllowed = computed(() => referenceMax.value > 0)
@@ -626,13 +671,26 @@ export function createChatStudio() {
     }]
   }
 
-  /** 追加参考图（多选时一次多张）。超出模型上限的**静默丢弃**，UI 也会禁用添加入口。 */
+  /**
+   * 追加参考图（多选时一次多张）。超出模型上限的**静默丢弃**，UI 也会禁用添加入口。
+   *
+   * 体积在这里就拦掉，不留到提交时才失败：后端的单文件上限是 15MB
+   * （asset/controller.go 的 maxAssetUploadBytes，hougong/task.go 的
+   * maxMediaUploadBytes 同值），前端此前没有任何校验 —— 用户选一张 30MB 的图，
+   * 要等几十秒传完才看到"file too large"，而他完全不知道"多大算大"。
+   */
   function addReferenceFiles(files: File[]) {
+    const tooBig = files.filter(file => file.size > MAX_UPLOAD_BYTES)
+    const usable = files.filter(file => file.size <= MAX_UPLOAD_BYTES)
+    // notice 只有一条，所以两种拒绝原因用 if/else 分开报：体积问题比张数问题更该被看到
+    // （张数超了用户自己数得出来，体积超了他看不到）。
     const room = Math.max(0, referenceMax.value - references.value.length)
-    for (const file of files.slice(0, room)) {
+    for (const file of usable.slice(0, room)) {
       references.value.push({ file, name: file.name, preview: URL.createObjectURL(file), assetId: '' })
     }
-    if (files.length > room) {
+    if (tooBig.length) {
+      notice.value = `单张图片不能超过 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB，已忽略 ${tooBig.length} 张。`
+    } else if (usable.length > room) {
       notice.value = `这个模型最多接受 ${referenceMax.value} 张参考图，多余的已忽略。`
     }
   }
@@ -1130,7 +1188,7 @@ export function createChatStudio() {
   return {
     // 输入器
     mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId,
-    references, referenceMax, referenceCount, canAddReference, notice,
+    references, referenceMax, referenceCount, canAddReference, referenceRoles, notice,
     // 创作工具
     activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,
