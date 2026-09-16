@@ -55,7 +55,15 @@ export interface WorkItem {
   sessionId?: number
   taskId?: number
   assetId: number
+  /**
+   * 图片作品的展示地址；**视频作品为空**。
+   *
+   * 视频没有独立封面图，早前后端把母版 mp4 塞进这个字段，前端当图片渲染就是坏图
+   * （线上实测 naturalWidth=0）。视频一律走 videoUrl。
+   */
   imageUrl?: string
+  /** 视频作品的播放地址（kind === 'video' 时才有）。 */
+  videoUrl?: string
   kind: string
   status: string
   favorite: boolean
@@ -398,6 +406,15 @@ export interface PublicationWork {
   author?: { id: string, displayName: string, avatarUrl: string | null }
   contentRating: string | null
   coverUrl: string | null
+  /**
+   * 作品媒体类型 image/video（后端取自封面资产的 media_asset.kind）。
+   *
+   * 探索流卡片据此决定用 <img> 还是 <video>：视频作品的 coverUrl 指的就是那段
+   * mp4，交给 <img> 只会得到一张坏图。老后端没有这个字段时按 image 处理。
+   */
+  kind?: string
+  /** 视频作品的播放地址（kind === 'video' 时才有）。 */
+  videoUrl?: string | null
   tags: PlatformTag[]
   stats: { likes: number, favorites: number, comments: number, remixes: number }
   publishedAt: number

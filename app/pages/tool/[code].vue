@@ -9,6 +9,7 @@
 import { FEATURES } from '~/config/features'
 import { toolNotice } from '~/data/tool-notice'
 import { safeHref } from '~/composables/useSafeUrl'
+import { vAutoPlayVideo } from '~/composables/useAutoPlayVideo'
 
 useSeoMeta({ title: '创作工具 · 后宫' })
 
@@ -705,12 +706,19 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           class="result-live"
         >
           <div class="result-media">
+            <!-- 结果视频进视口就静音循环播：工具页右半边是"结果展示位"，
+                 要用户先点一下播放键才动，等于把最想给人看的那一下藏起来了。
+                 控件保留，想听声音/拖进度自己点。 -->
             <video
               v-if="isVideoUrl(latest.outputs[0]!)"
+              v-auto-play-video
               :src="latest.outputs[0]!.url"
               class="result-video"
               controls
+              muted
+              loop
               playsinline
+              preload="metadata"
             />
             <img
               v-else
@@ -784,11 +792,13 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           <div class="result-media pending-media">
             <video
               v-if="isVideoPair"
+              v-auto-play-video
               :src="sourceUrl"
               class="result-video"
-              controls
               muted
+              loop
               playsinline
+              preload="metadata"
             />
             <img
               v-else
@@ -838,11 +848,13 @@ onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
           <div class="result-media">
             <video
               v-if="isVideoPair"
+              v-auto-play-video
               :src="sourceUrl"
               class="result-video"
-              controls
               muted
+              loop
               playsinline
+              preload="metadata"
             />
             <img
               v-else

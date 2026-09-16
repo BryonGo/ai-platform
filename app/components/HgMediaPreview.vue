@@ -64,8 +64,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         </header>
 
         <div class="stage">
+          <!-- 视频分支：props.kind 早就在契约里，但模板一直只有 <img>，
+               视频作品（coverUrl == mp4）在这层就变成一张坏图。
+               预览是用户点出来的，属于用户手势，可以有声自动播。 -->
+          <video
+            v-if="props.src && props.kind === 'video'"
+            :src="props.src"
+            controls
+            autoplay
+            playsinline
+          />
           <img
-            v-if="props.src"
+            v-else-if="props.src"
             :src="props.src"
             :alt="props.title"
           >
@@ -155,6 +165,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   max-width: 100%;
   max-height: calc(100dvh - 160px);
   object-fit: contain;
+}
+/* 视频与图片同一套约束：完整显示、留边优先于裁切（设计说明 §6.2） */
+.hg-preview .stage video {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 160px);
+  object-fit: contain;
+  background: #000;
 }
 .stage-empty {
   padding: 40px;

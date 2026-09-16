@@ -42,6 +42,13 @@ export interface ExploreWork {
   badgeBaked?: boolean
   /** 视频作品的时长角标，如 00:24 */
   duration?: string
+  /**
+   * 媒体类型（真实作品来自接口：WorkSummary.kind）。video 时卡片用 <video> 渲染
+   * `videoUrl` 并进视口自动播；示例作品（mock）没有这个字段，按图片处理。
+   */
+  kind?: 'image' | 'video'
+  /** 视频作品的播放地址（kind === 'video' 时才有）。 */
+  videoUrl?: string
   mock: boolean
 }
 
@@ -55,6 +62,10 @@ export interface ContinueItem {
   compareBefore?: string
   /** 是否已完成，未完成时按第 6 条不渲染可播放产物 */
   done?: boolean
+  /** 媒体类型（来自作品接口）：video 时卡片渲染 videoUrl 并进视口自动播。 */
+  kind?: 'image' | 'video'
+  /** 视频作品的播放地址（kind === 'video' 时才有）。 */
+  videoUrl?: string
 }
 
 /** 首页「全部工具」展示目录（11 项中的 10 项，与效果图一致） */

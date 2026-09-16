@@ -12,6 +12,7 @@ import {
 } from '~/data/hougong-home'
 import { promptText } from '~/components/prompt/enhancement-mark'
 import type { PublicationWork, WorkItem } from '~/composables/useHougongApi'
+import { looksLikeVideoUrl, vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
 
 const hgApi = useHougongApi()
 const session = useAuthSession()
@@ -46,6 +47,11 @@ interface ToolCard {
   cover: string
   /** 对比原图（处理前）。与 cover 成对时卡片出对比滑块。 */
   coverBefore?: string
+  /**
+   * 卡片循环预览视频（后台 hougong_tool.cover_video）。有值时卡片播它，
+   * cover 当封面帧；没有就还是静态图。
+   */
+  coverVideo?: string
   kinds: ToolKind[]
 }
 
@@ -60,6 +66,7 @@ const toolCards = computed<ToolCard[]>(() => {
     // 示例图，跟这个工具做什么无关；换素材还得等一次前端发版。
     cover: tool.cover || tool.coverBefore || '',
     coverBefore: tool.coverBefore || '',
+    coverVideo: tool.coverVideo || '',
     kinds: [tool.category as ToolKind]
   }))
   if (fromCatalog.length) return fromCatalog
@@ -100,6 +107,18 @@ onMounted(() => {
   void toolCatalog.ensure()
   void loadContinue()
   void loadExplore(true)
+})
+
+/**
+ * 会话恢复后补拉一次「继续创作」。
+ *
+ * 必须补这一下：Vue 里**子页面的 onMounted 先于父组件 app.vue 的 onMounted**，
+ * 而恢复会话的 session.load()（内含 cookie auto-login）挂在 app.vue 的 onMounted 上。
+ * 于是 loadContinue() 读到的 token 永远是空的，已登录用户看到的是示例卡，
+ * 而且它只跑一次、不会自愈（线上实测：登录后首页三张全是 /mock/home/continue-*.png）。
+ */
+watch(() => session.token.value, (token) => {
+  if (token) void loadContinue()
 })
 
 onBeforeUnmount(() => {
@@ -172,12 +191,19 @@ async function loadContinue() {
     continueItems.value = works.length
       ? works.slice(0, 3).map((work) => {
           const meta = STATUS_TEXT[work.status] ?? { status: 'edited' as const, text: '最近编辑' }
+          // 视频作品没有封面图：后端只给 videoUrl（imageUrl 为空），卡片按 kind 走
+          // <video> 分支。以前这里取 imageUrl，视频作品就是一张坏图。
+          const isVideo = work.kind === 'video'
           return {
             id: String(work.id),
             title: work.title || `作品 ${String(work.id).slice(-6)}`,
             cover: work.imageUrl || '',
+            kind: isVideo ? 'video' as const : 'image' as const,
+            videoUrl: isVideo ? (work.videoUrl || '') : '',
             status: meta.status,
-            statusText: `${meta.text} · ${relativeTime(work.createdAt)}`
+            // 作品接口给的是 Unix 秒，relativeTime 按毫秒算差 —— 不乘 1000 会显示
+            // 「20691 天前」（实测）。这里顺手把它对齐。
+            statusText: `${meta.text} · ${relativeTime(work.createdAt * 1000)}`
           }
         })
       : HOME_CONTINUE_MOCK
@@ -220,12 +246,20 @@ function toExploreWork(work: PublicationWork): ExploreWork {
   const badge: ExploreWork['badge'] = likes >= 5
     ? '热门'
     : (publishedMs && Date.now() - publishedMs < 7 * 24 * 3600 * 1000 ? '最新' : undefined)
+  // 视频作品的「封面」就是那段 mp4：后端现在会把 kind/videoUrl 一起下发，
+  // 卡片据此走 <video>。老后端没有 kind 时退回嗅探扩展名，避免又出现坏图。
+  const isVideo = work.kind === 'video'
+    || (!work.kind && looksLikeVideoUrl(work.coverUrl || ''))
+  const videoUrl = work.videoUrl || (isVideo ? (work.coverUrl || '') : '')
   return {
     id: String(work.id),
     title: work.title || '未命名作品',
     author: work.author?.displayName || '',
     avatar: work.author?.avatarUrl || undefined,
-    cover: work.coverUrl || '',
+    // 视频不给 cover：让卡片专心走 videoUrl，免得 <img> 又拿到 mp4
+    cover: isVideo ? '' : (work.coverUrl || ''),
+    kind: isVideo ? 'video' : 'image',
+    videoUrl: isVideo ? videoUrl : '',
     category: '推荐',
     tags: (work.tags || []).map(tag => tag.name),
     badge,
@@ -326,16 +360,21 @@ const previewOpen = ref(false)
 const previewSrc = ref('')
 const previewTitle = ref('')
 const previewAuthor = ref('')
+/** 预览的媒体类型：视频要用 <video> 播（HgMediaPreview 的 kind 分支）。 */
+const previewKind = ref<'image' | 'video'>('image')
 
 function openPreview(work: ExploreWork) {
-  previewSrc.value = work.cover
+  // 视频作品没有封面图，要播的是 videoUrl —— 拿 cover 去预览只会是空白
+  previewKind.value = work.kind === 'video' ? 'video' : 'image'
+  previewSrc.value = work.kind === 'video' ? (work.videoUrl || '') : work.cover
   previewTitle.value = work.title
   previewAuthor.value = work.author
   previewOpen.value = true
 }
 
 function openContinuePreview(item: ContinueItem) {
-  previewSrc.value = item.cover
+  previewKind.value = item.kind === 'video' ? 'video' : 'image'
+  previewSrc.value = item.kind === 'video' ? (item.videoUrl || '') : item.cover
   previewTitle.value = item.title
   previewAuthor.value = ''
   previewOpen.value = true
@@ -446,10 +485,23 @@ function openContinuePreview(item: ContinueItem) {
           class="hg-card tool-card"
         >
           <div class="hg-media r2x3">
+            <!-- 后台配了循环预览视频就走视频：卡片进视口静音自动播，cover 当封面帧。
+                 视频优先于对比滑块 —— 有视频时那张"效果图"就是它的封面。 -->
+            <video
+              v-if="tool.coverVideo"
+              v-auto-play-video
+              class="media-fg"
+              :src="tool.coverVideo"
+              :poster="tool.cover || undefined"
+              muted
+              loop
+              playsinline
+              preload="none"
+            />
             <!-- 后台配了「原图 + 效果图」一对就出对比滑块（/effects 与工具页同一套逻辑）；
                  只有一张就退回单图。 -->
             <HgCompareSlider
-              v-if="tool.coverBefore && tool.cover"
+              v-else-if="tool.coverBefore && tool.cover"
               :before="tool.coverBefore"
               :after="tool.cover"
               :alt="tool.label"
@@ -529,8 +581,20 @@ function openContinuePreview(item: ContinueItem) {
           <!-- 固定 16:9 框，框不随素材变形；素材完整缩放显示，比例对不上的部分用
                同一张图的模糊层补背景（而不是留黑边，也不是把卡片撑长）。 -->
           <div class="hg-media r16x9">
+            <!-- 视频作品：没有封面图，进视口静音循环播；首帧用 #t=0.1 垫着，
+                 免得自动播放起效前是一块黑框。 -->
+            <video
+              v-if="item.kind === 'video' && item.videoUrl"
+              v-auto-play-video
+              class="media-fg"
+              :src="videoFirstFrameSrc(item.videoUrl)"
+              muted
+              loop
+              playsinline
+              preload="metadata"
+            />
             <!-- 有原图时用同坐标对比滑块，而不是并排两张肖像（设计说明第 8 条） -->
-            <template v-if="item.compareBefore && item.cover">
+            <template v-else-if="item.compareBefore && item.cover">
               <HgCompareSlider
                 :before="item.compareBefore"
                 :after="item.cover"
@@ -553,7 +617,7 @@ function openContinuePreview(item: ContinueItem) {
               {{ item.title.slice(0, 1) }}
             </div>
             <button
-              v-if="item.cover"
+              v-if="item.cover || (item.kind === 'video' && item.videoUrl)"
               type="button"
               class="media-zoom"
               :aria-label="`完整预览 ${item.title}`"
@@ -640,8 +704,20 @@ function openContinuePreview(item: ContinueItem) {
           class="hg-card explore-card"
         >
           <div class="hg-media r4x5">
+            <!-- 视频作品：进视口静音循环播（后端 kind=video 时才有 videoUrl）。
+                 首帧用 #t=0.1 垫着，自动播放被拒/还没进视口时也不是黑框。 -->
+            <video
+              v-if="work.kind === 'video' && work.videoUrl"
+              v-auto-play-video
+              class="media-fg"
+              :src="videoFirstFrameSrc(work.videoUrl)"
+              muted
+              loop
+              playsinline
+              preload="metadata"
+            />
             <img
-              v-if="work.cover"
+              v-else-if="work.cover"
               class="media-fg"
               :src="work.cover"
               :alt="work.title"
@@ -741,6 +817,7 @@ function openContinuePreview(item: ContinueItem) {
       :src="previewSrc"
       :title="previewTitle"
       :author="previewAuthor"
+      :kind="previewKind"
     />
   </div>
 </template>

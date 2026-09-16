@@ -41,6 +41,11 @@ export interface ToolItem {
   cover?: string
   /** 对比原图（处理**前**），见 ToolTemplate.coverBefore。 */
   coverBefore?: string
+  /**
+   * 卡片循环预览视频（mp4）。有值时首页效果卡在进入视口后静音循环播放它，
+   * cover 作为它的封面帧；没有就还是静态图（+ 对比滑块）。
+   */
+  coverVideo?: string
   /** 角标文案（热门/新品/精选…）；空 = 不显示。 */
   badge?: string
   /** 标签（分类），效果列表的标签行按它筛。 */
