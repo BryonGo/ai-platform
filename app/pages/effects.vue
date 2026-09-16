@@ -32,6 +32,13 @@ interface EffectCard {
   cover?: string
   /** 对比原图（处理**前**）。与 cover 成对 → 卡片出对比滑块。 */
   coverBefore?: string
+  /**
+   * 卡片循环预览视频（mp4）。有值就**直接播它**，不再出对比滑块。
+   *
+   * 对比的前提是"同一画面的前后两帧"，而视频给不出同坐标的第二帧 —— 硬凑一个滑块
+   * 只会让人以为能拖。所以视频卡片的交互是"进视口静音循环播放"，cover 当封面帧。
+   */
+  coverVideo?: string
   badge?: string
   category: string
   /** 该卡里能选的玩法数（工具卡 = 它下面所有玩法；玩法卡 = 0）。 */
@@ -59,6 +66,8 @@ const effects = computed<EffectCard[]>(() => {
       out.push({
         ...base, key: t.code, name: t.name, summary: t.summary,
         cover: t.cover, coverBefore: t.coverBefore, badge: t.badge,
+        // 循环预览视频只有工具级（hougong_tool.cover_video），玩法没有自己的视频列。
+        coverVideo: t.coverVideo,
         optionCount: tpls.length, tags: t.tags || [], isTool: true
       })
     }
@@ -73,6 +82,8 @@ const effects = computed<EffectCard[]>(() => {
         coverBefore: tpl.coverBefore || t.coverBefore,
         // 角标**不**继承：工具挂了"热门"，不等于它下面 44 个玩法个个都热门。
         badge: tpl.badge,
+        // 预览视频只有工具级，玩法一律回落它所属工具的那段。
+        coverVideo: t.coverVideo,
         optionCount: 0, tags: tpl.tags || [], isTool: false
       })
     }
@@ -291,11 +302,26 @@ onMounted(() => {
         :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
       >
         <div class="fx-thumb">
+          <!-- 视频工具**直接播循环预览**，不摆对比滑块（用户要求：只有图片脱衣那张卡出对比）。
+               对比的前提是"同一画面的前后两帧"，视频给不出同坐标的第二帧 ——
+               硬凑一个滑块只会让人以为能拖。cover 在这里当视频的封面帧。
+               顺序不能反：视频分支必须在对比之前，否则配了视频也走不到。 -->
+          <video
+            v-if="tool.coverVideo"
+            v-auto-play-video
+            class="media-fg"
+            :src="tool.coverVideo"
+            :poster="tool.cover || undefined"
+            muted
+            loop
+            playsinline
+            preload="none"
+          />
           <!-- 后台配了「原图 + 效果图」一对，就出可拖动的对比滑块：
                光看一张裸图说明不了这个工具做了什么，前后一拖就懂了（首页同一条交互）。
                fit=contain：卡片框是 3:4、素材是 2:3，cover 会把头顶和脚各裁掉约 5%。 -->
           <HgCompareSlider
-            v-if="tool.coverBefore && tool.cover"
+            v-else-if="tool.coverBefore && tool.cover"
             :before="tool.coverBefore"
             :after="tool.cover"
             :alt="tool.name"

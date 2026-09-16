@@ -112,11 +112,23 @@ const templateCover = computed(() => templates.value.find(t => t.code === templa
 const templateCoverBefore = computed(() => templates.value.find(t => t.code === template.value)?.coverBefore || '')
 
 /**
+ * 效果示例的**预览视频**（后台 hougong_tool.cover_video）。
+ *
+ * 有视频时它优先于对比滑块：对比是"同一画面的前后两帧"，而视频给不出同坐标的第二帧，
+ * 硬凑一个滑块只会让人以为能拖。视频工具的交互就是直接播（进视口静音循环），
+ * 下面 `demo` 里的 cover 在这里退化为它的封面帧。
+ *
+ * 只有工具级有这个字段（后端 hougong_tool.cover_video），玩法没有，所以不按玩法回落。
+ */
+const demoVideo = computed(() => tool.value?.coverVideo || '')
+
+/**
  * 生成前右半边展示的「效果示例」。
  *
  * 由**后台**配置驱动（hougong_tool.cover 效果图 / cover_before 原图）——
  * 换素材是运营的活儿，不该等一次前端发版。玩法级优先，回落工具级。
  *
+ *   demoVideo 有值        → 直接播循环预览（视频工具，不出对比）
  *   cover + coverBefore 都有 → 可拖动的对比滑块
  *   只有 cover              → 单图
  *   都没有                  → null，回到原来的空态文案
@@ -884,19 +896,33 @@ useMediaAutoRefresh(async () => {
              用户点进「脱衣」就是想看能变成什么样 —— 把原图/效果同坐标摆在第一屏，
              比任何文案都有说服力；等上面几个分支接手，示例自动让位。 -->
         <div
-          v-else-if="demo"
+          v-else-if="demo || demoVideo"
           class="result-demo"
         >
           <div class="demo-media">
+            <!-- 视频工具直接播循环预览，不摆对比滑块：对比是"同一画面的前后两帧"，
+                 视频给不出同坐标的第二帧，硬凑只会让人以为能拖（用户口径：
+                 只有图片脱衣那张卡出对比）。cover 在这里是视频的封面帧。 -->
+            <video
+              v-if="demoVideo"
+              v-auto-play-video
+              class="media-fg"
+              :src="demoVideo"
+              :poster="demo?.after || undefined"
+              muted
+              loop
+              playsinline
+              preload="none"
+            />
             <HgCompareSlider
-              v-if="demo.before"
+              v-else-if="demo && demo.before"
               :before="demo.before"
               :after="demo.after"
               :alt="demoAlt"
               :label="`${tool?.name || '效果'} 原图与效果对比`"
             />
             <img
-              v-else
+              v-else-if="demo"
               :src="demo.after"
               :alt="demoAlt"
             >
@@ -904,7 +930,11 @@ useMediaAutoRefresh(async () => {
           <div class="demo-actions">
             <span class="result-meta">效果示例</span>
             <span
-              v-if="demo.before"
+              v-if="demoVideo"
+              class="demo-tip"
+            >进视口自动播放</span>
+            <span
+              v-else-if="demo && demo.before"
               class="demo-tip"
             >拖动中间滑块看对比</span>
           </div>
