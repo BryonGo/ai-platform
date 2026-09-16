@@ -100,7 +100,13 @@ export function useVersionWatcher() {
         current.value = version
         return
       }
-      if (version === current.value || version === 'dev') {
+      // `dev*` = 本地开发（现在是 dev-<短 sha>[-dirty]，见 nuxt.config 的 devBuildVersion），
+      // 不是"发了一版新的"，本地不该因此弹更新条。
+      //
+      // 这里必须按**前缀**判而不是等号：护栏原本只认字面量 'dev'，dev 版本带上 sha 之后，
+      // 本地重启一次 dev server（改了 nuxt.config、或提交前后 dirty 状态变化）就会
+      // 让 version 变一次，于是每重启一次弹一次更新条。
+      if (version === current.value || version.startsWith('dev')) {
         pending.value = ''
         hits.value = 0
         available.value = ''

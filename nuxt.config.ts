@@ -1,4 +1,31 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { execSync } from 'node:child_process'
+
+/**
+ * 本地 dev 的版本号：dev-<短 sha>[-dirty]。
+ *
+ * 为什么需要：dev 下 NUXT_PUBLIC_BUILD_VERSION 没人传，版本就是字面量 'dev' ——
+ * 它回答不了「现在跑的是哪一版代码」，而这恰恰是本地最常问的问题
+ * （"我改了，dev server 到底有没有吃到"）。生产不受影响：compose 传了镜像 tag。
+ *
+ * 取**配置求值时**（≈ dev server 启动那一刻）的仓库状态，不是每次请求都算：
+ *   · 这样它表达的是"这个进程是从哪一版启动的"，与后端 buildinfo 的口径一致；
+ *   · 改动源码由 HMR 生效、版本号不变，所以它变了 = 需要重启（改了 nuxt.config
+ *     这类不参与 HMR 的东西），这正是要看出来的信号。
+ * 拿不到 git（没装、不在仓库里）就退回 'dev'，不影响启动。
+ */
+function devBuildVersion(): string {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+    if (!sha) return 'dev'
+    // dirty 很关键：本地几乎总是带未提交改动在跑，只报 sha 会让人以为跑的就是那个提交。
+    const dirty = execSync('git status --porcelain', { encoding: 'utf8' }).trim() !== ''
+    return `dev-${sha}${dirty ? '-dirty' : ''}`
+  } catch {
+    return 'dev'
+  }
+}
+
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
@@ -24,9 +51,10 @@ export default defineNuxtConfig({
       siteCode: process.env.NUXT_PUBLIC_SITE_CODE || 'default',
       // 本次运行的版本（浏览器缓存的那份前端是哪个版本）。生产由 compose 传
       // NUXT_PUBLIC_BUILD_VERSION=${HOUGONGWEB_IMAGE_TAG}（形如 20260914151045-96ce975）；
-      // 本地/dev 不传就是 'dev'。它同时被 server/api/version.get.ts 读取并在运行时返回，
-      // 因此不需要把版本号写进代码，也不会与镜像 tag 漂移。
-      buildVersion: process.env.NUXT_PUBLIC_BUILD_VERSION || 'dev',
+      // 本地/dev 不传则回落到 dev-<短 sha>[-dirty]（见 devBuildVersion）。它同时被
+      // server/api/version.get.ts 读取并在运行时返回，因此不需要把版本号写进代码，
+      // 也不会与镜像 tag 漂移。
+      buildVersion: process.env.NUXT_PUBLIC_BUILD_VERSION || devBuildVersion(),
       // 版本检测节拍（毫秒）：轮询间隔 / 两次探测的最小间隔 / 检测到新版本后的自动刷新延迟。
       // 生产用默认值；本地与 e2e 可以调短，否则一个用例要等一分钟。
       versionPollMs: Number(process.env.NUXT_PUBLIC_VERSION_POLL_MS || 60000),
