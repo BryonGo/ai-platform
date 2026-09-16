@@ -434,6 +434,15 @@ export function createChatStudio() {
   const referenceAllowed = computed(() => referenceMax.value > 0)
   const referenceCount = computed(() => references.value.length)
   const canAddReference = computed(() => referenceCount.value < referenceMax.value)
+  /**
+   * 已选参考图超过当前模型上限。
+   *
+   * 什么时候会出现：首页带着 N 张图过来，而交接那一刻模型被换成了上限更小的
+   * （例如草稿里的本地视频模型不可用 → 兜底成云端视频，上限 1 张）。
+   * 这种状态**不丢图、也不许发**：图是用户选的，删哪张由用户决定；
+   * 直接发出去则会被上游拒或白跑一轮（云端按张数/用时计费）。
+   */
+  const referenceOverflow = computed(() => referenceMax.value >= 0 && referenceCount.value > referenceMax.value)
 
   const quote = computed(() => quoteModel(catalog.value, selectedModel.value, {
     ratio: ratio.value,
@@ -442,7 +451,8 @@ export function createChatStudio() {
   }))
   const costText = computed(() => quote.value === null ? '费用待确认' : `${quote.value.amount} ${quote.value.unit}`)
 
-  const canSend = computed(() => !!prompt.value.trim() || referenceCount.value > 0)
+  // 超限时不许发：先把"图比模型能收的多"这件事解决掉（换模型或删图）。
+  const canSend = computed(() => !referenceOverflow.value && (!!prompt.value.trim() || referenceCount.value > 0))
 
   /* ---------------- 会话与消息 ---------------- */
 
@@ -1215,12 +1225,22 @@ export function createChatStudio() {
     clearReferences()
     if (!ordered.length) return 0
 
-    const room = Math.max(0, referenceMax.value)
+    // **不按当前上限截断**（2026-09-16 改）。
+    //
+    // 原来这里是 `for (...) { if (added >= referenceMax.value) break }`，于是出现
+    // 「首页选了 4 张 → 创作页只剩 1 张」：交接那一刻如果草稿里的模型恢复不了
+    // （模型开关刚被停用、目录没拉到），页面会静默换成兜底模型（视频里是上限 1 张的
+    // Seedance），这个 break 就把用户的图当成"多余的"扔了 3 张 —— 而用户什么都没做，
+    // 屏幕上只看到图少了。用户选了图，图就该原样还在；上限是"能不能发"的问题，
+    // 不是"要不要丢"的问题（超限由 referenceOverflow 显式挡住发送）。
     let added = 0
+    let tooBig = 0
     for (const item of ordered) {
-      if (added >= room) break
       if (item.file) {
-        if (item.file.size > MAX_UPLOAD_BYTES) continue
+        if (item.file.size > MAX_UPLOAD_BYTES) {
+          tooBig += 1
+          continue
+        }
         references.value.push({
           file: item.file,
           name: item.file.name,
@@ -1238,12 +1258,8 @@ export function createChatStudio() {
         added += 1
       }
     }
-    // 带不过来的部分必须说清楚：以前是静默丢弃，用户只看到"图没了"，
-    // 连"为什么没的、该怎么办"都不知道（线上反馈就是这么来的）。
-    if (added < ordered.length) {
-      notice.value = room === 0
-        ? `草稿里有 ${ordered.length} 张参考图，但当前模型/工具不接受参考图，没能带过来：先选一个支持参考图的模型或工具，再重新添加。`
-        : `这个模型最多接受 ${room} 张参考图，草稿里超出的 ${ordered.length - added} 张没有带过来。`
+    if (tooBig) {
+      addNotice(`草稿里有 ${tooBig} 张超过 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB 的图没能带过来。`)
     }
     return added
   }
@@ -1265,12 +1281,28 @@ export function createChatStudio() {
       if (draft.templateCode) setTemplate(draft.templateCode)
     }
     // 首页已选模型：按通道恢复（不可用时保持未选，不静默换成别的模型）
+    //
+    // ⚠️ 恢复不了时**必须出声**：目录里找不到这个模型（模型开关刚被停用、目录没拉到）
+    // 时，页面会落到兜底模型上 —— 视频里兜底是上限 1 张参考图的云端模型，用户带着
+    // 4 张图过来只会看到"图少了一张"。2026-09-16 的线上反馈「首页 4 张 → 创作页 1 张」
+    // 就是这条静默分支造成的（原来这里没有 else）。
     if (draft.modelId) {
       const hit = modelOptions.value.find(item => item.id === draft.modelId)
-      if (hit?.available) modelId.value = hit.id
+      if (hit?.available) {
+        modelId.value = hit.id
+      } else {
+        addNotice('草稿里选的模型当前不可用，已改用其它可选模型；参考图上限会随之变化。')
+      }
     }
     restoreDraftReferences(draft)
     return true
+  }
+
+  /** 提示只有一条：多处要说话时**追加**而不是互相覆盖（覆盖会让先说的话消失）。 */
+  function addNotice(msg: string) {
+    const text = msg.trim()
+    if (!text) return
+    notice.value = notice.value ? `${notice.value} ${text}` : text
   }
 
   /**
@@ -1332,7 +1364,7 @@ export function createChatStudio() {
   return {
     // 输入器
     mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId,
-    references, referenceMax, referenceCount, canAddReference, referenceRoles, imageRefFirstFrame, notice,
+    references, referenceMax, referenceCount, canAddReference, referenceOverflow, referenceRoles, imageRefFirstFrame, notice,
     // 创作工具
     activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,

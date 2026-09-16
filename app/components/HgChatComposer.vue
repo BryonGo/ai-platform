@@ -499,7 +499,11 @@ function patchSampling(patch: Record<string, number | string>) {
             type="button"
             class="hg-btn-primary send"
             :disabled="!studio.canSend.value"
-            :title="studio.canSend.value ? '' : '先描述这一幕，或上传参考图'"
+            :title="studio.canSend.value
+              ? ''
+              : (studio.referenceOverflow.value
+                ? `当前模型最多接受 ${studio.referenceMax.value} 张参考图，先删到 ${studio.referenceMax.value} 张或换一个支持多图的模型`
+                : '先描述这一幕，或上传参考图')"
             @click="onSend"
           >
             <UIcon
