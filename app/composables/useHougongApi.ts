@@ -1300,7 +1300,9 @@ export function useHougongApi() {
    * 后端先落读模型（候选产物与花费都从平台任务账推导），写侧随后补；
    * `empty=true` 表示该账号还没有画布数据，前端用示例数据兜底。
    */
-  function getCanvasOverview(storyId = 0, episodeId = 0) {
+  function getCanvasOverview(storyId: string | number = '', episodeId: string | number = '') {
+    // **id 全程按字符串传**：集/镜的 id 是雪花 id（19 位），超过 JS 的安全整数，
+    // 中间只要过一次 Number() 就会被舍入，后端拿到的就是另一个 id（表现为"切集切不过去"）。
     const qs = new URLSearchParams()
     if (storyId) qs.set('storyId', String(storyId))
     if (episodeId) qs.set('episodeId', String(episodeId))
