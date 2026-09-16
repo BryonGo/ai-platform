@@ -57,13 +57,25 @@ export interface RunMeta {
   contentRating: 'sfw' | 'r18'
 }
 
+export interface StudioAttachment {
+  /** 展示名（原始文件名，素材库图用「素材」） */
+  name: string
+  /** 展示地址：本地文件是 blob:，素材库/历史是限时签名地址 */
+  url: string
+  assetId?: string
+}
+
 export interface StudioMessage {
   id: string
   role: 'user' | 'assistant'
   kind: 'text' | 'task'
   text: string
   time: number
-  attachment?: { name: string, url: string, assetId?: string }
+  /**
+   * 用户消息带的参考图，**有序**（第 N 张对应提示词里的 @图N）。
+   * 多图必须全部展示并排：以前是单数 attachment，发 2 张只显示 1 张。
+   */
+  attachments?: StudioAttachment[]
   /** 任务卡字段（kind === 'task'） */
   taskId?: string
   clientKey?: string
@@ -553,14 +565,24 @@ export function createChatStudio() {
     }
   }
 
-  /** 历史快照 → 提示词 / 画幅（快照结构兼容两种形态） */
+  /** 历史快照 → 提示词 / 画幅 / 参考图 id（快照结构兼容两种形态） */
   function readSnapshot(task: HougongTask) {
     const raw = (task.snapshot || {}) as Record<string, unknown>
     const inner = raw.input && typeof raw.input === 'object' ? raw.input as Record<string, unknown> : raw
+    // 参考图 id：优先 new 的完整清单 inputAssetIds（所有链路都有）；
+    // 老任务回落到 i2v 那两个键（首帧 + 多参参考图），顺序拼回原样。
+    const pickIds = (v: unknown): string[] =>
+      Array.isArray(v) ? v.map(x => String(x)).filter(Boolean) : (v ? [String(v)] : [])
+    const full = pickIds(inner.inputAssetIds)
+    const legacy = [
+      ...pickIds(inner.mediaAssetId),
+      ...pickIds(inner.refAssetIds)
+    ]
     return {
       prompt: typeof inner.prompt === 'string' ? inner.prompt : '',
       ratio: typeof inner.ratio === 'string' ? inner.ratio : '',
-      seconds: typeof inner.durationSeconds === 'number' ? inner.durationSeconds : undefined
+      seconds: typeof inner.durationSeconds === 'number' ? inner.durationSeconds : undefined,
+      inputAssetIds: full.length ? full : legacy
     }
   }
 
@@ -576,10 +598,15 @@ export function createChatStudio() {
     try {
       const rows = await hgApi.listSessionTasks(id, 1, 100)
       const ordered = [...rows].reverse()
-      // 一次性解析所有任务的产物，避免逐个请求
+      // 一次性解析所有任务的产物与**参考图**，避免逐个请求
       const allIds = ordered.flatMap(task => (task.outputAssets || []).map(String))
-      const assets = await resolveAssets(allIds)
+      const allRefIds = ordered.flatMap(task => readSnapshot(task).inputAssetIds)
+      const [assets, refAssets] = await Promise.all([
+        resolveAssets(allIds),
+        allRefIds.length ? resolveAssets(allRefIds) : Promise.resolve([] as StudioAsset[])
+      ])
       const assetMap = new Map(assets.map(asset => [asset.id, asset]))
+      const refMap = new Map(refAssets.map(asset => [String(asset.id), asset]))
 
       const rebuilt: StudioMessage[] = []
       for (const task of ordered) {
@@ -591,7 +618,12 @@ export function createChatStudio() {
             role: 'user',
             kind: 'text',
             text: snap.prompt,
-            time: at || Date.now()
+            time: at || Date.now(),
+            // 历史里用户发的参考图也要摆回来（以前重开会话，用户消息一张图都没有）
+            attachments: snap.inputAssetIds.flatMap((aid, i) => {
+              const hit = refMap.get(String(aid))
+              return hit ? [{ name: `参考图 ${i + 1}`, url: hit.url, assetId: String(aid) }] : []
+            })
           })
         }
         const outIds = (task.outputAssets || []).map(String)
@@ -975,9 +1007,13 @@ export function createChatStudio() {
       kind: 'text',
       text: text || '（仅参考图）根据附件生成',
       time: Date.now(),
-      attachment: references.value[0]?.preview
-        ? { name: references.value[0].name || '参考图', url: references.value[0].preview, assetId: references.value[0].assetId }
-        : undefined
+      // 有几张就带几张，且**保持顺序**：消息里的「第 N 张」要跟提示词里的 @图N 对得上
+      // （以前只带 references[0]，发了 2 张进聊天记录只剩 1 张 —— 用户反馈）。
+      attachments: references.value.map((ref, i) => ({
+        name: ref.name || `参考图 ${i + 1}`,
+        url: ref.preview,
+        assetId: ref.assetId || undefined
+      }))
     }
     const taskMessage: StudioMessage = {
       id: makeId('t'),

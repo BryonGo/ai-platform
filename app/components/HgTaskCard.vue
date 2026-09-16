@@ -317,8 +317,12 @@ function download(assetId: string) {
 }
 .task-results {
   display: grid;
+  /* 一行最多 4 张，超过折行。auto-fit + 容器限宽：张数少时每张自动变宽（2 张各占一半），
+     不会像写死 repeat(4,1fr) 那样把 2 张图缩进两个 1/4 格里。
+     4 × 150 + 3 × 8 = 624，取 640 保证宽屏最多 4 列。 */
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
+  max-width: 640px;
   margin-top: 2px;
 }
 .task-results.single {

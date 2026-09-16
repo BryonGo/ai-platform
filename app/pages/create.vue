@@ -134,19 +134,33 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
           />
 
           <template v-else>
-            <p class="msg-text">
+            <p
+              v-if="message.text"
+              class="msg-text"
+            >
               {{ message.text }}
             </p>
-            <figure
-              v-if="message.attachment"
-              class="msg-attachment"
+            <!-- 参考图**并排多图**：一行最多 4 张，超过自动折行（auto-fit + 容器限宽 =
+                 最多 4 列；张数少时每张自动变宽，不会缩成一条小图）。 -->
+            <div
+              v-if="message.attachments?.length"
+              class="msg-attachments"
+              :class="{ single: message.attachments.length === 1 }"
             >
-              <img
-                :src="message.attachment.url"
-                :alt="message.attachment.name"
+              <figure
+                v-for="(file, i) in message.attachments"
+                :key="`${message.id}-att-${i}`"
+                :title="file.name"
               >
-              <figcaption>{{ message.attachment.name }}</figcaption>
-            </figure>
+                <img
+                  :src="file.url"
+                  :alt="file.name"
+                >
+                <figcaption v-if="message.attachments.length === 1">
+                  {{ file.name }}
+                </figcaption>
+              </figure>
+            </div>
           </template>
         </article>
       </div>
@@ -328,16 +342,33 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-.msg-attachment {
+/* 参考图并排展示：一行最多 4 张，超过折行。
+   实现用 auto-fit + 容器限宽（而不是写死 repeat(4,1fr)）：这样 1 张时铺满、
+   2 张各占一半、4 张一行排满、5 张换行 —— 写死 4 列会让 2 张图各只占 1/4 宽。 */
+.msg-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  /* 4 × 110 + 3 × 8 = 464，取 470 保证一行最多 4 张 */
+  max-width: 470px;
+  margin-top: 6px;
+}
+.msg-attachments.single {
+  max-width: 260px;
+}
+.msg-attachments figure {
   margin: 0;
-  width: 160px;
-}
-.msg-attachment img {
-  width: 100%;
+  overflow: hidden;
   border-radius: 10px;
-  display: block;
+  background: #101114;
 }
-.msg-attachment figcaption {
+.msg-attachments img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+.msg-attachments figcaption {
   margin-top: 4px;
   color: var(--hg3-faint);
   font-size: 11px;
