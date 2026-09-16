@@ -367,6 +367,8 @@ export interface AssetItem {
   url: string
   createdAt: number
   hidden: boolean
+  /** 同内容（sha256）在本账号素材库里的总份数，仅 >1 时下发（用于「重复 ×N」角标）。 */
+  duplicateCount?: number
 }
 
 export interface AssetChoice {
@@ -948,6 +950,8 @@ export function useHougongApi() {
     origin?: string
     keyword?: string
     sort?: 'new' | 'old' | 'large'
+    /** 只看重复：内容（sha256）在库里出现多于一次的行。 */
+    duplicates?: boolean
     page?: number
     pageSize?: number
   } = {}): Promise<{ items: AssetItem[], total: number }> {
@@ -957,6 +961,7 @@ export function useHougongApi() {
     if (q.origin && q.origin !== 'all') params.set('origin', q.origin)
     if (q.keyword) params.set('keyword', q.keyword)
     if (q.sort) params.set('sort', q.sort)
+    if (q.duplicates) params.set('duplicates', '1')
     params.set('page', String(q.page || 1))
     params.set('pageSize', String(q.pageSize || 24))
     const res = await apiRequest<{ items?: AssetItem[], total?: number }>(`/platform/asset?${params.toString()}`)
@@ -974,6 +979,16 @@ export function useHougongApi() {
     action: 'delete' | 'hide' | 'unhide'
   ): Promise<{ ok: boolean, affected: number, failed: { id: string, reason: string }[] }> {
     return apiRequest('/platform/asset/batch', { method: 'POST', body: { ids, action } })
+  }
+  /**
+   * 清理重复素材（同内容多行）。
+   *
+   * 删哪些**由服务端决定**：只有它知道哪些行被生成任务快照引用过 —— 删掉被引用的那一行，
+   * 历史消息里的图会变空白，而用户在下单前看不出这层依赖。服务端每组保留最新一条 +
+   * 所有被引用过的行，其余软删（可恢复）。
+   */
+  async function dedupeAssets(dryRun = false): Promise<{ groups: number, deleted: number, kept: number }> {
+    return apiRequest('/platform/asset/dedupe', { method: 'POST', body: { dryRun } })
   }
   async function removeAsset(id: string): Promise<void> {
     await apiRequest(`/platform/asset/${id}`, { method: 'DELETE' })
@@ -1398,6 +1413,7 @@ export function useHougongApi() {
     snippetList,
     listAssets,
     batchAssets,
+    dedupeAssets,
     removeAsset,
     setAssetHidden,
     assetSelect,

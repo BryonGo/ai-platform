@@ -52,12 +52,27 @@ const origin = ref<'all' | 'generated' | 'uploaded'>('all')
 const sort = ref<'new' | 'old' | 'large'>('new')
 const keyword = ref('')
 const showHidden = ref(false)
+/**
+ * 只看重复：同内容（sha256）在库里出现多于一次的素材。
+ *
+ * 用户报障「传图会有很多一样的图」——重复是历史上传留下的（后端已改成上传即复用），
+ * 这个开关把老重复捞出来，配合「清理重复」一次收拾干净。
+ */
+const onlyDuplicates = ref(false)
+/**
+ * 批量管理模式。
+ *
+ * 以前勾选框只在卡片 hover 时出现，桌面端用户根本找不到「怎么多选、怎么批量删」
+ * （用户报障："没按钮"）。这里给一个显式入口：进入后所有勾选框常驻。
+ */
+const manageMode = ref(false)
 
 const picked = ref<string[]>([])
 let lastPickedIndex = -1
 
 const hasFilter = computed(() =>
-  kind.value !== 'all' || origin.value !== 'all' || !!keyword.value.trim() || showHidden.value
+  kind.value !== 'all' || origin.value !== 'all' || !!keyword.value.trim()
+  || showHidden.value || onlyDuplicates.value
 )
 
 const pickedVisible = computed(() =>
@@ -80,6 +95,7 @@ async function fetchPage(target: number) {
       origin: origin.value,
       keyword: keyword.value.trim(),
       sort: sort.value,
+      duplicates: onlyDuplicates.value,
       page: target,
       pageSize: PAGE_SIZE
     })
@@ -145,7 +161,7 @@ watch(keyword, () => {
     void reload()
   }, 300)
 })
-watch([kind, origin, sort, showHidden], () => {
+watch([kind, origin, sort, showHidden, onlyDuplicates], () => {
   void reload()
 })
 
@@ -399,6 +415,57 @@ async function runBatch(action: 'hide' | 'unhide') {
   notice.value = `${verb}：成功 ${res.affected} 个，失败 ${failed} 个 —— ${head}${failed > 3 ? ' 等' : ''}`
 }
 
+// ── 清理重复 ──
+//
+// 先 dryRun 拿"能清多少"，再让用户确认：直接删的话，用户既不知道删了几条，
+// 也无从判断删得对不对。删哪些由服务端定（保留每组最新一条 + 被任务引用过的行）。
+const dedupeOpen = ref(false)
+const dedupeBusy = ref(false)
+const dedupePlan = ref<{ groups: number, deleted: number, kept: number } | null>(null)
+const dedupeMessage = computed(() => {
+  const plan = dedupePlan.value
+  if (!plan) return ''
+  if (!plan.groups) return '没有发现重复素材。'
+  return `发现 ${plan.groups} 组重复内容：将清理 ${plan.deleted} 条较早的重复，保留 ${plan.kept} 条`
+    + '（每组最新一条 + 所有被生成任务引用过的，清理后可恢复）。'
+})
+
+/** 先问服务端"能清多少"，再把结果摆到确认弹窗里。 */
+async function askDedupe() {
+  if (dedupeBusy.value) return
+  dedupeBusy.value = true
+  error.value = ''
+  try {
+    const plan = await api.dedupeAssets(true)
+    dedupePlan.value = plan
+    dedupeOpen.value = true
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '统计重复失败'
+  } finally {
+    dedupeBusy.value = false
+  }
+}
+
+async function doDedupe() {
+  dedupeBusy.value = true
+  error.value = ''
+  try {
+    const res = await api.dedupeAssets(false)
+    notice.value = res.deleted
+      ? `已清理 ${res.deleted} 条重复素材，保留 ${res.kept} 条`
+      : '没有需要清理的重复素材。'
+    dedupeOpen.value = false
+    dedupePlan.value = null
+    picked.value = []
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '清理重复失败'
+    dedupeOpen.value = false
+  } finally {
+    dedupeBusy.value = false
+    await reload()
+  }
+}
+
 // ── 发布到社区 ──
 // 走 platform 的 publication 模型（work/edit → work/publish）：首页「探索」流读的就是它。
 // 与 /hougong/works（生成结果入库）是两套模型，这里只负责"发布"这一步。
@@ -576,7 +643,7 @@ useMediaAutoRefresh(() => reload())
 <template>
   <div
     class="assets-page"
-    :class="{ 'has-pick': picked.length > 0 }"
+    :class="{ 'has-pick': picked.length > 0, 'is-managing': manageMode }"
   >
     <AssetSectionNav />
 
@@ -587,8 +654,9 @@ useMediaAutoRefresh(() => reload())
         </p>
         <h1>素材</h1>
         <p class="assets-sub">
-          这里是你上传与生成的全部图片、视频。勾选多个素材可以批量隐藏、恢复到可用状态，
-          也可以打成工程包一次带走。
+          这里是你上传与生成的全部图片、视频。点「批量管理」后可勾选多个素材，批量删除、
+          隐藏或恢复到可用状态，也可以打成工程包一次带走；同一张图重复上传过多次时，
+          用「清理重复」一次收拾干净。
         </p>
       </div>
       <!-- 加载中不显示上一次的数字：切筛选时旧数字会让人以为筛选没生效 -->
@@ -619,6 +687,30 @@ useMediaAutoRefresh(() => reload())
         >
           <UIcon :name="t.icon" />
           {{ t.label }}
+        </button>
+      </div>
+
+      <!-- 批量管理入口：勾选框以前只在 hover 时出现，桌面端用户找不到怎么多选 -->
+      <div class="assets-manage">
+        <button
+          type="button"
+          class="assets-btn"
+          :class="{ 'assets-btn--primary': manageMode }"
+          :aria-pressed="manageMode"
+          @click="manageMode = !manageMode; if (!manageMode) clearPick()"
+        >
+          <UIcon :name="manageMode ? 'i-lucide-x' : 'i-lucide-check-square'" />
+          {{ manageMode ? '退出批量' : '批量管理' }}
+        </button>
+        <button
+          type="button"
+          class="assets-btn"
+          :disabled="dedupeBusy"
+          title="同内容重复的素材：保留每组最新一条 + 被任务引用过的行"
+          @click="askDedupe"
+        >
+          <UIcon name="i-lucide-copy" />
+          {{ dedupeBusy ? '统计中…' : '清理重复' }}
         </button>
       </div>
 
@@ -671,6 +763,14 @@ useMediaAutoRefresh(() => reload())
             type="checkbox"
           >
           <span>只看已隐藏</span>
+        </label>
+
+        <label class="assets-switch">
+          <input
+            v-model="onlyDuplicates"
+            type="checkbox"
+          >
+          <span>只看重复</span>
         </label>
       </div>
     </section>
@@ -806,6 +906,12 @@ useMediaAutoRefresh(() => reload())
             v-if="a.hidden"
             class="asset-card__flag"
           >已隐藏</span>
+          <!-- 同内容重复份数：一眼看出「这张图我传了好几遍」 -->
+          <span
+            v-if="(a.duplicateCount || 0) > 1"
+            class="asset-card__dup"
+            :title="`库里共有 ${a.duplicateCount} 份相同内容`"
+          >重复 ×{{ a.duplicateCount }}</span>
         </div>
 
         <div class="asset-card__body">
@@ -998,6 +1104,15 @@ useMediaAutoRefresh(() => reload())
       :pending="batchBusy"
       :progress="batchProgress"
       @confirm="doDelete"
+    />
+
+    <HgConfirmDialog
+      v-model:open="dedupeOpen"
+      title="清理重复素材"
+      :message="dedupeMessage"
+      confirm-text="清理"
+      :pending="dedupeBusy"
+      @confirm="doDedupe"
     />
 
     <HgPublishDialog
@@ -1341,7 +1456,8 @@ useMediaAutoRefresh(() => reload())
 }
 .asset-card:hover .asset-card__pick,
 .asset-card.is-picked .asset-card__pick,
-.assets-page.has-pick .asset-card__pick {
+.assets-page.has-pick .asset-card__pick,
+.assets-page.is-managing .asset-card__pick {
   opacity: 1;
 }
 /* 触摸端没有 hover，勾选框必须常驻 */
@@ -1354,6 +1470,25 @@ useMediaAutoRefresh(() => reload())
   border-color: transparent;
   background: var(--hg3-accent);
   color: var(--hg3-accent-ink);
+}
+/* 重复角标：压在缩略图右下角，与「已隐藏」同层但不抢主体 */
+.asset-card__dup {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgb(12 13 15 / 72%);
+  border: 1px solid rgb(255 255 255 / 28%);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.assets-manage {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 .asset-card__play {
   position: absolute;
