@@ -12,7 +12,7 @@
  *
  * 本轮全部数据来自 mock，按钮只改本地状态并给出提示；接后端时替换 loadShots()/执行动作即可。
  */
-import { VueFlow, type Edge, type Node } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -86,6 +86,8 @@ async function loadCanvas(episodeID = '') {
     shots.value = data.shots as unknown as CanvasShot[]
     if (data.frameGrid?.length) frameGrid.value = data.frameGrid
     selectedId.value = shots.value[3]?.id ?? shots.value[0]?.id ?? ''
+    // 数据换了（切集/新建集）就重新适应一次画布
+    window.setTimeout(fitCanvas, 320)
   } catch {
     /* 读失败保持示例数据，不打扰用户 */
   }
@@ -95,6 +97,34 @@ const tier = ref<RenderTier>('final')
 const draftFrames = ref<number>(158)
 const toast = ref('')
 const busy = ref(false)
+/**
+ * 宽屏下详情面板是否展开。
+ *
+ * 为什么要能收起：1440 窗口里左栏 224 + 详情 336 之后，画布只剩 ~600px，
+ * 5 列镜头就看不全（合成节点直接被挤出屏幕）。收起详情后画布多 336px，
+ * 整条流水线一屏看得完；点任一镜头会自动展开。
+ */
+const detailOpen = ref(true)
+
+/**
+ * 画布实例：用于「适应画布」。
+ *
+ * 必须在 <VueFlow> 渲染前调用（Vue Flow 会认领这个先建好的实例），
+ * 所以放在 setup 顶层，而不是某个回调里。
+ */
+const { fitView } = useVueFlow()
+
+/**
+ * 适应画布：尽量把整条流水线收进视口，但**不缩到看不清**。
+ *
+ * 下限取 0.62 而不是 0.45：完整收进来但节点文字糊成一片，等于没适应 ——
+ * 需要"全都要"时用户还可以点右下角 Vue Flow 自带的适应按钮（它没有下限）。
+ */
+function fitCanvas() {
+  void nextTick(() => {
+    fitView({ padding: 0.12, maxZoom: 0.9, minZoom: 0.62 })
+  })
+}
 
 /** 当前集的 id（真实数据来自后端；示例数据下为空串）。 */
 const episodeId = computed(() => episode.value.id ?? '')
@@ -108,6 +138,8 @@ const mobileDetailOpen = ref(false)
 onMounted(() => {
   void loadCanvas()
   void loadModels()
+  // 首屏：等节点渲染完适应一次，保证一进来就看得到整条流水线
+  window.setTimeout(fitCanvas, 900)
   const mq = window.matchMedia('(min-width: 761px)')
   wideScreen.value = mq.matches
   mq.addEventListener('change', (e) => {
@@ -142,6 +174,7 @@ function flash(message: string) {
 /* ---------------- 节点图 ---------------- */
 
 const COL = 178
+const PER_ROW = 5
 const ROW = 300
 
 const nodes = computed<Node[]>(() => {
@@ -161,15 +194,17 @@ const nodes = computed<Node[]>(() => {
     data: { title: '角色与场景', sub: 'S4 · Seedream', value: '64 张 · 已定稿', tone: 'ok' },
     draggable: true
   })
-  // 15 个镜头分两行排，编导一眼能看完整集。
-  const row1 = shots.value.slice(0, 8)
-  const row2 = shots.value.slice(8)
-  row1.forEach((s, i) => list.push(shotNode(s, 240 + i * COL, 0)))
-  row2.forEach((s, i) => list.push(shotNode(s, 240 + i * COL, ROW)))
+  // 镜头按 3 行 × 5 列排：整条流水线（含合成）在一屏里看得完。
+  // 之前是 2 行 × 8 列，宽度 1600+，合成节点被挤到屏幕外，"合成"这一环等于看不见。
+  shots.value.forEach((shot, i) => {
+    const row = Math.floor(i / PER_ROW)
+    const col = i % PER_ROW
+    list.push(shotNode(shot, 240 + col * COL, row * ROW))
+  })
   list.push({
     id: 'stage-compose',
     type: 'stage',
-    position: { x: 240 + 8 * COL + 20, y: ROW / 2 },
+    position: { x: 240 + PER_ROW * COL + 20, y: ROW },
     data: { title: '合成与标识', sub: 'S8–S9 · ffmpeg', value: `${progress.value}% 镜头已定稿`, tone: progress.value === 100 ? 'ok' : 'muted' },
     draggable: true
   })
@@ -186,21 +221,49 @@ function shotNode(s: CanvasShot, x: number, y: number): Node {
   }
 }
 
+/**
+ * 依赖连线：剧本 → 资产 → 每镜 → 合成。
+ *
+ * 刻意**不**画「剧本 → 每个镜头」的直连：一条链上的两跳都画，等于给画布加一倍噪音
+ * （15 镜就是 30 条扇形线），而依赖关系并没有多出信息。
+ * 动效只留给当前选中的镜头 —— 全都在动时，用户的注意力没有落点。
+ */
 const edges = computed<Edge[]>(() => {
   const list: Edge[] = []
-  shots.value.forEach((s) => {
-    list.push({ id: `e-script-${s.id}`, source: 'stage-script', target: s.id, animated: s.status === 'draft' })
-    list.push({ id: `e-${s.id}-compose`, source: s.id, target: 'stage-compose', animated: s.status !== 'approved' })
-  })
   list.push({ id: 'e-script-asset', source: 'stage-script', target: 'stage-asset' })
-  list.push({ id: 'e-asset-compose', source: 'stage-asset', target: 'stage-compose' })
+  shots.value.forEach((s) => {
+    const active = s.id === selectedId.value
+    list.push({
+      id: `e-asset-${s.id}`,
+      source: 'stage-asset',
+      target: s.id,
+      animated: active,
+      style: edgeStyle(active)
+    })
+    list.push({
+      id: `e-${s.id}-compose`,
+      source: s.id,
+      target: 'stage-compose',
+      animated: active,
+      style: edgeStyle(active)
+    })
+  })
+  list.push({ id: 'e-asset-compose', source: 'stage-asset', target: 'stage-compose', style: edgeStyle(false) })
   return list
 })
+
+/** 细、淡的依赖线；选中的镜头那条加亮。 */
+function edgeStyle(active: boolean) {
+  return active
+    ? { stroke: 'var(--hg3-accent)', strokeWidth: 1.6 }
+    : { stroke: 'rgb(255 255 255 / 14%)', strokeWidth: 1 }
+}
 
 /* ---------------- 交互（本轮只改本地状态） ---------------- */
 
 function pickShot(id: string) {
   selectedId.value = id
+  detailOpen.value = true
   // 窄屏：详情是底部抽屉，点条目即打开（宽屏详情常驻右侧，不受影响）。
   if (!wideScreen.value) mobileDetailOpen.value = true
 }
@@ -387,7 +450,10 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
       </div>
     </header>
 
-    <div class="cv-body">
+    <div
+      class="cv-body"
+      :class="{ 'no-detail': !detailOpen && wideScreen }"
+    >
       <!-- 左：分集与成本构成 -->
       <aside class="cv-side">
         <p class="cv-side-title">
@@ -421,7 +487,10 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
             :key="c.stage"
           >
             <span class="cv-cost-stage">{{ c.stage }}</span>
-            <span class="cv-cost-value">{{ creditsToYuan(c.credits) }}</span>
+            <span
+              class="cv-cost-value"
+              :class="{ 'is-zero': !c.credits }"
+            >{{ c.credits ? creditsToYuan(c.credits) : '—' }}</span>
             <span class="cv-cost-bar">
               <i :style="{ width: `${Math.round((c.credits / spent) * 100)}%` }" />
             </span>
@@ -467,7 +536,8 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
                     v-else
                     class="cv-node-empty"
                   >
-                    <UIcon name="i-lucide-image-plus" />
+                    <b>{{ data.shot.index }}</b>
+                    <i>待生成</i>
                   </span>
                 </div>
                 <div class="cv-node-foot">
@@ -508,6 +578,22 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
           </VueFlow>
         </ClientOnly>
 
+        <!-- 收起详情后的展开入口（宽屏）与画布操作提示 -->
+        <button
+          v-if="wideScreen && !detailOpen && selected"
+          type="button"
+          class="cv-panel-open"
+          @click="detailOpen = true"
+        >
+          <UIcon name="i-lucide-panel-right-open" /> 展开详情
+        </button>
+        <p
+          v-if="wideScreen"
+          class="cv-canvas-hint"
+        >
+          滚轮缩放 · 拖动平移 · 右下角可一键适应画布
+        </p>
+
         <!-- 手机端：画布换成列表（同一份数据、同一套操作） -->
         <ul class="cv-list">
           <li
@@ -546,7 +632,7 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
         @click="mobileDetailOpen = false"
       />
       <aside
-        v-if="selected && (wideScreen || mobileDetailOpen)"
+        v-if="selected && ((wideScreen && detailOpen) || (!wideScreen && mobileDetailOpen))"
         class="cv-detail"
       >
         <header class="cv-detail-head">
@@ -572,10 +658,21 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
             >
               <UIcon name="i-lucide-chevron-down" />
             </button>
+            <button
+              type="button"
+              class="cv-panel-toggle"
+              :aria-label="detailOpen ? '收起详情（画布更宽）' : '展开详情'"
+              @click="detailOpen = !detailOpen"
+            >
+              <UIcon :name="detailOpen ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'" />
+            </button>
           </div>
         </header>
 
-        <div class="cv-preview">
+        <div
+          class="cv-preview"
+          :class="{ 'is-empty': !activeCandidate }"
+        >
           <img
             v-if="activeCandidate"
             class="media-fg"
@@ -586,7 +683,7 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
             v-else
             class="cv-node-empty"
           >
-            <UIcon name="i-lucide-image-plus" /> 还没有候选
+            <UIcon name="i-lucide-image-plus" /> 还没有候选：先出关键帧，选一张作首帧后再渲染
           </span>
         </div>
 
@@ -851,7 +948,11 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  /* 允许换行 + min-width:0：窄屏上这一行元素多，不换行会把它撑成很宽的最小宽度，
+     连带把外壳顶栏挤成竖排文字（真机截图上就是这样破的版）。 */
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 8px 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--hg3-line);
   background: var(--hg3-well);
@@ -860,8 +961,14 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
 .cv-head-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   min-width: 0;
+}
+.cv-stat,
+.cv-episode,
+.cv-series {
+  white-space: nowrap;
 }
 .cv-series {
   font-size: 12px;
@@ -904,6 +1011,10 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   grid-template-columns: 224px minmax(0, 1fr) 336px;
   flex: 1;
   min-height: 0;
+}
+/* 收起详情：画布吃掉那 336px（1440 窗口下画布可见宽度从 ~600 涨到 ~940） */
+.cv-body.no-detail {
+  grid-template-columns: 224px minmax(0, 1fr);
 }
 
 /* 左栏 */
@@ -977,6 +1088,9 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
 }
 .cv-cost-value {
   color: var(--hg3-ink);
+}
+.cv-cost-value.is-zero {
+  color: var(--hg3-faint);
 }
 .cv-cost-bar {
   grid-column: 1 / -1;
@@ -1053,12 +1167,24 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
 }
 .cv-node-empty {
   display: grid;
-  place-items: center;
-  gap: 4px;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
   width: 100%;
   height: 100%;
   color: var(--hg3-faint);
-  font-size: 11px;
+}
+/* 没有候选时给一个能认人的空态：大号镜号 + "待生成"，
+   比一个几乎看不见的图标有用得多（之前那版截图里整片都是灰的）。 */
+.cv-node-empty b {
+  color: var(--hg3-muted);
+  font-size: 20px;
+  font-weight: 700;
+  opacity: 0.55;
+}
+.cv-node-empty i {
+  font-size: 10px;
+  font-style: normal;
 }
 .cv-node-foot {
   display: flex;
@@ -1141,6 +1267,45 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
 .cv-sheet-close {
   display: none;
 }
+/* 宽屏用小按钮收起详情；窄屏用底部的下拉箭头（.cv-sheet-close） */
+.cv-panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+  background: var(--hg3-tile);
+  color: var(--hg3-muted);
+  cursor: pointer;
+}
+.cv-panel-open {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+  background: var(--hg3-well);
+  color: var(--hg3-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cv-canvas-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+  margin: 0;
+  color: var(--hg3-faint);
+  font-size: 11px;
+  pointer-events: none;
+}
 .cv-detail-tags {
   display: flex;
   align-items: center;
@@ -1176,9 +1341,20 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
 .cv-preview {
   position: relative;
   height: 320px;
+  transition: height 160ms ease;
   border-radius: 12px;
   background: var(--hg3-card-soft);
   overflow: hidden;
+}
+/* 没有候选时不要占一块 320px 的灰：收成一条提示，把空间让给提示词与参数 */
+.cv-preview.is-empty {
+  height: 76px;
+}
+.cv-preview.is-empty .cv-node-empty {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0 12px;
+  text-align: center;
 }
 .cv-preview img {
   position: relative;
@@ -1518,6 +1694,9 @@ async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
   }
   .cv-sheet-close {
     display: grid;
+  }
+  .cv-panel-toggle {
+    display: none;
   }
 }
 </style>
