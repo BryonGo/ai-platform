@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import {
   EXPLORE_CATEGORIES,
-  EXPLORE_FIRST_BATCH,
-  HOME_CONTINUE_MOCK,
-  HOME_TOOLS,
   TOOL_TABS,
   type ToolKind,
   type ContinueItem,
@@ -32,13 +29,13 @@ const notice = ref('')
 
 /* 全部工具：目录驱动（后台「创作工具」维护），分类筛选 + 搜索。
  *
- * 目录为空时回落到 HOME_TOOLS：首屏是产品的门面，一次接口抖动不该让它变空。
- * 回落数据只是**展示兜底**，点进去仍会走对应工具（后端没有该工具时会被明确拒绝）。 */
+ * 目录为空就**如实为空**、整块不渲染：以前空目录会回落一屏写死的示例工具，
+ * 名字和入口都是编的，点进去后端只会拒绝 —— 那是拿假货撑门面。 */
 const toolCatalog = useToolCatalog()
 const toolTab = ref<'all' | ToolKind>('all')
 const toolQuery = ref('')
 
-/** 统一的展示结构：目录项与兜底项都映射成它，模板只认这几个字段。 */
+/** 统一的展示结构：目录项映射成它，模板只认这几个字段。 */
 interface ToolCard {
   key: string
   to: string
@@ -69,15 +66,12 @@ const toolCards = computed<ToolCard[]>(() => {
     coverVideo: tool.coverVideo || '',
     kinds: [tool.category as ToolKind]
   }))
-  if (fromCatalog.length) return fromCatalog
-  return HOME_TOOLS.map(tool => ({
-    key: `mock:${tool.id}`,
-    to: '/create',
-    label: tool.label,
-    icon: tool.icon,
-    cover: tool.cover,
-    kinds: tool.kinds
-  }))
+  // 目录为空就**如实为空**，不再回落 HOME_TOOLS 那批写死的示例工具。
+  //
+  // 兜底会让"配置错了/站点没解析对/接口抖动"和"后台确实一个工具都没配"表现完全一样：
+  // 都变成展示 10 个跟本站无关的工具卡（实测踩到过 —— 本地 Host 不对导致站点回落默认站，
+  // 目录拿到 0 条，首页却"看着很正常"）。没有真数据时宁可这一块不出现。
+  return fromCatalog
 })
 
 const filteredTools = computed(() => {
@@ -93,7 +87,7 @@ const toolTabs = computed(() => {
   return TOOL_TABS.filter(tab => tab.id !== 'video' || hasVideo)
 })
 
-/** 进行中的任务数（来自真实作品状态；mock 兜底时按 mock 里「生成中」的条数） */
+/** 进行中的任务数（来自真实作品状态） */
 const runningWorks = ref(0)
 
 onMounted(() => {
@@ -180,36 +174,34 @@ function submitLanding() {
 
 async function loadContinue() {
   continueLoading.value = true
+  // 没有作品 / 取数失败 → **如实为空**，不塞 HOME_CONTINUE_MOCK 那批示例。
+  // 「继续创作」顾名思义是接着自己的活儿干，展示一批不是用户的作品只是看着热闹。
+  continueItems.value = []
+  runningWorks.value = 0
   try {
-    if (!session.token.value) {
-      continueItems.value = HOME_CONTINUE_MOCK
-      runningWorks.value = HOME_CONTINUE_MOCK.filter(item => item.status === 'running').length
-      return
-    }
+    if (!session.token.value) return
     const works: WorkItem[] = await hgApi.listWorks()
     runningWorks.value = works.filter(work => work.status === 'running' || work.status === 'queued').length
-    continueItems.value = works.length
-      ? works.slice(0, 3).map((work) => {
-          const meta = STATUS_TEXT[work.status] ?? { status: 'edited' as const, text: '最近编辑' }
-          // 视频作品没有封面图：后端只给 videoUrl（imageUrl 为空），卡片按 kind 走
-          // <video> 分支。以前这里取 imageUrl，视频作品就是一张坏图。
-          const isVideo = work.kind === 'video'
-          return {
-            id: String(work.id),
-            title: work.title || `作品 ${String(work.id).slice(-6)}`,
-            cover: work.imageUrl || '',
-            kind: isVideo ? 'video' as const : 'image' as const,
-            videoUrl: isVideo ? (work.videoUrl || '') : '',
-            status: meta.status,
-            // 作品接口给的是 Unix 秒，relativeTime 按毫秒算差 —— 不乘 1000 会显示
-            // 「20691 天前」（实测）。这里顺手把它对齐。
-            statusText: `${meta.text} · ${relativeTime(work.createdAt * 1000)}`
-          }
-        })
-      : HOME_CONTINUE_MOCK
+    continueItems.value = works.slice(0, 3).map((work) => {
+      const meta = STATUS_TEXT[work.status] ?? { status: 'edited' as const, text: '最近编辑' }
+      // 视频作品没有封面图：后端只给 videoUrl（imageUrl 为空），卡片按 kind 走
+      // <video> 分支。以前这里取 imageUrl，视频作品就是一张坏图。
+      const isVideo = work.kind === 'video'
+      return {
+        id: String(work.id),
+        title: work.title || `作品 ${String(work.id).slice(-6)}`,
+        cover: work.imageUrl || '',
+        kind: isVideo ? 'video' as const : 'image' as const,
+        videoUrl: isVideo ? (work.videoUrl || '') : '',
+        status: meta.status,
+        // 作品接口给的是 Unix 秒，relativeTime 按毫秒算差 —— 不乘 1000 会显示
+        // 「20691 天前」（实测）。这里顺手把它对齐。
+        statusText: `${meta.text} · ${relativeTime(work.createdAt * 1000)}`
+      }
+    })
   } catch {
-    continueItems.value = HOME_CONTINUE_MOCK
-    runningWorks.value = HOME_CONTINUE_MOCK.filter(item => item.status === 'running').length
+    continueItems.value = []
+    runningWorks.value = 0
   } finally {
     continueLoading.value = false
   }
@@ -293,19 +285,14 @@ async function loadExplore(reset = false) {
     if (!batch.length || exploreItems.value.length >= total || exploreItems.value.length >= PAGE_SIZE * 8) {
       exploreDone.value = true
     }
-    // 全站还没有已发布作品（或首次请求失败）时，用示例内容兜住首屏：
-    // 首页是产品门面，空一块比"示例内容"更糟；示例条目标了 mock，不会与真作品混淆。
-    if (targetPage === 1 && !exploreItems.value.length) {
-      exploreItems.value = EXPLORE_FIRST_BATCH
-      exploreDone.value = true
-    }
+    // 全站还没有已发布作品（或首次请求失败）时**如实为空**，不再塞 EXPLORE_FIRST_BATCH。
+    // 示例条目会让"探索流是空的"看起来像"有内容"，而这恰恰是运营最该看到的信号。
+    exploreDone.value = true
   } catch {
     if (token === requestId) {
       exploreError.value = '加载失败，请重试。'
-      if (!exploreItems.value.length) {
-        exploreItems.value = EXPLORE_FIRST_BATCH
-        exploreDone.value = true
-      }
+      exploreItems.value = []
+      exploreDone.value = true
     }
   } finally {
     if (token === requestId) {
@@ -439,6 +426,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 全部工具 -->
     <section
+      v-if="toolCards.length"
       class="section"
       aria-labelledby="tools-title"
     >
@@ -549,6 +537,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 继续创作 -->
     <section
+      v-if="continueLoading || continueItems.length"
       class="section"
       aria-labelledby="continue-title"
     >
@@ -671,6 +660,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 探索灵感 -->
     <section
+      v-if="exploreItems.length || exploreError"
       id="explore"
       class="section"
       aria-labelledby="explore-title"

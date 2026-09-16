@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
-import { HOME_TOOLS } from '~/data/hougong-home'
 import { canvasFeatureEnabled, FEATURES } from '~/config/features'
 import AppAgeGate from './components/AppAgeGate.vue'
 
@@ -66,19 +65,16 @@ const navBottom = [
   { to: '/settings', label: '设置', icon: 'i-lucide-settings', color: 'var(--hg3-i-gray)' }
 ]
 
-/* 未登录时的最近会话由 mock 兜底（后端 listSessions 需要登录态），
-   登录后替换为真实会话 —— mock 与真实数据不混用。 */
-const MOCK_RECENT = [
-  { id: 'mock-rain', title: '雨夜回眸' },
-  { id: 'mock-portrait', title: '角色立绘' },
-  { id: 'mock-product', title: '产品短片' }
-]
-
+/* 未登录时的「最近会话」由 mock 兜底的时代结束了：后端 listSessions 需要登录态，
+   拿不到就**如实为空**，不再摆三条编出来的会话名 —— 编出来的条目点进去只会开一个
+   不存在的会话，而且它出现在"最近"这个词下面。 */
 const recentSessions = ref<{ id: string, title: string }[]>([])
 
 /* 侧栏「搜索」（上一轮交互标注 a）：搜工具、会话与页面，纯前端过滤已有数据 */
 const searchOpen = ref(false)
 const searchQuery = ref('')
+/** 工具搜索的数据源：与首页/效果页同一份目录（useState 共享，不会多打接口）。 */
+const toolCatalog = useToolCatalog()
 const SEARCH_PAGES = [
   { label: '创作首页', to: '/' },
   { label: '对话创作', to: '/create' },
@@ -95,7 +91,18 @@ const searchResults = computed(() => {
   if (!keyword) return { tools: [], sessions: [], pages: [] }
   const hit = (text: string) => text.toLowerCase().includes(keyword)
   return {
-    tools: HOME_TOOLS.filter(tool => hit(tool.label)).slice(0, 5),
+    // 工具结果走**真实目录**（后台「创作工具」维护），不再搜写死的 HOME_TOOLS 示例清单 ——
+    // 那份清单里的工具本站可能根本没有（名字/入口都是编的），点进去只会被后端拒绝；
+    // 而且它与首页「全部工具」是两个数据源，同一件事两处口径必然对不上。
+    tools: toolCatalog.tools.value
+      .filter(tool => hit(tool.name) || hit(tool.code) || hit(tool.summary || ''))
+      .slice(0, 5)
+      .map(tool => ({
+        id: tool.code,
+        icon: tool.icon || 'i-lucide-sparkles',
+        label: tool.name,
+        to: `/tool/${tool.code}`
+      })),
     sessions: recentSessions.value.filter(item => hit(item.title)).slice(0, 5),
     pages: SEARCH_PAGES.filter(page => hit(page.label)).slice(0, 5)
   }
@@ -109,6 +116,9 @@ const searchEmpty = computed(() => {
 function openSearch() {
   searchQuery.value = ''
   searchOpen.value = true
+  // 打开搜索时确保目录已拉取：目录是 useState 共享的，已加载过就是空操作。
+  // 少了这一下，在没调用过 ensure() 的页面里搜索会永远搜不到工具。
+  void toolCatalog.ensure()
 }
 
 function goSearch(to: string) {
@@ -179,7 +189,7 @@ async function loadShellData() {
   // 否则下面的钱包/通知请求会以未登录态发出。
   await session.load()
   if (!session.token.value) {
-    recentSessions.value = MOCK_RECENT
+    recentSessions.value = []
     credits.value = 0
     unread.value = 0
     return
@@ -191,9 +201,7 @@ async function loadShellData() {
   ])
   if (wallet) credits.value = wallet.credits
   unread.value = notifications || 0
-  recentSessions.value = sessions.length
-    ? sessions.map(item => ({ id: String(item.id), title: item.title || '未命名会话' }))
-    : MOCK_RECENT
+  recentSessions.value = sessions.map(item => ({ id: String(item.id), title: item.title || '未命名会话' }))
 }
 
 onMounted(loadShellData)
@@ -609,7 +617,7 @@ watch(() => route.fullPath, () => {
                 v-for="tool in searchResults.tools"
                 :key="tool.id"
                 type="button"
-                @click="goSearch('/create')"
+                @click="goSearch(tool.to)"
               >
                 <UIcon
                   :name="tool.icon"
