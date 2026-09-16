@@ -17,6 +17,12 @@ const route = useRoute()
 const session = useAuthSession()
 const hgApi = useHougongApi()
 
+/** 登录态。侧栏里有几项是「进入后才有的东西」（登录才能看的探索流、只有自己才有的
+ *  最近会话），未登录时它们要么指向一个不存在的区块、要么只能拿示例数据充数 ——
+ *  两种都是假装，所以直接不出现。会话恢复是异步的，因此必须用 computed 而不是
+ *  在 setup 里读一次快照，否则 cookie 换回 token 后侧栏不会更新。 */
+const loggedIn = computed(() => !!session.token.value)
+
 /* 侧栏底部展示的版本号：客户端（前台产物）与服务端（Go API）各一个。
    两条发布链彼此独立，并排显示用于一眼核对「这次是不是只发了半边」；
    刻意不判断两者是否相等（编号规则与仓库都不同，比相等没有意义）。 */
@@ -40,14 +46,18 @@ const emblemSrc = '/mock/home/emblem.png'
 /* 「画布」是产品侧并发开发中的功能，生产先用 canvasFeatureEnabled() 屏蔽入口
    （见 config/features.ts）；直接访问 /canvas 另由 canvas-gate.global.ts 拦回首页。 */
 const canvasOn = canvasFeatureEnabled()
-const navMain = [
+const navMain = computed(() => [
   { to: '/', label: '首页', icon: 'i-lucide-house', color: 'var(--hg3-i-orange)' },
   { to: '/effects', label: '全部工具', icon: 'i-lucide-layout-grid', color: 'var(--hg3-i-coral)' },
   ...(canvasOn
     ? [{ to: '/canvas', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)' }]
     : []),
-  { to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }
-]
+  // 「探索」是首页那个区块的锚点（/#explore），而那个区块未登录时不渲染 ——
+  // 留着它就是一个点了没反应的入口。
+  ...(loggedIn.value
+    ? [{ to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }]
+    : [])
+])
 // 「我的资产」下的入口。
 //
 // 图片/视频原来是两个平级入口，但它们指向**同一个页面**（只差一个 kind 查询参数），
@@ -66,8 +76,8 @@ const navBottom = [
 ]
 
 /* 未登录时的「最近会话」由 mock 兜底的时代结束了：后端 listSessions 需要登录态，
-   拿不到就**如实为空**，不再摆三条编出来的会话名 —— 编出来的条目点进去只会开一个
-   不存在的会话，而且它出现在"最近"这个词下面。 */
+   拿不到就**什么都不显示**（模板里 v-if 挡着），不再摆三条编出来的会话名。
+   编出来的条目点进去只会开一个不存在的会话，而且它出现在"最近"这个词下面。 */
 const recentSessions = ref<{ id: string, title: string }[]>([])
 
 /* 侧栏「搜索」（上一轮交互标注 a）：搜工具、会话与页面，纯前端过滤已有数据 */
@@ -347,25 +357,29 @@ watch(() => route.fullPath, () => {
             </button>
           </nav>
 
-          <div class="hg-rail-divider" />
+          <!-- 没有真实会话（未登录 / 新账号）时整块不出现：一个「最近会话」标题下面
+               空着，比不显示更让人以为加载坏了。 -->
+          <template v-if="recentSessions.length">
+            <div class="hg-rail-divider" />
 
-          <p class="hg-rail-section">
-            <UIcon
-              name="i-lucide-history"
-              aria-hidden="true"
-            />
-            最近会话
-          </p>
-          <nav class="hg-nav">
-            <NuxtLink
-              v-for="item in recentSessions"
-              :key="item.id"
-              class="hg-nav-item sub"
-              :to="`/create?session=${encodeURIComponent(item.id)}`"
-            >
-              <span class="hg-nav-label">{{ item.title }}</span>
-            </NuxtLink>
-          </nav>
+            <p class="hg-rail-section">
+              <UIcon
+                name="i-lucide-history"
+                aria-hidden="true"
+              />
+              最近会话
+            </p>
+            <nav class="hg-nav">
+              <NuxtLink
+                v-for="item in recentSessions"
+                :key="item.id"
+                class="hg-nav-item sub"
+                :to="`/create?session=${encodeURIComponent(item.id)}`"
+              >
+                <span class="hg-nav-label">{{ item.title }}</span>
+              </NuxtLink>
+            </nav>
+          </template>
         </div>
 
         <div class="hg-rail-foot">

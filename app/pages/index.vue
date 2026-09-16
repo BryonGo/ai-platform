@@ -90,13 +90,21 @@ const toolTabs = computed(() => {
 /** 进行中的任务数（来自真实作品状态） */
 const runningWorks = ref(0)
 
+/**
+ * 登录态。首页的「继续创作」「探索灵感」**只服务登录用户**：未登录时整块隐藏，
+ * 连骨架和错误态都不出现，也不发对应请求 ——
+ * 这两块的数据都要凭据，未登录请求只会换回 401 或空列表，渲染出来要么是一屏假热闹
+ * （示例数据），要么是一句对访客毫无意义的「加载失败」。
+ * 会话恢复是异步的（app.vue 的 onMounted 用 HttpOnly Cookie 换 token），首帧必然是
+ * 未登录视角，token 到位后由下面的 watch 补拉。
+ */
+const loggedIn = computed(() => !!session.token.value)
+
 onMounted(() => {
   // 首页各区块各自立刻取数，**不**排在 SDK 初始化后面。
   // studio.init 内部会 await session.load()（此刻它可能发一次 auto-login 用
-  // HttpOnly Cookie 恢复会话），但拉的是目录/角色/工具，与下面三个区块互不依赖；
+  // HttpOnly Cookie 恢复会话），但拉的是目录/角色/工具，与下面两个区块互不依赖；
   // 以前那种写法会让探索流、继续创作、工具目录全部等一次网络初始化，首屏出现明显的空窗。
-  // 代价：恢复会话的往返与这三个区块并行，它们在那一帧可能仍是未登录视角 —— 首页区块
-  // 本来就允许未登录浏览，因此不影响正确性。
   void studio.init({ withSessions: false }) // withSessions:false —— 首页不读会话/消息
   void toolCatalog.ensure()
   void loadContinue()
@@ -104,15 +112,26 @@ onMounted(() => {
 })
 
 /**
- * 会话恢复后补拉一次「继续创作」。
+ * 登录态一到位就补拉这两块。
  *
  * 必须补这一下：Vue 里**子页面的 onMounted 先于父组件 app.vue 的 onMounted**，
  * 而恢复会话的 session.load()（内含 cookie auto-login）挂在 app.vue 的 onMounted 上。
- * 于是 loadContinue() 读到的 token 永远是空的，已登录用户看到的是示例卡，
- * 而且它只跑一次、不会自愈（线上实测：登录后首页三张全是 /mock/home/continue-*.png）。
+ * 于是上面两次取数读到的 token 永远是空的：已登录用户看不到这两块，未登录时它们本来
+ * 也不该请求（见 loggedIn）。token 变空（退出登录 / 401 被清）时反向清空，
+ * 免得把上一个账号的作品留在屏幕上。
  */
-watch(() => session.token.value, (token) => {
-  if (token) void loadContinue()
+watch(loggedIn, (value) => {
+  if (!value) {
+    continueItems.value = []
+    runningWorks.value = 0
+    continueLoading.value = false
+    exploreItems.value = []
+    exploreError.value = ''
+    exploreDone.value = true
+    return
+  }
+  void loadContinue()
+  void loadExplore(true)
 })
 
 onBeforeUnmount(() => {
@@ -122,7 +141,7 @@ onBeforeUnmount(() => {
 /* ---------------- 继续创作 ---------------- */
 
 const continueItems = ref<ContinueItem[]>([])
-const continueLoading = ref(true)
+const continueLoading = ref(false)
 
 function relativeTime(ts: number) {
   if (!ts) return ''
@@ -173,13 +192,19 @@ function submitLanding() {
 }
 
 async function loadContinue() {
+  // 未登录：这一块整体不出现（模板由 loggedIn 兜着），所以连骨架都不闪、请求也不发。
+  if (!loggedIn.value) {
+    continueItems.value = []
+    runningWorks.value = 0
+    continueLoading.value = false
+    return
+  }
   continueLoading.value = true
   // 没有作品 / 取数失败 → **如实为空**，不塞 HOME_CONTINUE_MOCK 那批示例。
   // 「继续创作」顾名思义是接着自己的活儿干，展示一批不是用户的作品只是看着热闹。
   continueItems.value = []
   runningWorks.value = 0
   try {
-    if (!session.token.value) return
     const works: WorkItem[] = await hgApi.listWorks()
     runningWorks.value = works.filter(work => work.status === 'running' || work.status === 'queued').length
     continueItems.value = works.slice(0, 3).map((work) => {
@@ -261,6 +286,9 @@ function toExploreWork(work: PublicationWork): ExploreWork {
 }
 
 async function loadExplore(reset = false) {
+  // 未登录：整块不出现，也不发请求 —— 没有凭据的探索流只会换回 401，再被渲染成
+  // 「加载失败，请重试。」，对访客来说那是一句没有意义也没法照做的报错。
+  if (!loggedIn.value) return
   if (reset) {
     requestId += 1
   } else if (exploreLoading.value || exploreDone.value || !exploreReady.value) {
@@ -537,7 +565,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 继续创作 -->
     <section
-      v-if="continueLoading || continueItems.length"
+      v-if="loggedIn && (continueLoading || continueItems.length)"
       class="section"
       aria-labelledby="continue-title"
     >
@@ -660,7 +688,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 探索灵感 -->
     <section
-      v-if="exploreItems.length || exploreError"
+      v-if="loggedIn && (exploreItems.length || exploreError)"
       id="explore"
       class="section"
       aria-labelledby="explore-title"
