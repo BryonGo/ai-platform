@@ -156,7 +156,13 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
                   :src="file.url"
                   :alt="file.name"
                 >
-                <figcaption v-if="message.attachments.length === 1">
+                <!-- 单图显示文件名；视频多图显示角色（首帧 / 参考1…）——
+                     「这张图是干啥的」在消息里就要看得出来，不然回头看聊天记录
+                     只剩一排缩略图，出图不对时无从对照。 -->
+                <figcaption v-if="file.role">
+                  角色：{{ file.role }}
+                </figcaption>
+                <figcaption v-else-if="message.attachments.length === 1">
                   {{ file.name }}
                 </figcaption>
               </figure>

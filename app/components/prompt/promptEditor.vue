@@ -16,6 +16,7 @@ import {
   type Prompt,
   type SnippetSnapshot
 } from './enhancement-mark'
+import { imageRefIndexOf, imageRefSnapshot } from '~/utils/image-ref'
 
 const props = withDefaults(defineProps<{
   modelValue: Prompt
@@ -141,6 +142,33 @@ function applySnippet(source: SnippetSnapshot) {
   snippetTarget.value = null
 }
 
+/**
+ * 模式切换后重新标注提示词里已有的 `@` 图 chip（图片 ↔ 视频）。
+ *
+ * 为什么要这一步：切模式**不会**清空已加的图（切模式只是换个模型/工作流），而第 1 张在
+ * 视频里是首帧、在图片里只是参考图。不重标的话，界面上写着「图1」而实际提交时按
+ * 首帧/参考图编号 —— 用户按看到的编号说话，模型按另一套编号理解，出图不对还查不出原因。
+ * 真正的措辞在提交时由 applyImageRefRoles 统一算，这里只是让 chip 与之一致。
+ */
+function relabelImageRefs(firstFrameRole: boolean) {
+  const e = editor.value
+  if (!e) return
+  const { state } = e
+  let tr = state.tr
+  let changed = false
+  state.doc.descendants((node: ProseMirrorNode, pos: number) => {
+    if (node.type.name !== snippetNodeName) return
+    const source = node.attrs.source as SnippetSnapshot | null
+    const index = imageRefIndexOf(source?.id)
+    if (!index || !source) return
+    const next = imageRefSnapshot(index, firstFrameRole)
+    if (next.labels.chinese === source.labels.chinese) return
+    tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: next })
+    changed = true
+  })
+  if (changed) e.view.dispatch(tr)
+}
+
 // 取消（菜单/第二级弹层关闭且未选中）：删除刚插入的 '@' 并清 target。
 function cancelSnippet() {
   const e = editor.value
@@ -183,7 +211,7 @@ function focus() {
   editor.value?.chain().focus().run()
 }
 
-defineExpose({ toPlainText, focus, triggerSnippet: tryTriggerSnippet, applySnippet, cancelSnippet })
+defineExpose({ toPlainText, focus, triggerSnippet: tryTriggerSnippet, applySnippet, cancelSnippet, relabelImageRefs })
 
 onBeforeUnmount(() => {
   editor.value?.destroy()

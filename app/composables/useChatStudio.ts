@@ -1,6 +1,6 @@
 import type { Catalog, CharacterItem, HougongTask, SessionItem } from './useHougongApi'
 import type { ComposerDraft } from './useComposerDraft'
-import { missingImageRefs } from '~/utils/image-ref'
+import { applyImageRefRoles, imageRefLabel, imageRefWording, missingImageRefs } from '~/utils/image-ref'
 import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
@@ -63,6 +63,11 @@ export interface StudioAttachment {
   /** 展示地址：本地文件是 blob:，素材库/历史是限时签名地址 */
   url: string
   assetId?: string
+  /**
+   * 角色角标：视频里第 1 张是「首帧」、其余是「参考1/参考2…」。
+   * 图片模式（所有图都是参考图）不标 —— 标了反而多一层噪音。
+   */
+  role?: string
 }
 
 export interface StudioMessage {
@@ -131,6 +136,15 @@ export function createChatStudio() {
 
   const mode = ref<ComposerMode>(route.query.mode === 'video' ? 'video' : 'image')
 
+  /**
+   * `@` 图引用是否按「首帧 + 参考图」编号（视频模式）。
+   *
+   * 与 referenceRoles 同一个判断：视频里第 1 张是工作流的 first_frame，不是参考图；
+   * 图片模式（含云端图生图）则所有图都是参考图，编号从 1 起。措辞、chip 标签、
+   * 消息角标都读它，保证"界面上说的"与"模型收到的图位"是同一套编号。
+   */
+  const imageRefFirstFrame = computed(() => mode.value === 'video')
+
   /* ---------------- 创作工具（后台「创作工具」维护） ----------------
    *
    * 前端只认 code：提示词预置、LoRA 文件名、工作流名都由后端从库里取并在建任务时
@@ -158,7 +172,15 @@ export function createChatStudio() {
   /** 提示词：结构化 parts（@角色/@服装/@背景/@姿势/@画风 插入 snippet 节点），
      提交任务时用 promptText() 取纯文本（与旧创作页一致）。 */
   const promptModel = ref<Prompt>({ parts: [] })
-  const prompt = computed(() => promptText(promptModel.value))
+  /**
+   * 提交用的纯文本。
+   *
+   * `applyImageRefRoles` 按**当前模式**重写 `@` 图 chip 的措辞：视频里第 1 张是首帧、
+   * 第 2 张起才是「参考图1/2…」（上游 ref_images 的编号就这么来的），图片里第 N 张
+   * 就是「参考图N」。放在这里而不是插入时定死，是因为图片 ↔ 视频可以来回切，
+   * 措辞一旦交错位，模型改的就是另一张图 —— 而且出图看着"也行"，极难发现。
+   */
+  const prompt = computed(() => promptText(applyImageRefRoles(promptModel.value, imageRefFirstFrame.value)))
   // 初始画幅：手机竖屏。原来是 '16:9' 横屏 —— 首页探索流用 r9x16、视频报价按 9:16
   // 起算，只有图片输入器默认横屏。云端模型接入后由 capabilities.default.ratio 覆盖。
   const ratio = ref(PORTRAIT_RATIO)
@@ -622,7 +644,12 @@ export function createChatStudio() {
             // 历史里用户发的参考图也要摆回来（以前重开会话，用户消息一张图都没有）
             attachments: snap.inputAssetIds.flatMap((aid, i) => {
               const hit = refMap.get(String(aid))
-              return hit ? [{ name: `参考图 ${i + 1}`, url: hit.url, assetId: String(aid) }] : []
+              // 历史任务的第 1 张是不是首帧，看任务类型（i2v 才有首帧这个概念）
+              const isFirstFrame = task.type === 'i2v'
+              const role = isFirstFrame ? imageRefLabel(i + 1, true) : undefined
+              return hit
+                ? [{ name: imageRefWording(i + 1, isFirstFrame), url: hit.url, assetId: String(aid), role }]
+                : []
             })
           })
         }
@@ -996,9 +1023,9 @@ export function createChatStudio() {
   async function submitGeneration(meta: RunMeta, text: string) {
     // 提示词里引用了不存在的参考图（用户删过图）：**不重编号、不擅自改文字**，
     // 提交前提示一句就继续（用户选的方案 ②）—— 悄悄重编号会让提示词的意思变掉。
-    const missing = missingImageRefs(text, references.value.length)
+    const missing = missingImageRefs(text, references.value.length, imageRefFirstFrame.value)
     if (missing.length) {
-      notice.value = `提示词里的 ${missing.map(n => `@图${n}`).join('、')} 已不存在（当前 ${references.value.length} 张参考图），生成结果可能不符合预期。`
+      notice.value = `提示词里的 ${missing.map(n => `@${imageRefLabel(n, imageRefFirstFrame.value)}`).join('、')} 已不存在（当前 ${references.value.length} 张图），生成结果可能不符合预期。`
     }
     const clientKey = makeId('hg')
     const userMessage: StudioMessage = {
@@ -1010,9 +1037,11 @@ export function createChatStudio() {
       // 有几张就带几张，且**保持顺序**：消息里的「第 N 张」要跟提示词里的 @图N 对得上
       // （以前只带 references[0]，发了 2 张进聊天记录只剩 1 张 —— 用户反馈）。
       attachments: references.value.map((ref, i) => ({
-        name: ref.name || `参考图 ${i + 1}`,
+        // 名称与角色都按当前模式：视频第 1 张是首帧（消息里也要看得出来哪张管什么）
+        name: ref.name || imageRefWording(i + 1, imageRefFirstFrame.value),
         url: ref.preview,
-        assetId: ref.assetId || undefined
+        assetId: ref.assetId || undefined,
+        role: imageRefFirstFrame.value ? imageRefLabel(i + 1, true) : undefined
       }))
     }
     const taskMessage: StudioMessage = {
@@ -1303,7 +1332,7 @@ export function createChatStudio() {
   return {
     // 输入器
     mode, prompt, promptModel, ratio, count, seconds, resolution, modelId, characterId,
-    references, referenceMax, referenceCount, canAddReference, referenceRoles, notice,
+    references, referenceMax, referenceCount, canAddReference, referenceRoles, imageRefFirstFrame, notice,
     // 创作工具
     activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,

@@ -7,7 +7,6 @@ import {
   type ExploreCategory,
   type ExploreWork
 } from '~/data/hougong-home'
-import { promptText } from '~/components/prompt/enhancement-mark'
 import type { PublicationWork, WorkItem } from '~/composables/useHougongApi'
 import { looksLikeVideoUrl, vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
 
@@ -166,7 +165,10 @@ const STATUS_TEXT: Record<string, { status: ContinueItem['status'], text: string
  */
 function submitLanding() {
   notice.value = ''
-  const text = promptText(studio.promptModel.value)
+  // 用 studio.prompt（= promptText + applyImageRefRoles）：视频模式下第 1 张是首帧，
+  // 措辞必须按模式算好再交接给创作页 —— 草稿只带纯文本，过去这一步直接把 chip 的
+  // 插入时措辞抄过去，编号一旦对不上模型就会改错图。
+  const text = studio.prompt.value
   const references = studio.references.value
   if (!text.trim() && references.length === 0) {
     notice.value = '请先描述这一幕。'

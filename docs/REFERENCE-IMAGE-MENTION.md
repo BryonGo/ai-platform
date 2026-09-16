@@ -1,6 +1,7 @@
 # 参考图引用（@图N）：行为、编号规则与措辞实测
 
-日期：2026-09-15。适用：对话创作页 `/create`（图片与视频模式共用同一个输入器）。
+日期：2026-09-15（2026-09-16 补：视频的角色编号「首帧 / 参考图N」与切模式重标）。
+适用：对话创作页 `/create`（图片与视频模式共用同一个输入器）。
 
 ## 1. 它是什么
 
@@ -26,9 +27,32 @@
   为什么这样定：静默重编号会悄悄改掉语义（「参考 @图2 的光线」在删图后会指向另一张图），
   而直接阻断提交又会让用户为了改一个字重来一遍。
 
-实现位置：识别与措辞在 `app/utils/image-ref.ts`（`imageRefWording` / `IMAGE_REF_RE` /
-`imageRefSnapshot` / `missingImageRefs`），提交前校验在 `app/composables/useChatStudio.ts`
-的 `submitGeneration()` 开头。
+实现位置：识别与措辞在 `app/utils/image-ref.ts`（`imageRefWording` / `imageRefLabel` /
+`imageRefSnapshot` / `applyImageRefRoles` / `missingImageRefs`），提交前校验在
+`app/composables/useChatStudio.ts` 的 `submitGeneration()` 开头。
+
+### 2.1 视频是另一套编号：第 1 张是首帧（2026-09-16 补）
+
+本地视频（MiniMax H3，`minimax-h3-fl2va`）的工作流是 `first_frame` + `ref_images.ref_image_0/1/2…`
+两组**并列**输入（见 aicodcms `internal/platform/task/workflow/i2v.go`），因此：
+
+| 图条里的第 N 张 | 上游图位 | chip / 面板标签 | 序列化进提示词的措辞 |
+| --- | --- | --- | --- |
+| 第 1 张 | `first_frame` | 首帧 | 首帧 |
+| 第 2 张 | `ref_image_0` | 参考1 | 参考图1 |
+| 第 3 张 | `ref_image_1` | 参考2 | 参考图2 |
+
+不这样分的后果：用户写「参考图2 的姿势」，上游那一层其实把这句话套到了**第三张**上
+（`ref_image_1`）—— 出图会变，但看着"也能用"，几乎查不出原因。
+
+两点实现口径：
+
+- 措辞在**提交时**按当前模式算（`applyImageRefRoles`），不是插入时定死：图片 ↔ 视频可以
+  来回切（切模式不清空已加的图），只有提交时的模式才是这次要发给上游的身份。
+- 切模式时编辑器会把已插入的 chip 重新标注（`promptEditor.vue` 的 `relabelImageRefs`，
+  由 `HgChatComposer` 监听 `mode` 触发）：界面上的编号与提交时的编号必须始终是同一套。
+- 用户消息里的图也标角色角标（「角色：首帧 / 参考1」，`create.vue`）——
+  回头翻聊天记录时，一排缩略图也要看得出哪张是干啥的。
 
 ## 3. 上游措辞：定稿「参考图N」（有实测依据）
 
@@ -66,7 +90,8 @@
 | 云端模型参考图 | 模型 `capabilities.maxInputs`（为 0 时不显示该入口） | 建任务按 `maxInputs` 严格校验 |
 | 云端模型出图张数 | 模型 `capabilities.maxOutputs` | 按 `maxOutputs` 校验 |
 | 本地底模 / 工具 | 1 张 | 工作流只接一张输入图 |
-| 视频 | 1 张（前端收紧，产品选择） | 接口本身接受多张：第 1 张当首帧，其余进 `inputs` |
+| 视频（本地 comfy，MiniMax H3） | 1 + 9 = 10 张（1 首帧 + 9 参考图，`VIDEO_REF_MAX`） | `workflow.MaxRefImages = 9`，建单时超限直接拒绝 |
+| 视频（云端 seedance） | 1 张（中转站未验证多图，前端先收紧） | 接口按 `inputs` 整组下发 |
 
 ## 5. 同轮一并移除的旧行为
 

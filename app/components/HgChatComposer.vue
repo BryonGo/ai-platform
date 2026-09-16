@@ -54,7 +54,7 @@ function openLora() {
   }
   loraOpen.value = true
 }
-/** @ 唤出的参考图选择器：列出已上传的参考图，选中即插入 `@图N` */
+/** @ 唤出的图片选择器：列出已上传的图，选中即插入 chip（视频标 首帧/参考N） */
 const imageRefOpen = ref(false)
 const promptEditorRef = ref<InstanceType<typeof PromptEditor> | null>(null)
 
@@ -62,8 +62,15 @@ function onOpenCategory() {
   imageRefOpen.value = true
 }
 
+// 切模式（图片 ↔ 视频）不换图，只换身份：第 1 张在视频里是首帧。所以要把已经写在
+// 提示词里的 @ 图 chip 重新标注，别让界面上的编号和提交时的编号对不上。
+watch(() => studio.mode.value, (m) => {
+  promptEditorRef.value?.relabelImageRefs(m === 'video')
+})
+
 function onPickImageRef(index: number) {
-  promptEditorRef.value?.applySnippet(imageRefSnapshot(index))
+  // 角色按当前模式定：视频第 1 张是首帧、第 2 张起是「参考1/2…」（= ref_image_0/1…）
+  promptEditorRef.value?.applySnippet(imageRefSnapshot(index, studio.imageRefFirstFrame.value))
   imageRefOpen.value = false
 }
 
@@ -354,7 +361,7 @@ function patchSampling(patch: Record<string, number | string>) {
           <PromptEditor
             ref="promptEditorRef"
             :model-value="studio.promptModel.value"
-            :placeholder="studio.mode.value === 'video' ? '输入 @ 唤出角色、服装、姿势…，或描述这一镜' : '输入 @ 唤出角色、服装、背景、姿势、画风'"
+            :placeholder="studio.mode.value === 'video' ? '输入 @ 引用首帧/参考图（如：参考1 的姿势），或描述这一镜' : '输入 @ 引用参考图（如：参考 @图1 的光线）'"
             @update:model-value="studio.promptModel.value = $event"
             @open-category="onOpenCategory"
           />
@@ -366,6 +373,7 @@ function patchSampling(patch: Record<string, number | string>) {
           <HgImageRefPicker
             :open="imageRefOpen"
             :items="studio.references.value"
+            :roles="studio.referenceRoles.value"
             @pick="onPickImageRef"
             @close="onCloseImageRef"
           />

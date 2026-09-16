@@ -109,8 +109,10 @@ const SnippetNode = Node.create({
     const categoryNode = ['span', { class: 'super-tag__category', contenteditable: 'false' }, ['b', { contenteditable: 'false' }, categoryLabel]]
     const nameNode = ['span', { class: 'super-tag__name line-clamp-1', contenteditable: 'false' }, name]
     if (!source) return ['span', attributes, categoryNode, nameNode]
-    // 参考图 chip 只显示「图N」：它没有「分类」这一层，也没有必要把将要发给上游的措辞
-    // 再念一遍（旧的超级标签是「角色 小龙女 the girl in red」那种三段式）。
+    // 图 chip 只显示短标签：图片模式是「图N」，视频模式是「首帧 / 参考1 / 参考2…」
+    // （同一个 chip 在两种模式下的身份不同，标签由 image-ref.ts 的 imageRefSnapshot 定）。
+    // 不显示「分类」那一层，也没必要把将要发给上游的措辞再念一遍（旧的超级标签是
+    // 「角色 小龙女 the girl in red」那种三段式）。
     if (category === 'image') return ['span', attributes, nameNode]
     return [
       'span',
