@@ -110,6 +110,9 @@ async function load() {
 
 onMounted(load)
 watch(storyId, load)
+
+// 分镜/作品缩略图是限时签名地址：过期后收到自愈信号重新取一次。
+useMediaAutoRefresh(() => load())
 </script>
 
 <template>

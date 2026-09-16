@@ -43,6 +43,13 @@ onMounted(async () => {
   await studio.init()
   await scrollToBottom(true)
 })
+
+/**
+ * 预签名过期自愈：创作页长挂时，会话里已展示的产物地址（3600s）会过期，
+ * 切回来重新解码就是 403。这里只**换一批签名地址**（refreshAssetUrls），
+ * 不重载会话、不动正在跑的任务。见 ~/composables/useMediaRefresh。
+ */
+useMediaAutoRefresh(() => studio.refreshAssetUrls())
 </script>
 
 <template>

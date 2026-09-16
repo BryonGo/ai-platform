@@ -379,6 +379,18 @@ function openContinuePreview(item: ContinueItem) {
   previewAuthor.value = ''
   previewOpen.value = true
 }
+
+/**
+ * 签名地址过期自愈：首页挂满一小时，卡片上的图/视频地址就全过期了，
+ * 再加载一次（重新解码、视频续传）就是 403。
+ * 收到自愈信号（加载失败或从后台切回来）就重跑这三个区块换新地址 ——
+ * 只是重新签名，不重新生成、不重新计费。见 ~/composables/useMediaRefresh。
+ */
+useMediaAutoRefresh(() => Promise.all([
+  loadContinue(),
+  loadExplore(true),
+  toolCatalog.refresh()
+]))
 </script>
 
 <template>

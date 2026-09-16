@@ -567,6 +567,10 @@ onUnmounted(() => {
   if (pressTimer) clearTimeout(pressTimer)
   stopObserver()
 })
+
+// 资产库整屏都是限时签名地址（3600s）：挂久了会集体 403，
+// 收到自愈信号就回第 1 页重取（不重新上传、不重新生成）。见 ~/composables/useMediaRefresh。
+useMediaAutoRefresh(() => reload())
 </script>
 
 <template>

@@ -173,6 +173,9 @@ function markOrientation(event: Event) {
   const host = el?.closest('.media-frame')
   if (host) host.classList.toggle('is-landscape', (el?.naturalWidth ?? 0) > (el?.naturalHeight ?? 0))
 }
+
+// 详情页的产物是限时签名地址（3600s）：挂久了会 403，收到自愈信号重新取一次。
+useMediaAutoRefresh(() => load())
 </script>
 
 <template>

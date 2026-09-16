@@ -110,13 +110,8 @@ const maskedIds = computed(() => new Set(
     .map(w => w.id)
 ))
 
-onMounted(async () => {
-  await session.load()
-  if (!session.token.value) {
-    await navigateTo('/auth/login')
-    return
-  }
-  gate.refresh()
+/** 我的作品（后宫作品库）+ 角色名映射；onMounted 与「签名地址过期自愈」共用。 */
+async function loadWorks() {
   loading.value = true
   try {
     const [list, chars] = await Promise.all([
@@ -132,8 +127,22 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(async () => {
+  await session.load()
+  if (!session.token.value) {
+    await navigateTo('/auth/login')
+    return
+  }
+  gate.refresh()
+  await loadWorks()
   await loadPublished()
 })
+
+// 作品卡与我的发布都是限时签名地址：挂久了会 403，收到自愈信号重取一遍。
+// 见 ~/composables/useMediaRefresh。
+useMediaAutoRefresh(() => Promise.all([loadWorks(), loadPublished()]))
 </script>
 
 <template>

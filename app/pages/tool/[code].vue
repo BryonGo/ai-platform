@@ -448,6 +448,18 @@ watch(templates, (list) => {
 watch(() => slots[0]!.preview, () => nextTick(syncMaskCanvas))
 onMounted(() => window.addEventListener('resize', syncMaskCanvas))
 onUnmounted(() => window.removeEventListener('resize', syncMaskCanvas))
+
+/**
+ * 结果视频/图片是限时签名地址（3600s）：挂着不动一小时后，视频续传或重新解码就是 403。
+ * 收到自愈信号时**按产物 id 重新解析一次**（resolveOutputs）——
+ * 不重新提交任务、不重新计费，只是换一批新签名地址。
+ */
+useMediaAutoRefresh(async () => {
+  for (const run of runs.value) {
+    if (!run.outputs.length) continue
+    run.outputs = await resolveOutputs(run.outputs.map(o => o.id))
+  }
+})
 </script>
 
 <template>

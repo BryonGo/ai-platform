@@ -58,6 +58,9 @@ async function resetCover() {
 
 onMounted(load)
 watch(characterId, load)
+
+// 角色封面/作品缩略图都是限时签名地址：过期后收到自愈信号重新取一次。
+useMediaAutoRefresh(() => load())
 </script>
 
 <template>

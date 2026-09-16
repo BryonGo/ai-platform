@@ -531,6 +531,27 @@ export function createChatStudio() {
     }
   }
 
+  /**
+   * 重新解析当前会话里已展示产物的签名地址（预签名过期自愈用）。
+   *
+   * 为什么不能用 openSession 重载：它对本会话有"已有消息就短路"的早退，
+   * 而且会整段重建消息列表 —— 正在跑的任务、用户刚发的消息、滚动位置都会被打断。
+   * 这里只把每条消息的 assets 换一批新地址，其余状态一动不动。
+   */
+  async function refreshAssetUrls() {
+    const ids = Array.from(new Set(
+      messages.value.flatMap(m => (m.assets || []).map(a => String(a.id))).filter(Boolean)
+    ))
+    if (!ids.length) return
+    const fresh = await resolveAssets(ids)
+    if (!fresh.length) return
+    const byId = new Map(fresh.map(a => [String(a.id), a]))
+    for (const message of messages.value) {
+      if (!message.assets?.length) continue
+      message.assets = message.assets.map(a => byId.get(String(a.id)) || a)
+    }
+  }
+
   /** 历史快照 → 提示词 / 画幅（快照结构兼容两种形态） */
   function readSnapshot(task: HougongTask) {
     const raw = (task.snapshot || {}) as Record<string, unknown>
@@ -1212,6 +1233,7 @@ export function createChatStudio() {
     runningMessages, runningTask, duplicate, confirmDuplicate, dismissDuplicate, viewDuplicate,
     // 动作
     init, send, cancel, retry, openSession, newSession, renameSession, archiveSession,
+    refreshAssetUrls,
     uploadReference,
     statusLabel
   }
