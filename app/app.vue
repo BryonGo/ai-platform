@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
 import { HOME_TOOLS } from '~/data/hougong-home'
-import { FEATURES } from '~/config/features'
+import { canvasFeatureEnabled, FEATURES } from '~/config/features'
 import AppAgeGate from './components/AppAgeGate.vue'
 
 useHead({
@@ -38,10 +38,15 @@ const { open: authOpen, openDialog } = useAuthDialog()
 const emblemSrc = '/mock/home/emblem.png'
 
 /* 导航图标为彩色线性图标：色值取自参考图逐像素实测，同一功能保持同一颜色 */
+/* 「画布」是产品侧并发开发中的功能，生产先用 canvasFeatureEnabled() 屏蔽入口
+   （见 config/features.ts）；直接访问 /canvas 另由 canvas-gate.global.ts 拦回首页。 */
+const canvasOn = canvasFeatureEnabled()
 const navMain = [
   { to: '/', label: '首页', icon: 'i-lucide-house', color: 'var(--hg3-i-orange)' },
   { to: '/effects', label: '全部工具', icon: 'i-lucide-layout-grid', color: 'var(--hg3-i-coral)' },
-  { to: '/canvas', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)' },
+  ...(canvasOn
+    ? [{ to: '/canvas', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)' }]
+    : []),
   { to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }
 ]
 // 「我的资产」下的入口。

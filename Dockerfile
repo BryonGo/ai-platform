@@ -19,6 +19,13 @@ COPY package.json package-lock.json ./
 # 重新生成锁文件后改回 npm ci。
 RUN npm install --no-audit --no-fund
 COPY . .
+# 构建期也要知道功能开关：`/` 是预渲染路由（nuxt.config.ts routeRules），它的 HTML 与
+# 内嵌的 __NUXT__ 配置在**构建时**就定稿了 —— 运行时注入 NUXT_PUBLIC_CANVAS_ENABLED=false
+# 对这张页面无效，首页侧栏照样有「画布」入口（2026-09-16 实测：/works、/assets 生效，
+# 只有预渲染的 / 不生效）。因此画布开关必须同时传进构建：build-hougong.sh 里加
+# --build-arg，默认空值 = 开启（本地/默认构建不受影响）。
+ARG NUXT_PUBLIC_CANVAS_ENABLED=
+ENV NUXT_PUBLIC_CANVAS_ENABLED=$NUXT_PUBLIC_CANVAS_ENABLED
 RUN npm run build
 
 FROM node:22-alpine

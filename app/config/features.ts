@@ -24,3 +24,24 @@ export type FeatureKey = keyof typeof FEATURES
 export function featureEnabled(key: FeatureKey): boolean {
   return FEATURES[key]
 }
+
+/**
+ * 画布（/canvas）开关。
+ *
+ * 与上面写死在代码里的开关不同：画布由产品侧并发开发中，本地/dev 必须能用、生产必须屏蔽，
+ * 所以它取 runtimeConfig.public.canvasEnabled（env `NUXT_PUBLIC_CANVAS_ENABLED`，见
+ * nuxt.config.ts），生产由 compose 传 `false` —— 屏蔽与恢复都只改环境变量，不动代码。
+ *
+ * 关闭时**两处同时生效**：侧栏入口不渲染（app.vue）+ 直接敲 URL 由
+ * middleware/canvas-gate.global.ts 打回首页。只藏入口不算屏蔽。
+ *
+ * 取值容错：环境变量在运行时覆盖时可能是字符串（'false'），也可能是布尔（false），
+ * 两种都按关闭处理；缺省=开启，避免本地被误关。
+ */
+export function canvasFeatureEnabled(): boolean {
+  const value: unknown = useRuntimeConfig().public.canvasEnabled
+  if (value === undefined || value === null || value === '') return true
+  if (typeof value === 'boolean') return value
+  const text = String(value).trim().toLowerCase()
+  return !(text === 'false' || text === '0' || text === 'no' || text === 'off')
+}
