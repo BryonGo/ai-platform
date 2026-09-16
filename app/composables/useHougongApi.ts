@@ -1254,6 +1254,30 @@ export function useHougongApi() {
     return () => es.close()
   }
 
+  /**
+   * 新建一集：给标题与镜头数就生成空镜，给 shots 就按分镜导入。
+   *
+   * 导入会先在服务端过 §4.1 校验器（帧数网格、台词时长、角色引用…），
+   * **有阻断级问题整批拒绝**，返回的 issues 是非阻断提醒（如逐镜配乐）。
+   */
+  function createCanvasEpisode(input: {
+    storyId?: string
+    seriesTitle?: string
+    title?: string
+    shotCount?: number
+    frames?: number
+    shots?: Record<string, unknown>[]
+  }) {
+    return apiRequest<{
+      storyId: string
+      episodeId: string
+      title: string
+      index: number
+      shotIds: string[]
+      issues: string[] | null
+    }>('/hougong/canvas/episode', { method: 'POST', body: input })
+  }
+
   /** 保存镜头（编辑器用）：不存在就按「集 + 镜号」创建。 */
   function saveCanvasShot(input: {
     episodeId: string
@@ -1314,6 +1338,7 @@ export function useHougongApi() {
     login,
     getCanvasOverview,
     saveCanvasShot,
+    createCanvasEpisode,
     reviewCanvasShot,
     renderCanvasShot,
     register,
