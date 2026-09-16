@@ -358,6 +358,17 @@ function patchSampling(patch: Record<string, number | string>) {
             @update:model-value="studio.promptModel.value = $event"
             @open-category="onOpenCategory"
           />
+          <!-- @ 参考图面板必须挂在这一层：它是 position:absolute + bottom:100%，
+               需要**就近的定位祖先**。以前它挂在组件根（.chat-composer 没有 position），
+               锚点一路飘到 .hg-app 上，于是面板被算到页面顶部：首页 y=32 侥幸可见，
+               创作页 y=-78 —— 直接跑到视口外再被 .hg-app 的 overflow:hidden 裁掉，
+               现象就是"创作页按 @ 什么都没有"（2026-09-16 实测）。 -->
+          <HgImageRefPicker
+            :open="imageRefOpen"
+            :items="studio.references.value"
+            @pick="onPickImageRef"
+            @close="onCloseImageRef"
+          />
         </div>
       </div>
 
@@ -509,12 +520,7 @@ function patchSampling(patch: Record<string, number | string>) {
       @close="loraOpen = false"
     />
 
-    <HgImageRefPicker
-      :open="imageRefOpen"
-      :items="studio.references.value"
-      @pick="onPickImageRef"
-      @close="onCloseImageRef"
-    />
+    <!-- @ 参考图面板挪到 .editor 里了（那里才是它的定位锚点），见模板上部 -->
 
     <HgBottomSheet
       v-model:open="modelSheet"
