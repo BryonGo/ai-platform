@@ -421,13 +421,14 @@ async function runBatch(action: 'hide' | 'unhide') {
 // 也无从判断删得对不对。删哪些由服务端定（保留每组最新一条 + 被任务引用过的行）。
 const dedupeOpen = ref(false)
 const dedupeBusy = ref(false)
-const dedupePlan = ref<{ groups: number, deleted: number, kept: number } | null>(null)
+const dedupePlan = ref<{ groups: number, deleted: number, kept: number, mergedTasks?: number } | null>(null)
 const dedupeMessage = computed(() => {
   const plan = dedupePlan.value
   if (!plan) return ''
   if (!plan.groups) return '没有发现重复素材。'
-  return `发现 ${plan.groups} 组重复内容：将清理 ${plan.deleted} 条较早的重复，保留 ${plan.kept} 条`
-    + '（每组最新一条 + 所有被生成任务引用过的，清理后可恢复）。'
+  return `发现 ${plan.groups} 组重复内容：将清理 ${plan.deleted} 条较早的重复，每组保留最新 1 条`
+    + '（同一张图重复上传留下的）。历史任务里指向旧行的引用会改指到保留的那条 —— '
+    + '内容完全相同，界面上的图不变；清理本身可恢复。'
 })
 
 /** 先问服务端"能清多少"，再把结果摆到确认弹窗里。 */
@@ -451,8 +452,9 @@ async function doDedupe() {
   error.value = ''
   try {
     const res = await api.dedupeAssets(false)
+    const merged = res.mergedTasks ? `，合并了 ${res.mergedTasks} 条历史任务引用` : ''
     notice.value = res.deleted
-      ? `已清理 ${res.deleted} 条重复素材，保留 ${res.kept} 条`
+      ? `已清理 ${res.deleted} 条重复素材，保留 ${res.kept} 条${merged}`
       : '没有需要清理的重复素材。'
     dedupeOpen.value = false
     dedupePlan.value = null

@@ -987,7 +987,13 @@ export function useHougongApi() {
    * 历史消息里的图会变空白，而用户在下单前看不出这层依赖。服务端每组保留最新一条 +
    * 所有被引用过的行，其余软删（可恢复）。
    */
-  async function dedupeAssets(dryRun = false): Promise<{ groups: number, deleted: number, kept: number }> {
+  async function dedupeAssets(dryRun = false): Promise<{
+    groups: number
+    deleted: number
+    kept: number
+    /** 被改写过引用的历史任务数（同内容的行合并到保留那条，界面看到的图不变）。 */
+    mergedTasks?: number
+  }> {
     return apiRequest('/platform/asset/dedupe', { method: 'POST', body: { dryRun } })
   }
   async function removeAsset(id: string): Promise<void> {
