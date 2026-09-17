@@ -1,9 +1,17 @@
 /**
  * 画布（织幕）节点契约：端口类型、分组、九类节点的定义。
  *
- * 这份文件是**前后端共用的契约**，照界面原型《织幕 PROTOTYPE · AI 影剧无界画布》的节点库逐条落成：
- * 剧本（剧本输入 / 剧本拆解）、角色（角色设定）、分镜（分镜生成）、生成（关键帧生成）、
- * 视频（图生视频）、音频（配音配乐）、输出（剪辑合成 / 成片导出）—— 7 组 9 类。
+ * 这份文件是**前后端共用的契约**，照界面原型《织幕 PROTOTYPE · AI 影剧无界画布》的节点库落成，
+ * 并按最短闭环补齐原型上缺的一环（**场景设定**）与三条输入：
+ *   剧本（剧本输入 / 剧本拆解）→ 角色与场景（角色设定 / 场景设定）→ 分镜（分镜生成）
+ *   → 生成（首帧生成）→ 视频（图生视频）→ 音频（配音配乐）→ 输出（剪辑合成 / 成片导出）
+ * 共 7 组 10 类。
+ *
+ * 最要紧的一条依赖（不要改动它的形状）：
+ *   首帧图 = **人物 + 场景 + 这一镜的分镜**，三样缺一不出图；
+ *   视频   = **首帧图 + 这一镜的关键词**；
+ *   成片   = N 条视频**按镜号排序**拼起来。
+ * 一个人物一个节点、一个场景一个节点（角色数不多，图上看得出"这镜用了谁"）。
  *
  * 后端对应实现见 aicodcms/docs/canvas/ZHIMU-DATA-MODEL-R2.md 第 3 节；改这里就要改那里。
  *
@@ -60,7 +68,7 @@ export interface CanvasGroupMeta {
 /** 左栏节点库的分组，顺序即显示顺序。 */
 export const CANVAS_GROUPS: CanvasGroupMeta[] = [
   { key: 'script', label: '剧本', color: 'var(--hg3-i-amber)' },
-  { key: 'cast', label: '角色', color: 'var(--hg3-i-coral)' },
+  { key: 'cast', label: '角色与场景', color: 'var(--hg3-i-coral)' },
   { key: 'board', label: '分镜', color: 'var(--hg3-i-green)' },
   { key: 'gen', label: '生成', color: 'var(--hg3-i-blue)' },
   { key: 'video', label: '视频', color: 'var(--hg3-i-orange)' },
@@ -78,6 +86,7 @@ export type CanvasNodeKind
   = | 'script_in'
     | 'script_split'
     | 'character'
+    | 'scene'
     | 'shotlist'
     | 'keyframe'
     | 'i2v'
@@ -159,11 +168,16 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'script_split',
     group: 'script',
     label: '剧本拆解',
-    subtitle: '拆解为分镜大纲',
+    subtitle: '拆出人物、场景与分镜',
     icon: 'i-lucide-split',
     width: 236,
     inputs: [{ slot: 'text', type: 'text', label: '剧本文本', required: true }],
-    outputs: [{ slot: 'outline', type: 'outline', label: '分镜大纲' }],
+    // 一次拆出三样：人物、场景、分镜。三条线各接各的下游（一个人物/场景一个节点）
+    outputs: [
+      { slot: 'characters', type: 'outline', label: '人物列表' },
+      { slot: 'scenes', type: 'outline', label: '场景列表' },
+      { slot: 'shots', type: 'outline', label: '分镜大纲' }
+    ],
     params: [
       { key: 'granularity', label: '拆解粒度', kind: 'select', options: [{ value: 'shot', label: '按镜头（默认）' }, { value: 'scene', label: '按场次' }] },
       { key: 'note', label: '补充要求', kind: 'text', placeholder: '例如：每镜不超过 6 秒' }
@@ -178,7 +192,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '三视图角色参考',
     icon: 'i-lucide-user-round',
     width: 236,
-    inputs: [{ slot: 'outline', type: 'outline', label: '分镜大纲' }],
+    inputs: [{ slot: 'characters', type: 'outline', label: '人物列表', required: true }],
     outputs: [{ slot: 'image', type: 'image', label: '三视图' }],
     params: [
       { key: 'name', label: '角色名', kind: 'text', placeholder: '例如：林知遥' },
@@ -189,13 +203,31 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     estimateCredits: 24
   },
   {
+    // 一个场景一个节点：首帧要「人物 + 场景 + 这一镜的分镜」三样凑齐才出图
+    kind: 'scene',
+    group: 'cast',
+    label: '场景设定',
+    subtitle: '场景环境参考图',
+    icon: 'i-lucide-mountain-snow',
+    width: 236,
+    inputs: [{ slot: 'scenes', type: 'outline', label: '场景列表', required: true }],
+    outputs: [{ slot: 'image', type: 'image', label: '场景参考图' }],
+    params: [
+      { key: 'name', label: '场景名', kind: 'text', placeholder: '例如：破庙 · 夜' },
+      { key: 'appearance', label: '环境锚点', kind: 'textarea', placeholder: '空间、光源、色调、天气——写清可复用的环境特征' },
+      { key: 'angles', label: '出图张数', kind: 'select', options: [{ value: '1', label: '1 张（默认）' }, { value: '3', label: '3 个机位' }] }
+    ],
+    stage: 'ready',
+    estimateCredits: 18
+  },
+  {
     kind: 'shotlist',
     group: 'board',
     label: '分镜生成',
     subtitle: '生成镜头列表',
     icon: 'i-lucide-list-video',
     width: 268,
-    inputs: [{ slot: 'outline', type: 'outline', label: '分镜大纲', required: true }],
+    inputs: [{ slot: 'shots', type: 'outline', label: '分镜大纲', required: true }],
     outputs: [{ slot: 'table', type: 'table', label: '分镜表' }],
     params: [
       { key: 'shotsPerScene', label: '每场镜头数', kind: 'number', hint: '默认 5，多了图会挤' },
@@ -207,15 +239,16 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
   {
     kind: 'keyframe',
     group: 'gen',
-    label: '关键帧生成',
-    subtitle: '文生图生成关键帧',
+    label: '首帧生成',
+    subtitle: '人物 + 场景 + 分镜出首帧图',
     icon: 'i-lucide-image-plus',
     width: 248,
     inputs: [
-      { slot: 'shot', type: 'table', label: '分镜表', required: true },
-      { slot: 'ref', type: 'image', label: '角色参考' }
+      { slot: 'person', type: 'image', label: '人物参考', required: true },
+      { slot: 'scene', type: 'image', label: '场景参考', required: true },
+      { slot: 'shot', type: 'table', label: '这一镜的分镜', required: true }
     ],
-    outputs: [{ slot: 'image', type: 'image', label: '候选关键帧' }],
+    outputs: [{ slot: 'image', type: 'image', label: '候选首帧' }],
     params: [
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'prompt', label: '画面提示词', kind: 'textarea', placeholder: '不填则用分镜里的关键帧提示词' },
@@ -228,15 +261,18 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'i2v',
     group: 'video',
     label: '图生视频',
-    subtitle: '关键帧驱动生成视频',
+    subtitle: '首帧 + 关键词生成视频',
     icon: 'i-lucide-clapperboard',
     width: 248,
-    inputs: [{ slot: 'firstFrame', type: 'image', label: '首帧关键帧', required: true }],
+    inputs: [
+      { slot: 'firstFrame', type: 'image', label: '首帧图', required: true },
+      { slot: 'shot', type: 'table', label: '这一镜的关键词' }
+    ],
     outputs: [{ slot: 'video', type: 'video', label: '视频片段' }],
     params: [
       { key: 'tier', label: '档位', kind: 'select', options: [{ value: 'preview', label: '预览 · 432x768 · 便宜十倍' }, { value: 'final', label: '定稿 · 768x1344 · 交付档' }] },
       { key: 'frames', label: '帧数', kind: 'frames' },
-      { key: 'h3Prompt', label: '运动描述', kind: 'textarea', placeholder: '镜头怎么动、声音是什么' }
+      { key: 'h3Prompt', label: '运动描述', kind: 'textarea', placeholder: '不接分镜时用这里；接了就以分镜为准' }
     ],
     stage: 'ready',
     estimateCredits: 96
@@ -261,10 +297,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     estimateCredits: 30
   },
   {
+    // 主链的倒数第二步：把 N 条视频**按镜号排序**收成一条成片
     kind: 'compose',
     group: 'out',
     label: '剪辑合成',
-    subtitle: '自动为镜头成片',
+    subtitle: '按镜号排序拼成片',
     icon: 'i-lucide-scissors',
     width: 236,
     inputs: [
@@ -273,19 +310,24 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'cut', type: 'cut', label: '成片' }],
     params: [
+      { key: 'order', label: '排序', kind: 'select', options: [{ value: 'idx', label: '按镜号（默认）' }, { value: 'manual', label: '手动排' }] },
+      { key: 'merge', label: '合成方式', kind: 'select', options: [{ value: 'list', label: '只出排序清单（本版）' }, { value: 'mux', label: '真拼片（第二轮）' }], hint: '本版不出画面，只把顺序与片段定下来' },
       { key: 'transition', label: '转场', kind: 'select', options: [{ value: 'cut', label: '硬切' }, { value: 'fade', label: '淡入淡出' }] }
     ],
-    stage: 'planned',
-    estimateCredits: 40
+    stage: 'ready',
+    estimateCredits: 10
   },
   {
     kind: 'export',
     group: 'out',
     label: '成片导出',
-    subtitle: '导出成片链接',
+    subtitle: '导出成片或素材',
     icon: 'i-lucide-download',
     width: 236,
-    inputs: [{ slot: 'video', type: 'video', label: '视频片段', required: true, multiple: true }],
+    inputs: [
+      { slot: 'cut', type: 'cut', label: '成片' },
+      { slot: 'video', type: 'video', label: '视频片段', multiple: true }
+    ],
     outputs: [{ slot: 'zip', type: 'zip', label: '压缩包' }],
     params: [
       { key: 'nameRule', label: '命名规则', kind: 'text', hint: 'E{集号}-S{镜号}.mp4，镜号补零位数按本集最大镜号' }

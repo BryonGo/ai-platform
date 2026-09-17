@@ -35,6 +35,7 @@ import {
   dirtyNodes,
   disconnect,
   expandShotlist,
+  makeEdge,
   nextVersion,
   nodeState,
   paramsHash,
@@ -212,7 +213,12 @@ function hydrateInputs(): void {
   }
 }
 
-/** 方案 A：按分镜表批量生成关键帧 + 图生视频节点。 */
+/**
+ * 方案 A：按分镜表批量生成「首帧 + 视频」节点。
+ *
+ * 分镜表自动连到首帧的「这一镜的分镜」和视频的「这一镜关键词」；**人物与场景不替用户猜** ——
+ * 沿用图里已有首帧节点的接法（多数集里同一批人/场景反复用），要改就在图上重新连。
+ */
 function expand(nodeId: string): void {
   const node = graph.value.nodes.find(n => n.id === nodeId)
   if (!node) return
@@ -224,8 +230,26 @@ function expand(nodeId: string): void {
   const res = expandShotlist(graph.value, nodeId, rows)
   graph.value.nodes.push(...res.nodes)
   graph.value.edges.push(...res.edges)
+
+  const template = [...graph.value.nodes]
+    .reverse()
+    .find(n => n.kind === 'keyframe' && n.inputs.person && n.inputs.scene && !res.keyframes.includes(n))
+  if (template) {
+    for (const kf of res.keyframes) {
+      for (const slot of ['person', 'scene'] as const) {
+        const ref = template.inputs[slot]
+        if (!ref) continue
+        kf.inputs[slot] = { ...ref }
+        if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === slot)) {
+          graph.value.edges.push(makeEdge(ref.from, ref.slot, kf.id, slot))
+        }
+      }
+    }
+  }
   hydrateInputs()
-  showToast(`已按分镜表生成 ${rows} 组节点（关键帧 + 视频）`)
+  showToast(template
+    ? `已按分镜表生成 ${rows} 组节点，人物与场景沿用了已有的接法`
+    : `已按分镜表生成 ${rows} 组节点，记得把人物和场景接上首帧`)
 }
 
 // ---------------------------------------------------------------- 运行
@@ -330,8 +354,9 @@ function settleSeededRuns(): void {
 
 function artifactNote(node: CanvasNode, type: string): string {
   if (type === 'image') {
-    const count = node.kind === 'character' ? '三视图 3 张' : '3 张 · 768x1344'
-    return count
+    if (node.kind === 'character') return '三视图 3 张'
+    if (node.kind === 'scene') return '环境参考 1 张'
+    return '3 张 · 768x1344'
   }
   if (type === 'video') {
     const tier = String(node.params.tier ?? 'preview')

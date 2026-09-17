@@ -344,10 +344,14 @@ export function expandShotlist(
 
   for (let i = 0; i < rowCount; i++) {
     const idx = already + i + 1
-    const kf = createNode(kfKind, { x: baseX, y: baseY + i * ROW }, `S${String(idx).padStart(2, '0')} 关键帧`, idx)
+    const kf = createNode(kfKind, { x: baseX, y: baseY + i * ROW }, `S${String(idx).padStart(2, '0')} 首帧`, idx)
     const vd = createNode(vKind, { x: baseX + 300, y: baseY + i * ROW }, `S${String(idx).padStart(2, '0')} 视频`, idx)
+    // 分镜表 → 首帧（这一镜的分镜）；分镜表 → 视频（这一镜的关键词）
     edges.push(makeEdge(shotlistId, 'table', kf.id, 'shot'))
+    edges.push(makeEdge(shotlistId, 'table', vd.id, 'shot'))
+    // 首帧 → 视频（首帧图是视频的输入）
     edges.push(makeEdge(kf.id, 'image', vd.id, 'firstFrame'))
+    // 人物与场景由调用方接（一镜可能用不同的人/场景，不该替用户猜）
     nodes.push(kf, vd)
     keyframes.push(kf)
     videos.push(vd)
