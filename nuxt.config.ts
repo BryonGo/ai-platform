@@ -68,6 +68,46 @@ export default defineNuxtConfig({
     }
   },
 
+
+  /**
+   * 图标打包。
+   *
+   * @nuxt/icon 的客户端打包**默认只扫 .vue/.jsx/.tsx，而且 scan 默认关闭** ——
+   * 我们的节点类型、端口、右键菜单的图标名写在数据表里（app/data/canvas-nodes.ts），
+   * 于是这些图标一律没进客户端包：界面上该显示剪刀的地方只有一个空圈。
+   * 这里两手都上：显式列出数据表里用到的图标（确定能进包），
+   * 同时打开扫描并把 .ts 纳入范围（以后往数据文件里加图标也能自动带上）。
+   */
+  icon: {
+    clientBundle: {
+      icons: [
+      'lucide:audio-lines',
+      'lucide:clapperboard',
+      'lucide:download',
+      'lucide:film',
+      'lucide:image',
+      'lucide:image-plus',
+      'lucide:list-tree',
+      'lucide:list-video',
+      'lucide:monitor',
+      'lucide:mountain-snow',
+      'lucide:package',
+      'lucide:pen-line',
+      'lucide:scissors',
+      'lucide:scroll-text',
+      'lucide:smartphone',
+      'lucide:split',
+      'lucide:square',
+      'lucide:table',
+      'lucide:type',
+      'lucide:user-round'
+      ],
+      scan: {
+        globInclude: ['**/*.{vue,ts,jsx,tsx,md,mdc,mdx}']
+      }
+    }
+  },
+
   routeRules: {
     '/': { prerender: true },
     '/api/v1/**': { proxy: (process.env.API_PROXY || 'http://127.0.0.1:8201') + '/api/v1/**' }
