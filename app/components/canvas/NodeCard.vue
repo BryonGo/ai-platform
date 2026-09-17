@@ -39,6 +39,7 @@ const emit = defineEmits<{
   (e: 'review', nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void
   (e: 'open', nodeId: string): void
   (e: 'param', nodeId: string, key: string, value: string): void
+  (e: 'collapse', nodeId: string, collapsed: boolean): void
 }>()
 
 const HEADER_H = 38
@@ -143,6 +144,14 @@ const textPreview = computed(() => {
       <button
         class="cg-node-menu-btn"
         type="button"
+        :title="node.collapsed ? '展开' : '折叠'"
+        @click.stop="emit('collapse', node.id, !node.collapsed)"
+      >
+        <i :class="node.collapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" />
+      </button>
+      <button
+        class="cg-node-menu-btn"
+        type="button"
         title="更多"
         @click.stop="menuOpen = !menuOpen"
       >
@@ -175,8 +184,11 @@ const textPreview = computed(() => {
       </div>
     </header>
 
-    <!-- 端口：左入右出，标签与圆点对齐 -->
-    <div class="cg-node-ports">
+    <!-- 端口：左入右出，标签与圆点对齐（折叠时藏起来） -->
+    <div
+      v-show="!node.collapsed"
+      class="cg-node-ports"
+    >
       <div class="cg-port-col cg-port-col--in">
         <div
           v-for="p in spec.inputs"
@@ -220,7 +232,10 @@ const textPreview = computed(() => {
     </div>
 
     <!-- 内容预览 -->
-    <div class="cg-node-body">
+    <div
+      v-show="!node.collapsed"
+      class="cg-node-body"
+    >
       <!-- 文字 / 大纲：上面是「这一步要它干什么」的输入框，下面是结果 -->
       <div
         v-if="spec.outputs[0]?.type === 'text' || spec.outputs[0]?.type === 'outline'"

@@ -12,7 +12,7 @@
  * 所以节点内运行走本地模拟，把「运行 → 出新版本 → 下游变脏」这条链路先跑通；
  * 后端就绪后把 runNode() 里的 simulateRun 换成真接口即可，其余不用改。
  */
-import { MarkerType, VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
+import { MarkerType, SelectionMode, VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
 import '@vue-flow/core/dist/style.css'
@@ -55,6 +55,7 @@ import {
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasParamSpec } from '~/data/canvas-nodes'
 import { CANVAS_GROUPS, CANVAS_NODE_TYPES, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import { createHistory } from '~/data/canvas-history'
 import { buildCanvasSample } from '~/data/canvas-sample'
 
 useHead({ title: '画布 · 织幕' })
@@ -77,7 +78,87 @@ const streaming = ref<Record<string, string>>({})
 /** 「继续补充」的输入：在这一版基础上还想改什么。 */
 const followUp = ref('')
 /** 右键菜单：点到了什么 + 屏幕坐标。 */
-const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge', nodeId?: string, edgeId?: string } | null>(null)
+const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge' | 'selection', nodeId?: string, edgeId?: string } | null>(null)
+// ---------------------------------------------------------------- 撤销 / 重做
+//
+// 做法：整图快照（graph + artifacts 的 JSON），深监听变化后压栈，上限 50 步。
+// 为什么不做细粒度命令模式：一张图才十几个节点，快照最省事也最不容易漏 ——
+// 参数改动、连线、成组选用、分镜表编辑全都会被同一条监听抓到。
+// **runs 不进快照**：任务与花费是账本，撤销不该把它抹掉。
+
+interface CanvasSnapshot { graph: string, artifacts: string }
+
+/**
+ * 快照比较：图或产物任一不同才算变化。
+ * runs 不进快照 —— 任务与花费是账本，撤销不该把账抹掉。
+ */
+function sameSnapshot(a: CanvasSnapshot, b: CanvasSnapshot): boolean {
+  return a.graph === b.graph && a.artifacts === b.artifacts
+}
+
+const history = createHistory<CanvasSnapshot>(50, sameSnapshot)
+/** 让撤销/重做按钮跟着历史栈变化重新渲染（历史本身是纯对象）。 */
+const historyVersion = ref(0)
+/** 正在应用历史（避免撤销本身又被记成一步）。 */
+let applyingHistory = false
+let historyTimer: number | undefined
+
+function snapshotNow(): CanvasSnapshot {
+  return { graph: JSON.stringify(graph.value), artifacts: JSON.stringify(artifacts.value) }
+}
+
+function applySnapshot(snap: CanvasSnapshot): void {
+  applyingHistory = true
+  graph.value = JSON.parse(snap.graph) as CanvasGraph
+  artifacts.value = JSON.parse(snap.artifacts) as CanvasArtifact[]
+  if (selectedId.value && !graph.value.nodes.some(n => n.id === selectedId.value)) selectedId.value = ''
+  nextTick(() => {
+    applyingHistory = false
+  })
+}
+
+// 建立基线：没有它，第一次改动就没有"上一步"可回
+history.reset(snapshotNow())
+
+watch(
+  [graph, artifacts],
+  () => {
+    if (applyingHistory) return
+    window.clearTimeout(historyTimer)
+    historyTimer = window.setTimeout(() => {
+      history.push(snapshotNow())
+      historyVersion.value++
+    }, 260)
+  },
+  { deep: true }
+)
+
+const canUndo = computed(() => {
+  void historyVersion.value
+  return history.canUndo()
+})
+const canRedo = computed(() => {
+  void historyVersion.value
+  return history.canRedo()
+})
+
+function undo(): void {
+  window.clearTimeout(historyTimer)
+  const previous = history.undo()
+  if (!previous) return
+  historyVersion.value++
+  applySnapshot(previous)
+  showToast('已撤销')
+}
+
+function redo(): void {
+  const next = history.redo()
+  if (!next) return
+  historyVersion.value++
+  applySnapshot(next)
+  showToast('已重做')
+}
+
 /** 画布内部的剪贴板（不碰系统剪贴板）：复制一个节点，右键空白粘贴。 */
 const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<string, unknown> } | null>(null)
 /** 每次运行带进来的临时输入（补充要求），按 runId 存，模拟用。 */
@@ -87,7 +168,33 @@ const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
 const hgApi = useHougongApi()
 
-const { fitView, zoomIn, zoomOut, viewport, screenToFlowCoordinate } = useVueFlow()
+const {
+  fitView,
+  zoomIn,
+  zoomOut,
+  viewport,
+  screenToFlowCoordinate,
+  nodes: flowGraphNodes,
+  addSelectedNodes,
+  removeSelectedNodes
+} = useVueFlow()
+
+/** 当前选中的节点数（框选、Cmd+click、Cmd+A 都算）。 */
+const selectedCount = computed(() => flowGraphNodes.value.filter(n => n.selected).length)
+
+function selectAll(): void {
+  addSelectedNodes(flowGraphNodes.value)
+}
+
+function clearSelection(): void {
+  removeSelectedNodes(flowGraphNodes.value)
+  selectedId.value = ''
+}
+
+/** 选中的节点 id 列表。 */
+function selectedNodeIds(): string[] {
+  return flowGraphNodes.value.filter(n => n.selected).map(n => n.id)
+}
 
 const selected = computed(() => graph.value.nodes.find(n => n.id === selectedId.value) ?? null)
 const selectedSpec = computed(() => (selected.value ? nodeTypeSpec(selected.value.kind) : null))
@@ -183,9 +290,17 @@ function onConnect(connection: { source: string, target: string, sourceHandle?: 
   if (!res.ok) showToast(res.reason)
 }
 
-function onNodeDragStop(event: { node: { id: string, position: { x: number, y: number } } }): void {
-  const node = graph.value.nodes.find(n => n.id === event.node.id)
-  if (node) node.at = { x: Math.round(event.node.position.x), y: Math.round(event.node.position.y) }
+/**
+ * 拖动结束把位置写回图。
+ *
+ * 为什么要遍历全部节点而不是只写被抓的那个：多选拖动时（框选后拖其中任意一个），
+ * Vue Flow 会把选中的一起移动，只写一个会让其余节点"弹回原位"。
+ */
+function onNodeDragStop(): void {
+  for (const flowNode of flowGraphNodes.value) {
+    const node = graph.value.nodes.find(n => n.id === flowNode.id)
+    if (node) node.at = { x: Math.round(flowNode.position.x), y: Math.round(flowNode.position.y) }
+  }
 }
 
 function onEdgesChange(changes: { type: string, id?: string }[]): void {
@@ -207,6 +322,10 @@ function openNodeMenu(payload: { event: MouseEvent | TouchEvent, node: { id: str
   const { x, y } = pointOf(payload.event)
   selectedId.value = payload.node.id
   menu.value = { x, y, kind: 'node', nodeId: payload.node.id }
+}
+
+function openSelectionMenu(payload: { event: MouseEvent, nodes: { id: string }[] }): void {
+  menu.value = { x: payload.event.clientX, y: payload.event.clientY, kind: 'selection' }
 }
 
 function openPaneMenu(event: MouseEvent): void {
@@ -248,6 +367,7 @@ const nodeMenuItems = computed<ContextMenuItem[]>(() => {
     { key: 'duplicate', label: '复制节点', icon: 'i-lucide-copy', hint: '⌘C' },
     { key: 'copy', label: '复制到剪贴板', icon: 'i-lucide-clipboard-copy' },
     { key: 'run', label: '运行这个节点', icon: 'i-lucide-play', hint: cost ? `约 ${creditsToYuan(cost)}` : undefined, disabled: spec.stage !== 'ready' || stateOf(node) === 'blocked' || stateOf(node) === 'awaiting' },
+    { key: 'collapse', label: node.collapsed ? '展开节点' : '折叠节点', icon: node.collapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up' },
     { key: 'detach', label: '断开全部连线', icon: 'i-lucide-unlink', disabled: !graph.value.edges.some(e => e.from.node === node.id || e.to.node === node.id) },
     { key: 'remove', label: '删除节点', icon: 'i-lucide-trash-2', danger: true, hint: '⌫' }
   ]
@@ -256,10 +376,24 @@ const nodeMenuItems = computed<ContextMenuItem[]>(() => {
 const paneMenuItems = computed<ContextMenuItem[]>(() => [
   ...addNodeItems.value,
   { key: 'paste', label: '粘贴节点', icon: 'i-lucide-clipboard-paste', hint: clipboard.value ? clipboard.value.title : undefined, disabled: !clipboard.value },
+  { key: 'select-all', label: '全选', icon: 'i-lucide-box-select', hint: '⌘A' },
+  { key: 'deselect', label: '取消选择', icon: 'i-lucide-mouse-pointer-click', hint: 'Esc', disabled: !selectedCount.value && !selectedId.value },
+  { key: 'undo', label: '撤销', icon: 'i-lucide-undo-2', hint: '⌘Z', disabled: !canUndo.value },
+  { key: 'redo', label: '重做', icon: 'i-lucide-redo-2', hint: '⇧⌘Z', disabled: !canRedo.value },
+  { key: 'collapse-all', label: '全部折叠', icon: 'i-lucide-minimize-2' },
+  { key: 'expand-all', label: '全部展开', icon: 'i-lucide-maximize-2' },
   { key: 'fit', label: '适应画布', icon: 'i-lucide-maximize' },
   { key: 'reset', label: '重置示例', icon: 'i-lucide-rotate-ccw' },
-  { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined },
-  { key: 'deselect', label: '取消选择', icon: 'i-lucide-mouse-pointer-click', disabled: !selectedId.value }
+  { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined }
+])
+
+/** 框选/多选之后右键，给的是批量动作。 */
+const selectionMenuItems = computed<ContextMenuItem[]>(() => [
+  { key: 'run-selected', label: `运行所选 ${selectedCount.value} 个`, icon: 'i-lucide-play' },
+  { key: 'copy-selected', label: '复制所选', icon: 'i-lucide-copy' },
+  { key: 'collapse-selected', label: '折叠所选', icon: 'i-lucide-minimize-2' },
+  { key: 'delete-selected', label: `删除所选 ${selectedCount.value} 个`, icon: 'i-lucide-trash-2', danger: true },
+  { key: 'deselect', label: '取消选择', icon: 'i-lucide-mouse-pointer-click', hint: 'Esc' }
 ])
 
 const edgeMenuItems = computed<ContextMenuItem[]>(() => [
@@ -318,9 +452,53 @@ function onMenuPick(key: string): void {
     case 'fit': fit(); break
     case 'reset': resetSample(); break
     case 'run-all': void runAll(); break
-    case 'deselect': selectedId.value = ''; break
+    case 'collapse': {
+      const node = graph.value.nodes.find(n => n.id === nodeId)
+      if (node) node.collapsed = !node.collapsed
+      break
+    }
+    case 'collapse-all': for (const n of graph.value.nodes) n.collapsed = true; break
+    case 'expand-all': for (const n of graph.value.nodes) n.collapsed = false; break
+    case 'select-all': selectAll(); break
+    case 'deselect': clearSelection(); break
+    case 'undo': undo(); break
+    case 'redo': redo(); break
+    case 'delete-selected': deleteSelected(); break
+    case 'collapse-selected': for (const id of selectedNodeIds()) { const n = graph.value.nodes.find(x => x.id === id); if (n) n.collapsed = true } break
+    case 'copy-selected': {
+      const ids = selectedNodeIds()
+      const first = graph.value.nodes.find(n => n.id === ids[0])
+      if (first) copyNode(first.id)
+      // 复制多个：贴的时候逐个落位（用同一份剪贴板依次粘贴太绕，这里先支持一个 + 提示）
+      if (ids.length > 1) showToast(`已复制「${first?.title ?? ''}」（多选批量复制先只带第一个）`)
+      break
+    }
+    case 'run-selected': void runSelected(); break
     case 'disconnect': if (target?.edgeId) disconnect(graph.value, target.edgeId); break
   }
+}
+
+/** 删除选中的多个节点。 */
+function deleteSelected(): void {
+  const ids = selectedNodeIds()
+  for (const id of ids) removeNode(graph.value, id)
+  if (ids.includes(selectedId.value)) selectedId.value = ''
+  showToast(`已删除 ${ids.length} 个节点`)
+}
+
+/** 依次运行选中的节点（跳过错过的：等上游/等确认的）。 */
+async function runSelected(): Promise<void> {
+  const ids = selectedNodeIds()
+  let done = 0
+  for (const id of ids) {
+    const node = graph.value.nodes.find(n => n.id === id)
+    if (!node) continue
+    const st = stateOf(node)
+    if (st === 'blocked' || st === 'awaiting' || st === 'running') continue
+    await runNode(id, { silent: true })
+    done++
+  }
+  showToast(done ? `已运行 ${done} 个节点` : '选中的节点都在等上游或等确认，没跑')
 }
 
 /** 重命名：把名字送给节点卡，让它进入输入态（简单起见用 prompt 之外的方式：直接改）。 */
@@ -345,18 +523,42 @@ function onKeydown(event: KeyboardEvent): void {
     copyNode(selectedId.value)
     return
   }
+  if (mod && event.key.toLowerCase() === 'a') {
+    event.preventDefault()
+    selectAll()
+    return
+  }
+  if (mod && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) redo()
+    else undo()
+    return
+  }
+  if (mod && event.key.toLowerCase() === 'y') {
+    event.preventDefault()
+    redo()
+    return
+  }
   if (mod && event.key.toLowerCase() === 'v') {
     pasteNode()
     return
   }
-  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId.value) {
-    event.preventDefault()
-    drop(selectedId.value)
-    return
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    const ids = selectedNodeIds()
+    if (ids.length) {
+      event.preventDefault()
+      deleteSelected()
+      return
+    }
+    if (selectedId.value) {
+      event.preventDefault()
+      drop(selectedId.value)
+      return
+    }
   }
   if (event.key === 'Escape') {
     closeMenu()
-    selectedId.value = ''
+    clearSelection()
   }
 }
 
@@ -971,6 +1173,11 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           class="cg-metric"
           data-tone="warn"
         ><i class="i-lucide-refresh-cw" /> 待重跑 {{ dirtyCount }}</span>
+        <span
+          v-if="selectedCount"
+          class="cg-metric"
+          data-tone="warn"
+        ><i class="i-lucide-box-select" /> 已选 {{ selectedCount }}</span>
         <span class="cg-metric"><i class="i-lucide-coins" /> 已花 {{ creditsToYuan(totalCost) }}</span>
         <span
           v-if="estimatedBatch"
@@ -980,6 +1187,25 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
       </div>
 
       <div class="cg-top-right">
+        <button
+          class="cg-icon"
+          type="button"
+          title="撤销（⌘Z）"
+          :disabled="!canUndo"
+          @click="undo"
+        >
+          <i class="i-lucide-undo-2" />
+        </button>
+        <button
+          class="cg-icon"
+          type="button"
+          title="重做（⇧⌘Z）"
+          :disabled="!canRedo"
+          @click="redo"
+        >
+          <i class="i-lucide-redo-2" />
+        </button>
+
         <div class="cg-zoom">
           <button
             type="button"
@@ -1037,7 +1263,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           v-if="wideScreen"
           class="cg-hint"
         >
-          拖动空白处平移 · 滚轮缩放（或 Ctrl+滚轮）· 从端口小圆点拖出连线 · 连线只允许同类型
+          拖动空白处平移 · 滚轮缩放 · Shift 拖动框选 · ⌘/Ctrl+点选多个 · 从端口小圆点拖出连线（只允许同类型）
         </div>
 
         <ClientOnly>
@@ -1051,12 +1277,16 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             :nodes-connectable="true"
             :nodes-draggable="true"
             :elements-selectable="true"
+            :selection-mode="SelectionMode.Full"
+            :selection-key-code="'Shift'"
+            :multi-selection-key-code="['Meta', 'Control']"
             :delete-key-code="null"
             class="cg-flow"
             @connect="onConnect"
             @node-drag-stop="onNodeDragStop"
             @edges-change="onEdgesChange"
             @pane-click="selectedId = ''"
+            @selection-context-menu="openSelectionMenu"
             @node-context-menu="openNodeMenu"
             @pane-context-menu="openPaneMenu"
             @edge-context-menu="openEdgeMenu"
@@ -1074,6 +1304,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @rename="rename"
                 @pick="pick"
                 @pick-item="pickItem"
+                @collapse="(id: string, collapsed: boolean) => { const n = graph.nodes.find(x => x.id === id); if (n) n.collapsed = collapsed }"
                 @review="review"
                 @param="(id: string, key: string, value: string) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
                 @open="selectedId = $event"
@@ -1123,13 +1354,46 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           </div>
         </ClientOnly>
 
+        <!-- 多选时的悬浮工具条：批量动作不用再右键 -->
+        <div
+          v-if="selectedCount > 1"
+          class="cg-selbar"
+        >
+          <span class="cg-selbar-count">已选 {{ selectedCount }}</span>
+          <button
+            type="button"
+            @click="runSelected"
+          >
+            <i class="i-lucide-play" /> 运行所选
+          </button>
+          <button
+            type="button"
+            @click="for (const id of selectedNodeIds()) { const n = graph.nodes.find(x => x.id === id); if (n) n.collapsed = true }"
+          >
+            <i class="i-lucide-minimize-2" /> 折叠
+          </button>
+          <button
+            type="button"
+            class="is-danger"
+            @click="deleteSelected"
+          >
+            <i class="i-lucide-trash-2" /> 删除
+          </button>
+          <button
+            type="button"
+            @click="clearSelection"
+          >
+            取消选择
+          </button>
+        </div>
+
         <CanvasContextMenu
           v-if="menu"
           :x="menu.x"
           :y="menu.y"
-          :title="menu.kind === 'node' ? graph.nodes.find(n => n.id === menu?.nodeId)?.title : menu.kind === 'edge' ? '连线' : '画布'"
-          :subtitle="menu.kind === 'node' ? nodeTypeSpec(graph.nodes.find(n => n.id === menu?.nodeId)?.kind ?? 'script_in').subtitle : menu.kind === 'edge' ? '连线可以断开后重连' : '在空白处可以新建节点'"
-          :items="menu.kind === 'node' ? nodeMenuItems : menu.kind === 'edge' ? edgeMenuItems : paneMenuItems"
+          :title="menu.kind === 'node' ? graph.nodes.find(n => n.id === menu?.nodeId)?.title : menu.kind === 'edge' ? '连线' : menu.kind === 'selection' ? `已选 ${selectedCount} 个节点` : '画布'"
+          :subtitle="menu.kind === 'node' ? nodeTypeSpec(graph.nodes.find(n => n.id === menu?.nodeId)?.kind ?? 'script_in').subtitle : menu.kind === 'edge' ? '连线可以断开后重连' : menu.kind === 'selection' ? '可批量运行、折叠或删除' : '在空白处可以新建节点'"
+          :items="menu.kind === 'node' ? nodeMenuItems : menu.kind === 'edge' ? edgeMenuItems : menu.kind === 'selection' ? selectionMenuItems : paneMenuItems"
           @pick="onMenuPick"
           @close="closeMenu"
         />
@@ -1714,6 +1978,54 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 .cg-metric[data-tone='warn'] { color: var(--hg3-warn); }
 
 .cg-top-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.cg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 5%);
+  border-radius: 8px;
+}
+
+.cg-icon:hover:not(:disabled) { color: var(--hg3-ink); background: rgb(255 255 255 / 11%); }
+.cg-icon:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.cg-selbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  padding: 5px 8px;
+  background: rgb(20 21 24 / 92%);
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 46%);
+  backdrop-filter: blur(8px);
+}
+
+.cg-selbar-count { padding: 0 4px; font-size: 11.5px; color: var(--hg3-warn); }
+
+.cg-selbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: var(--hg3-ink);
+  background: rgb(255 255 255 / 8%);
+  border-radius: 999px;
+}
+
+.cg-selbar button:hover { background: rgb(255 255 255 / 14%); }
+.cg-selbar button.is-danger { color: var(--hg3-i-coral); }
 
 .cg-zoom {
   display: inline-flex;

@@ -48,6 +48,8 @@ export interface CanvasNode {
   outputs: Record<string, CanvasArtifactRef>
   /** 由分镜表展开出来的节点记一下自己对应第几镜（导出命名、并排比较用）。 */
   ref?: { shotIdx?: number }
+  /** 折叠：只留标题栏与操作栏，图挤的时候把不看的节点收起来。 */
+  collapsed?: boolean
 }
 
 export interface CanvasEdge {
