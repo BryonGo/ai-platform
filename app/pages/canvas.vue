@@ -35,7 +35,12 @@ import {
   createNode,
   dirtyNodes,
   disconnect,
+  artifactOfRef,
+  buildExportManifest,
+  incomingEdges,
   expandShotlist,
+  fragmentOrder,
+  inputRefs,
   makeEdge,
   nextVersion,
   nodeState,
@@ -235,11 +240,26 @@ function hydrateInputs(): void {
     for (const edge of graph.value.edges.filter(e => e.to.node === node.id)) {
       const upstream = graph.value.nodes.find(n => n.id === edge.from.node)
       const ref = upstream?.outputs[edge.from.slot]
-      if (upstream && ref && !node.inputs[edge.to.slot]) {
-        node.inputs[edge.to.slot] = { from: upstream.id, slot: edge.from.slot, ...ref }
+      if (!upstream || !ref) continue
+      const list = node.inputs[edge.to.slot] ?? []
+      if (!list.some(r => r.from === upstream.id && r.slot === edge.from.slot)) {
+        list.push({ from: upstream.id, slot: edge.from.slot, ...ref })
+        node.inputs[edge.to.slot] = list
       }
     }
   }
+}
+
+/** 某个输入槽接了几条、其中几条已确认（详情面板显示用）。 */
+function inputSummary(node: CanvasNode, slot: string): string {
+  const edges = incomingEdges(graph.value, node.id, [slot])
+  if (!edges.length) return '未接'
+  const ok = edges.filter((e) => {
+    const up = graph.value.nodes.find(n => n.id === e.from.node)
+    const ref = up?.outputs[e.from.slot]
+    return ref ? artifacts.value.find(a => a.id === ref.artifactId)?.review === 'approved' : false
+  }).length
+  return `${edges.length} 条 · ${ok} 条已确认`
 }
 
 /**
@@ -262,13 +282,13 @@ function expand(nodeId: string): void {
 
   const template = [...graph.value.nodes]
     .reverse()
-    .find(n => n.kind === 'keyframe' && n.inputs.person && n.inputs.scene && !res.keyframes.includes(n))
+    .find(n => n.kind === 'keyframe' && inputRefs(n, 'person').length && inputRefs(n, 'scene').length && !res.keyframes.includes(n))
   if (template) {
     for (const kf of res.keyframes) {
       for (const slot of ['person', 'scene'] as const) {
-        const ref = template.inputs[slot]
+        const ref = inputRefs(template, slot)[0]
         if (!ref) continue
-        kf.inputs[slot] = { ...ref }
+        kf.inputs[slot] = [{ ...ref }]
         if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === slot)) {
           graph.value.edges.push(makeEdge(ref.from, ref.slot, kf.id, slot))
         }
@@ -459,7 +479,12 @@ function completeRun(node: CanvasNode, run: CanvasRun): void {
     artifact.note = '3 镜'
   }
   if (type === 'audio') artifact.note = '配音 + 配乐'
-  if (type === 'zip') artifact.note = 'E01 全镜'
+  if (type === 'zip') {
+    // 导出不是"随便打个包"：挑片、写清谁没进来、谁的参数对不上
+    const { manifest, note: zipNote } = buildExportManifest(graph.value, artifacts.value, node)
+    artifact.manifest = manifest
+    artifact.note = zipNote
+  }
 
   artifacts.value = [...artifacts.value, artifact]
   selectArtifact(graph.value, artifact)
@@ -570,6 +595,46 @@ const nodeRuns = computed(() => {
   if (!node) return []
   return [...runs.value].filter(r => r.nodeId === node.id).reverse().slice(0, 4)
 })
+
+/** 剪辑合成要拼的片段顺序（默认按镜号；手动调过就按存的顺序）。 */
+const fragments = computed(() => {
+  const node = selected.value
+  if (!node || node.kind !== 'compose') return []
+  return fragmentOrder(graph.value, node).map(f => ({
+    ...f,
+    artifact: f.artifactId ? artifacts.value.find(a => a.id === f.artifactId) : undefined
+  }))
+})
+
+/** 手动调顺序：存成 orderIds（产物 id 的顺序），顺序一变就算"参数变了"。 */
+function moveFragment(index: number, dir: -1 | 1): void {
+  const node = selected.value
+  if (!node) return
+  const ids = fragments.value.map(f => f.upstreamId)
+  const j = index + dir
+  if (j < 0 || j >= ids.length) return
+  const a = ids[index]!
+  ids[index] = ids[j]!
+  ids[j] = a
+  node.params = { ...node.params, orderIds: ids }
+}
+
+/** 跑一次大约花多少（分）。 */
+function estimateOf(node: CanvasNode): number {
+  return nodeTypeSpec(node.kind).estimateCredits ?? 0
+}
+
+/** 「运行全部」这一遍的预估花费：只算真会跑的节点。 */
+const estimatedBatch = computed(() =>
+  dirtyNodes(graph.value, runs.value).reduce((sum, id) => {
+    const node = graph.value.nodes.find(n => n.id === id)
+    if (!node) return sum
+    if (nodeTypeSpec(node.kind).stage !== 'ready') return sum
+    const st = stateOf(node)
+    if (st === 'blocked' || st === 'awaiting' || st === 'running') return sum
+    return sum + estimateOf(node)
+  }, 0)
+)
 
 const selectedTableRows = computed(() => {
   const node = selected.value
@@ -731,7 +796,12 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           class="cg-metric"
           data-tone="warn"
         ><i class="i-lucide-refresh-cw" /> 待重跑 {{ dirtyCount }}</span>
-        <span class="cg-metric"><i class="i-lucide-coins" /> {{ creditsToYuan(totalCost) }}</span>
+        <span class="cg-metric"><i class="i-lucide-coins" /> 已花 {{ creditsToYuan(totalCost) }}</span>
+        <span
+          v-if="estimatedBatch"
+          class="cg-metric"
+          data-tone="warn"
+        ><i class="i-lucide-calculator" /> 本次预计 {{ creditsToYuan(estimatedBatch) }}</span>
       </div>
 
       <div class="cg-top-right">
@@ -773,7 +843,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           @click="runAll"
         >
           <i :class="runningCount ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
-          {{ runningCount ? `运行中 ${runningCount}` : '运行全部' }}
+          {{ runningCount ? `运行中 ${runningCount}` : `运行全部${estimatedBatch ? ` · 约 ${creditsToYuan(estimatedBatch)}` : ''}` }}
         </button>
       </div>
     </header>
@@ -934,7 +1004,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 :disabled="stateOf(selected) === 'running'"
                 @click="runNode(selected.id)"
               >
-                <i class="i-lucide-play" /> 运行这个节点
+                <i class="i-lucide-play" /> 运行这个节点{{ estimateOf(selected) ? ` · 约 ${creditsToYuan(estimateOf(selected))}` : '' }}
               </button>
               <span
                 v-else
@@ -963,9 +1033,9 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 <span class="cg-input-name">{{ p.label }}</span>
                 <span
                   class="cg-input-val"
-                  :data-tone="selected.inputs[p.slot] ? 'ok' : 'muted'"
+                  :data-tone="incomingEdges(graph, selected.id, [p.slot]).length ? 'ok' : 'muted'"
                 >
-                  {{ selected.inputs[p.slot] ? `v${selected.inputs[p.slot]!.version} 已接` : '未接' }}
+                  {{ inputSummary(selected, p.slot) }}
                 </span>
               </div>
             </section>
@@ -1124,6 +1194,94 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 当前选用 · v{{ shownArtifact.version }} 正文
               </p>
               <pre class="cg-fulltext">{{ shownArtifact.text }}</pre>
+            </section>
+
+            <!-- 片段顺序：视频在排序才是成片 -->
+            <section
+              v-if="selected.kind === 'compose' && fragments.length"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                片段顺序 <span class="cg-block-sub">默认按镜号，可手动调</span>
+              </p>
+              <div
+                v-for="(f, i) in fragments"
+                :key="f.upstreamId"
+                class="cg-frag"
+              >
+                <span class="cg-frag-no">{{ i + 1 }}</span>
+                <img
+                  v-if="f.artifact?.url"
+                  :src="f.artifact.url"
+                  alt=""
+                  class="cg-frag-thumb"
+                >
+                <span class="cg-frag-text">
+                  <b>{{ f.label }}</b>
+                  <i>{{ f.artifact?.note ?? '还没产出' }} · {{ f.artifact?.review === 'approved' ? '已确认' : '待确认' }}</i>
+                </span>
+                <button
+                  class="cg-tiny cg-frag-move"
+                  type="button"
+                  :disabled="i === 0"
+                  title="上移"
+                  @click="moveFragment(i, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  class="cg-tiny cg-frag-move"
+                  type="button"
+                  :disabled="i === fragments.length - 1"
+                  title="下移"
+                  @click="moveFragment(i, 1)"
+                >
+                  ↓
+                </button>
+              </div>
+            </section>
+
+            <!-- 导出清单：已导出 / 未导出（原因）/ 参数不一致 -->
+            <section
+              v-if="shownArtifact?.manifest"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                导出清单
+              </p>
+              <p class="cg-mani-group">
+                已导出 <b>{{ shownArtifact.manifest.exported.length }}</b>
+              </p>
+              <div
+                v-for="x in shownArtifact.manifest.exported"
+                :key="`ok-${x.label}`"
+                class="cg-mani-row"
+              >
+                <i class="i-lucide-check" /> {{ x.label }} <span>{{ x.note }}</span>
+              </div>
+              <p class="cg-mani-group">
+                未导出 <b>{{ shownArtifact.manifest.skipped.length }}</b>
+              </p>
+              <div
+                v-for="x in shownArtifact.manifest.skipped"
+                :key="`skip-${x.label}`"
+                class="cg-mani-row cg-mani-row--warn"
+              >
+                <i class="i-lucide-minus" /> {{ x.label }} <span>{{ x.reason }}</span>
+              </div>
+              <p
+                v-if="shownArtifact.manifest.mismatch.length"
+                class="cg-mani-group"
+              >
+                参数不一致 <b>{{ shownArtifact.manifest.mismatch.length }}</b>
+              </p>
+              <div
+                v-for="x in shownArtifact.manifest.mismatch"
+                :key="`mm-${x.label}`"
+                class="cg-mani-row cg-mani-row--bad"
+              >
+                <i class="i-lucide-triangle-alert" /> {{ x.label }} <span>{{ x.detail }}</span>
+              </div>
             </section>
 
             <!-- 产物版本 -->
@@ -1596,6 +1754,30 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 .cg-mini--accent:hover:not(:disabled) { background: var(--hg3-accent-hi); }
 
 .cg-empty-line { margin: 0; font-size: 11px; color: var(--hg3-faint); }
+
+.cg-frag {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+  padding: 5px 6px;
+  background: var(--hg3-card);
+  border-radius: 8px;
+}
+
+.cg-frag-no { flex: none; width: 14px; font-size: 11px; color: var(--hg3-muted); }
+.cg-frag-thumb { flex: none; width: 42px; height: 30px; object-fit: cover; border-radius: 5px; }
+.cg-frag-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cg-frag-text b { font-size: 11px; }
+.cg-frag-text i { font-size: 10px; font-style: normal; color: var(--hg3-faint); }
+.cg-frag-move { flex: none; width: 22px; }
+
+.cg-mani-group { margin: 8px 0 4px; font-size: 11px; color: var(--hg3-muted); }
+.cg-mani-group b { color: var(--hg3-ink); }
+.cg-mani-row { display: flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 0; }
+.cg-mani-row span { margin-left: auto; color: var(--hg3-faint); font-size: 10px; }
+.cg-mani-row--warn { color: var(--hg3-warn); }
+.cg-mani-row--bad { color: var(--hg3-i-coral); }
 
 .cg-row { margin-bottom: 7px; padding: 6px 7px; background: var(--hg3-card); border-radius: 8px; }
 .cg-row-head { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }

@@ -386,6 +386,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'zip', type: 'zip', label: '压缩包' }],
     params: [
+      { key: 'baseline', label: '基准画幅', kind: 'select', options: [{ value: '768x1344', label: '定稿 768x1344（默认）' }, { value: '432x768', label: '预览 432x768' }, { value: '1080x1920', label: '超分 1080x1920' }], hint: '与这一集的基准比对，不一致的片段单列出来' },
       { key: 'nameRule', label: '命名规则', kind: 'text', hint: 'E{集号}-S{镜号}.mp4，镜号补零位数按本集最大镜号' }
     ],
     stage: 'ready',

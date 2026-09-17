@@ -37,7 +37,13 @@ export interface CanvasNode {
   title: string
   at: { x: number, y: number }
   params: Record<string, unknown>
-  inputs: Record<string, CanvasInputRef>
+  /**
+   * 输入槽 → 上游产物引用**列表**。
+   *
+   * 为什么要数组：剪辑合成、成片导出要接 N 条视频，一个槽多条入边。
+   * 早先写成单值，结果"3 条视频进合成"只记住了最后连的那一条。
+   */
+  inputs: Record<string, CanvasInputRef[]>
   /** 输出槽 → 当前选定的产物版本；空表示还没产出。 */
   outputs: Record<string, CanvasArtifactRef>
   /** 由分镜表展开出来的节点记一下自己对应第几镜（导出命名、并排比较用）。 */
@@ -103,6 +109,8 @@ export interface CanvasArtifact {
   rows?: CanvasShotRow[]
   /** 文字类产物的内容（剧本、大纲）。 */
   text?: string
+  /** 导出类产物的结果清单（已导出 / 未导出 / 参数不一致）。 */
+  manifest?: CanvasExportManifest
   review: CanvasReview
   createdAt: string
 }
@@ -119,6 +127,18 @@ export interface CanvasArtifactItem {
   label?: string
   picked?: boolean
   review?: CanvasReview
+}
+
+/**
+ * 成片导出 / 素材导出 的结果清单。
+ *
+ * 三组，与 R1 第 5 节、T8 的验收口径一致：已经进包的、没进包的（写原因）、
+ * 进了包但参数对不上的（单列出来，不挡打包）。
+ */
+export interface CanvasExportManifest {
+  exported: { label: string, note?: string }[]
+  skipped: { label: string, reason: string }[]
+  mismatch: { label: string, detail: string }[]
 }
 
 /** 分镜表的一行（一镜）。 */
@@ -184,8 +204,10 @@ export function removeNode(graph: CanvasGraph, nodeId: string): void {
   graph.nodes = graph.nodes.filter(n => n.id !== nodeId)
   graph.edges = graph.edges.filter(e => e.from.node !== nodeId && e.to.node !== nodeId)
   for (const n of graph.nodes) {
-    for (const [slot, ref] of Object.entries(n.inputs)) {
-      if (ref.from === nodeId) delete n.inputs[slot]
+    for (const [slot, refs] of Object.entries(n.inputs)) {
+      const rest = refs.filter(ref => ref.from !== nodeId)
+      if (rest.length) n.inputs[slot] = rest
+      else delete n.inputs[slot]
     }
   }
 }
@@ -219,7 +241,9 @@ export function connectNodes(
   graph.edges.push({ id: newId('e'), from: { ...from }, to: { ...to } })
   const upstream = fromNode.outputs[from.slot]
   if (upstream) {
-    toNode.inputs[to.slot] = { from: fromNode.id, slot: from.slot, ...upstream }
+    const list = toNode.inputs[to.slot] ?? []
+    list.push({ from: fromNode.id, slot: from.slot, ...upstream })
+    toNode.inputs[to.slot] = list
   }
   return { ok: true }
 }
@@ -229,7 +253,11 @@ export function disconnect(graph: CanvasGraph, edgeId: string): void {
   if (!edge) return
   graph.edges = graph.edges.filter(e => e.id !== edgeId)
   const toNode = graph.nodes.find(n => n.id === edge.to.node)
-  if (toNode) delete toNode.inputs[edge.to.slot]
+  if (!toNode) return
+  const rest = (toNode.inputs[edge.to.slot] ?? [])
+    .filter(ref => !(ref.from === edge.from.node && ref.slot === edge.from.slot))
+  if (rest.length) toNode.inputs[edge.to.slot] = rest
+  else delete toNode.inputs[edge.to.slot]
 }
 
 /** from 顺着边走能不能到 target。 */
@@ -289,7 +317,7 @@ export function paramsHash(node: CanvasNode): string {
     kind: node.kind,
     params: node.params,
     inputs: Object.entries(node.inputs)
-      .map(([slot, ref]) => [slot, ref.artifactId, ref.version])
+      .map(([slot, refs]) => [slot, ...refs.map(r => `${r.artifactId}@${r.version}#${r.item ?? 0}`)])
       .sort()
   })
   let h = 5381
@@ -321,11 +349,14 @@ export function nodeState(
 
   for (const port of nodeTypeSpec(node.kind).inputs) {
     if (!port.required) continue
-    const ref = node.inputs[port.slot]
-    if (!ref) return 'blocked'
+    const refs = node.inputs[port.slot] ?? []
+    if (!refs.length) return 'blocked'
     if (artifacts.length) {
-      const artifact = artifacts.find(a => a.id === ref.artifactId)
-      if (artifact && artifact.review !== 'approved') return 'awaiting'
+      // 多条入边（剪辑合成那种）要**每一条**都确认过才放行
+      for (const ref of refs) {
+        const artifact = artifacts.find(a => a.id === ref.artifactId)
+        if (artifact && artifact.review !== 'approved') return 'awaiting'
+      }
     }
   }
 
@@ -422,7 +453,13 @@ export function selectArtifact(graph: CanvasGraph, artifact: CanvasArtifact): vo
   node.outputs[artifact.slot] = { ...ref }
   for (const edge of graph.edges.filter(e => e.from.node === artifact.nodeId && e.from.slot === artifact.slot)) {
     const down = graph.nodes.find(n => n.id === edge.to.node)
-    if (down) down.inputs[edge.to.slot] = { from: node.id, slot: artifact.slot, ...ref }
+    if (!down) continue
+    const list = down.inputs[edge.to.slot] ?? []
+    const i = list.findIndex(r => r.from === node.id && r.slot === artifact.slot)
+    const next = { from: node.id, slot: artifact.slot, ...ref }
+    if (i >= 0) list[i] = next
+    else list.push(next)
+    down.inputs[edge.to.slot] = list
   }
 }
 
@@ -453,6 +490,112 @@ export function withItemReview(
     const items = a.items.map((it, i) => (i === index ? { ...it, review } : it))
     return { ...a, items }
   })
+}
+
+/**
+ * 指向这个节点的入边（可限定槽位）。
+ *
+ * **清单与排序都按边算，不按已记录的引用算** —— 上游还没跑过、没产出的时候，
+ * 引用是不存在的，但"它本该进包"这件事只有边知道。否则包里少了谁永远说不清。
+ */
+export function incomingEdges(graph: CanvasGraph, nodeId: string, slots?: string[]): CanvasEdge[] {
+  return graph.edges.filter(e => e.to.node === nodeId && (!slots || slots.includes(e.to.slot)))
+}
+
+/** 上游节点当前选定的产物（没跑过就是 undefined）。 */
+export function upstreamArtifact(graph: CanvasGraph, edge: CanvasEdge): CanvasArtifact | undefined {
+  const upstream = graph.nodes.find(n => n.id === edge.from.node)
+  const ref = upstream?.outputs[edge.from.slot]
+  return ref ? { id: ref.artifactId, version: ref.version } as CanvasArtifact : undefined
+}
+
+/** 某个输入槽接进来的引用（永远返回数组，别处不用再判空）。 */
+export function inputRefs(node: CanvasNode, slot: string): CanvasInputRef[] {
+  return node.inputs[slot] ?? []
+}
+
+/** 一条入边对应的产物（找不到就是上游还没产出）。 */
+export function artifactOfRef(artifacts: CanvasArtifact[], ref: CanvasInputRef): CanvasArtifact | undefined {
+  return artifacts.find(a => a.id === ref.artifactId)
+}
+
+/**
+ * 剪辑合成要拼的片段顺序。
+ *
+ * 默认按镜号（shotIdx）从小到大 —— "视频在排序才是成片"里的那个排序；
+ * 人在界面上手动调过就按 params.orderIds 走（存的是产物 id 的顺序）。
+ */
+export interface CanvasFragment {
+  /** 这条入边指向的上游节点 id（手动排序按它记）。 */
+  upstreamId: string
+  upstream?: CanvasNode
+  /** 上游当前选定的产物 id（没跑过为空）。 */
+  artifactId?: string
+  shotIdx: number
+  label: string
+}
+
+export function fragmentOrder(graph: CanvasGraph, node: CanvasNode, slot = 'video'): CanvasFragment[] {
+  const items: CanvasFragment[] = incomingEdges(graph, node.id, [slot]).map((edge) => {
+    const upstream = graph.nodes.find(n => n.id === edge.from.node)
+    const shotIdx = upstream?.ref?.shotIdx ?? 0
+    return {
+      upstreamId: edge.from.node,
+      upstream,
+      artifactId: upstream?.outputs[edge.from.slot]?.artifactId,
+      shotIdx,
+      label: shotIdx ? `S${String(shotIdx).padStart(2, '0')}` : (upstream?.title ?? '片段')
+    }
+  })
+  const manual = Array.isArray(node.params.orderIds) ? (node.params.orderIds as string[]) : []
+  if (manual.length) {
+    return [...items].sort((a, b) => {
+      const ia = manual.indexOf(a.upstreamId)
+      const ib = manual.indexOf(b.upstreamId)
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+    })
+  }
+  return [...items].sort((a, b) => a.shotIdx - b.shotIdx)
+}
+
+/**
+ * 挑片并算出导出清单。
+ *
+ * 挑片规则（R1 第 5 节）：产物**已确认**才进包；没确认、没跑过的都不进，并写清原因。
+ * 参数一致性：同一集里各片段的画幅应当一致，不一致的照常打包但单独列出来。
+ */
+export function buildExportManifest(
+  graph: CanvasGraph, artifacts: CanvasArtifact[], node: CanvasNode
+): { manifest: CanvasExportManifest, note: string } {
+  const edges = incomingEdges(graph, node.id, ['cut', 'video'])
+  const manifest: CanvasExportManifest = { exported: [], skipped: [], mismatch: [] }
+  const baseline = String(node.params.baseline ?? '').trim()
+
+  for (const edge of edges) {
+    const upstream = graph.nodes.find(n => n.id === edge.from.node)
+    const shotIdx = upstream?.ref?.shotIdx ?? 0
+    const label = shotIdx ? `S${String(shotIdx).padStart(2, '0')}` : (upstream?.title ?? '未命名片段')
+    const ref = upstream?.outputs[edge.from.slot]
+    const artifact = ref ? artifacts.find(a => a.id === ref.artifactId) : undefined
+    if (!artifact) {
+      manifest.skipped.push({ label, reason: '上游还没跑过' })
+      continue
+    }
+    if (artifact.review !== 'approved') {
+      manifest.skipped.push({ label, reason: artifact.review === 'rejected' ? '已被驳回' : '还没确认' })
+      continue
+    }
+    manifest.exported.push({ label, note: artifact.note })
+    const size = (artifact.note ?? '').split('·')[0]?.trim() ?? ''
+    if (baseline && size && size !== baseline) {
+      manifest.mismatch.push({ label, detail: `${size} ≠ 基准 ${baseline}` })
+    }
+  }
+
+  const note = `${manifest.exported.length} 条进包`
+    + (manifest.skipped.length ? ` · ${manifest.skipped.length} 条未导` : '')
+    + (manifest.mismatch.length ? ` · ${manifest.mismatch.length} 条参数不一致` : '')
+  return { manifest, note }
 }
 
 /** 某个输出槽的下一个版本号（同 node + slot 内自增）。 */

@@ -77,8 +77,10 @@ export function buildCanvasSample(): CanvasSample {
   sceneB.params.appearance = '白幡低垂、棺木半开、香灰积了七天'
   kf1.params.count = '3'
   kf2.params.count = '3'
+  vd1.params.tier = 'final'
   vd2.params.tier = 'preview'
   vd3.params.tier = 'final'
+  exp.params.baseline = '768x1344'
   compose.params.order = 'idx'
   compose.params.merge = 'list'
   board.params.instruction = '第 1 镜再远一点，加一个空镜；每镜不超过 6 秒'
@@ -118,6 +120,9 @@ export function buildCanvasSample(): CanvasSample {
     makeEdge(vd3.id, 'video', compose.id, 'video'),
     makeEdge(board.id, 'table', audio.id, 'table'),
     makeEdge(audio.id, 'audio', compose.id, 'audio'),
+    makeEdge(vd1.id, 'video', exp.id, 'video'),
+    makeEdge(vd2.id, 'video', exp.id, 'video'),
+    makeEdge(vd3.id, 'video', exp.id, 'video'),
     makeEdge(compose.id, 'cut', exp.id, 'cut')
   )
 
@@ -193,6 +198,8 @@ export function buildCanvasSample(): CanvasSample {
     pickedIndex: 1, url: img(3)
   })
   push({ id: 'a_vd2', nodeId: vd2.id, slot: 'video', type: 'video', version: 1, url: img(1), review: 'approved', note: '432x768 · 6.6s' })
+  // S03：上一次跑成功了（产物已确认），这一次改了参数重跑失败 —— 两种状态同时演示
+  push({ id: 'a_vd3', nodeId: vd3.id, slot: 'video', type: 'video', version: 1, url: img(2), review: 'approved', note: '768x1344 · 5.8s' })
 
   // 已跑过的节点补一条成功的 run，指纹按当前参数算 —— 于是它们不会出现在「运行全部」里
   const done = (node: CanvasNode, cost: number, minute: number) => {
@@ -216,16 +223,17 @@ export function buildCanvasSample(): CanvasSample {
   done(board, 8, 9)
   done(kf2, 36, 11)
   done(vd2, 96, 13)
+  done(vd3, 104, 15)
 
   runs.push({ id: `r_${kf1.id}`, nodeId: kf1.id, paramsHash: paramsHash(kf1), status: 'running', startedAt: at(13) })
   runs.push({
-    id: `r_${vd3.id}`,
+    id: `r_${vd3.id}_retry`,
     nodeId: vd3.id,
     paramsHash: paramsHash(vd3),
     status: 'failed',
     error: 'comfy85 未就绪：连接被拒绝（127.0.0.1:8188）',
-    startedAt: at(15),
-    finishedAt: at(16)
+    startedAt: at(17),
+    finishedAt: at(18)
   })
 
   // 拓扑序排一遍，保证示例图本身是合法的（有环会被下面的断言在开发期抓出来）
