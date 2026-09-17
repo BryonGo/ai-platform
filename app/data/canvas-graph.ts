@@ -69,6 +69,11 @@ export interface CanvasRun {
   nodeId: string
   /** 参数 + 输入版本的指纹：一样就不重跑、不重复计费。 */
   paramsHash: string
+  /**
+   * 「继续补充」时带上：这一次是从哪一版产物接着改的。
+   * 模型据此在原稿上改，而不是从零重写（也是版本树的父指针）。
+   */
+  baseArtifactId?: string
   status: 'running' | 'done' | 'failed'
   error?: string
   costCredits?: number

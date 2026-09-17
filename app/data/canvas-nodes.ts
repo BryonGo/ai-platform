@@ -136,6 +136,12 @@ export interface CanvasNodeTypeSpec {
    */
   modelKind?: 'text' | 'image' | 'video' | 'audio'
   /**
+   * 这一步的「指令」是哪个参数 —— 也就是用户在节点上直接敲的那句话
+   * （"拍一个破庙里少年的奇遇"／"第 2 场太拖，压到 20 秒内"）。
+   * 有它就在节点卡上渲染成输入框，参数面板里就不再重复一份。
+   */
+  promptKey?: string
+  /**
    * ready  —— 第一轮真跑（会建任务、会花钱）
    * planned —— 只立类型与端口，第一轮不实现执行，点了提示"本版未开放"
    */
@@ -180,11 +186,13 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     label: '剧本生成',
     subtitle: '用文本模型写出可拍剧本',
     icon: 'i-lucide-pen-line',
-    width: 236,
+    width: 268,
     modelKind: 'text',
+    promptKey: 'prompt',
     inputs: [{ slot: 'material', type: 'text', label: '原始素材', required: true }],
     outputs: [{ slot: 'text', type: 'text', label: '剧本定稿' }],
     params: [
+      { key: 'prompt', label: '要拍什么', kind: 'textarea', placeholder: '例如：破庙里一个少年的奇遇，民国悬疑，竖屏' },
       { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '每一步各用一个模型，互不影响' },
       { key: 'length', label: '目标时长', kind: 'select', options: [{ value: '60', label: '1 分钟竖屏' }, { value: '180', label: '3 分钟短剧' }] },
       { key: 'tone', label: '风格', kind: 'text', placeholder: '例如：民国悬疑、冷冽、少对白' }
@@ -198,8 +206,9 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     label: '剧本拆解',
     subtitle: '拆出人物、场景与分镜',
     icon: 'i-lucide-split',
-    width: 236,
+    width: 268,
     modelKind: 'text',
+    promptKey: 'instruction',
     inputs: [{ slot: 'text', type: 'text', label: '剧本文本', required: true }],
     // 一次拆出三样：人物、场景、分镜。三条线各接各的下游（一个人物/场景一个节点）
     outputs: [
@@ -208,9 +217,9 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       { slot: 'shots', type: 'outline', label: '分镜大纲' }
     ],
     params: [
+      { key: 'instruction', label: '哪里不对 / 怎么改', kind: 'textarea', placeholder: '例如：第 2 场太拖，压到 20 秒内；人物只留两个' },
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
-      { key: 'granularity', label: '拆解粒度', kind: 'select', options: [{ value: 'shot', label: '按镜头（默认）' }, { value: 'scene', label: '按场次' }] },
-      { key: 'note', label: '补充要求', kind: 'text', placeholder: '例如：每镜不超过 6 秒' }
+      { key: 'granularity', label: '拆解粒度', kind: 'select', options: [{ value: 'shot', label: '按镜头（默认）' }, { value: 'scene', label: '按场次' }] }
     ],
     stage: 'ready',
     estimateCredits: 5
@@ -223,6 +232,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     icon: 'i-lucide-user-round',
     width: 236,
     modelKind: 'image',
+    promptKey: 'appearance',
     inputs: [{ slot: 'characters', type: 'outline', label: '人物列表', required: true }],
     outputs: [{ slot: 'image', type: 'image', label: '三视图' }],
     params: [
@@ -243,6 +253,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     icon: 'i-lucide-mountain-snow',
     width: 236,
     modelKind: 'image',
+    promptKey: 'appearance',
     inputs: [{ slot: 'scenes', type: 'outline', label: '场景列表', required: true }],
     outputs: [{ slot: 'image', type: 'image', label: '场景参考图' }],
     params: [
@@ -280,6 +291,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     icon: 'i-lucide-image-plus',
     width: 248,
     modelKind: 'image',
+    promptKey: 'prompt',
     inputs: [
       { slot: 'person', type: 'image', label: '人物参考', required: true },
       { slot: 'scene', type: 'image', label: '场景参考', required: true },
@@ -302,6 +314,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     icon: 'i-lucide-clapperboard',
     width: 248,
     modelKind: 'video',
+    promptKey: 'h3Prompt',
     inputs: [
       { slot: 'firstFrame', type: 'image', label: '首帧图', required: true },
       { slot: 'shot', type: 'table', label: '这一镜的关键词' }

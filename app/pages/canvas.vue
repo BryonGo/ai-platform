@@ -63,6 +63,12 @@ const selectedId = ref('')
 const toast = ref('')
 const detailOpen = ref(true)
 const runningIds = ref<string[]>([])
+/** 正在流式输出的文本（真接口接上后由 SSE 推，现在本地逐字模拟）。 */
+const streaming = ref<Record<string, string>>({})
+/** 「继续补充」的输入：在这一版基础上还想改什么。 */
+const followUp = ref('')
+/** 每次运行带进来的临时输入（补充要求），按 runId 存，模拟用。 */
+const runInputs = new Map<string, { followUp?: string }>()
 /** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
 const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
@@ -126,7 +132,8 @@ const flowNodes = computed<Node[]>(() =>
       spec: nodeTypeSpec(n.kind),
       state: stateOf(n),
       artifacts: artifacts.value.filter(a => a.nodeId === n.id),
-      modelLabel: modelLabelOf(n)
+      modelLabel: modelLabelOf(n),
+      streaming: streaming.value[n.id]
     }
   }))
 )
@@ -279,7 +286,10 @@ function expand(nodeId: string): void {
  * 现在是本地模拟：写一条 running 的 run → 一会儿写产物、写 done。
  * 后端接上以后，这里换成 POST /canvas/node/{id}/run + SSE 回推，其余逻辑不变。
  */
-async function runNode(nodeId: string, opts: { silent?: boolean } = {}): Promise<void> {
+async function runNode(
+  nodeId: string,
+  opts: { silent?: boolean, base?: CanvasArtifact, followUp?: string } = {}
+): Promise<void> {
   const node = graph.value.nodes.find(n => n.id === nodeId)
   if (!node) return
   const spec = nodeTypeSpec(node.kind)
@@ -302,10 +312,13 @@ async function runNode(nodeId: string, opts: { silent?: boolean } = {}): Promise
   const run: CanvasRun = {
     id: `r_${nodeId}_${Date.now().toString(36)}`,
     nodeId,
+    // 「继续补充」时带上基础版本：模型在原稿上改，而不是从零重写
+    baseArtifactId: opts.base?.id,
     paramsHash: paramsHash(node),
     status: 'running',
     startedAt: new Date().toISOString()
   }
+  if (opts.followUp) runInputs.set(run.id, { followUp: opts.followUp })
   runs.value = [...runs.value, run]
 
   await simulateRun(node, run)
@@ -315,8 +328,73 @@ async function runNode(nodeId: string, opts: { silent?: boolean } = {}): Promise
 
 /** 本地模拟：出一个新版本的产物，并把它设成当前选定（下游输入随之更新）。 */
 async function simulateRun(node: CanvasNode, run: CanvasRun): Promise<void> {
-  await new Promise(resolve => window.setTimeout(resolve, 900 + Math.random() * 700))
+  const type = nodeTypeSpec(node.kind).outputs[0]?.type ?? 'text'
+  if (type === 'text' || type === 'outline') {
+    // 文本类走流式（真接口是 SSE）：逐字推给界面，人能看到它在写
+    await streamInto(node.id, buildText(node, run))
+  } else {
+    await new Promise(resolve => window.setTimeout(resolve, 900 + Math.random() * 700))
+  }
   completeRun(node, run)
+}
+
+/** 本地模拟的流式输出：每 30ms 推几个字。 */
+async function streamInto(nodeId: string, full: string): Promise<void> {
+  streaming.value = { ...streaming.value, [nodeId]: '' }
+  for (let i = 4; i <= full.length; i += 4) {
+    await new Promise(resolve => window.setTimeout(resolve, 30))
+    streaming.value = { ...streaming.value, [nodeId]: full.slice(0, i) }
+  }
+  streaming.value = { ...streaming.value, [nodeId]: full }
+}
+
+/**
+ * 本地模拟"模型写出来的东西"。
+ *
+ * 真接口接上后这一段整个删掉 —— 文本由模型流式返回，这里只是为了让界面先跑起来。
+ */
+function buildText(node: CanvasNode, run: CanvasRun): string {
+  const ask = String(node.params.prompt ?? '').trim()
+  const instruction = String(node.params.instruction ?? '').trim()
+  const base = run.baseArtifactId ? artifacts.value.find(a => a.id === run.baseArtifactId) : undefined
+  const follow = runInputs.get(run.id)?.followUp
+  const spec = nodeTypeSpec(node.kind)
+
+  let body: string
+  if (node.kind === 'script_gen') {
+    const title = ask ? ask.slice(0, 14) : '回魂夜'
+    body = `第 1 集 · ${title}\n\n`
+      + '场 1 破庙 · 夜（外）\n暴雨敲着残破的屋脊。少年抱着断了腿的纸灯躲进来，神像的阴影里有人先到。\n\n'
+      + '场 2 灵堂 · 夜（内）\n白幡低垂，棺木半开。他认出供桌上的名字——那是他自己。\n\n'
+      + `（按「${ask || '破庙里少年的奇遇'}」写的第 1 稿，${spec.subtitle}）`
+  } else if (node.kind === 'script_split') {
+    body = '人物：少年（主角）· 守夜人（反派）\n'
+      + '场景：破庙 · 夜 / 灵堂 · 夜\n'
+      + '分镜大纲：3 场 · 3 镜（远景破庙 → 中景回头 → 特写瞳孔）\n'
+      + `（拆解依据：${instruction || '默认拆法'}）`
+  } else {
+    body = `${spec.label}完成：按「${ask || instruction || '当前设置'}」产出的第 ${nextVersion(artifacts.value, node.id, spec.outputs[0]?.slot ?? 'text')} 版`
+  }
+
+  if (base?.text) {
+    body = `（在第 ${base.version} 版基础上改：${follow || instruction || '按新要求重写'}）\n\n${body}`
+  } else if (follow) {
+    body = `（补充要求：${follow}）\n\n${body}`
+  }
+  return body
+}
+
+/** 继续补充：带着这一版 + 新的补充要求重跑，产出下一版。 */
+async function continueFrom(nodeId: string): Promise<void> {
+  const base = shownArtifact.value
+  if (!base) return
+  const note = followUp.value.trim()
+  if (!note) {
+    showToast('先写一句"还要改什么"')
+    return
+  }
+  followUp.value = ''
+  await runNode(nodeId, { base, followUp: note })
 }
 
 /** 结算一条运行：写产物 + 标记成功。示例数据里预置的"运行中"也走这里落地。 */
@@ -341,8 +419,12 @@ function completeRun(node: CanvasNode, run: CanvasRun): void {
   if (type === 'image' || type === 'video') {
     artifact.url = `/mock/home/explore-0${(version % 4) + 1}.png`
   }
-  if (type === 'text') artifact.text = String(node.params.text ?? '')
-  if (type === 'outline') artifact.text = '拆解完成：场次与镜头已分好，可继续生成角色与分镜表'
+  if (type === 'text' || type === 'outline') {
+    artifact.text = buildText(node, run)
+    const rest = { ...streaming.value }
+    delete rest[node.id]
+    streaming.value = rest
+  }
   if (type === 'table') {
     artifact.rows = Array.from({ length: 3 }, (_, i) => ({
       idx: i + 1,
@@ -659,6 +741,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @rename="rename"
                 @pick="pick"
                 @review="review"
+                @param="(id: string, key: string, value: string) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
                 @open="selectedId = $event"
               />
             </template>
@@ -873,6 +956,17 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
               </label>
             </section>
 
+            <!-- 当前选用产物的正文（剧本/大纲要能整段读） -->
+            <section
+              v-if="shownArtifact?.text"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                当前选用 · v{{ shownArtifact.version }} 正文
+              </p>
+              <pre class="cg-fulltext">{{ shownArtifact.text }}</pre>
+            </section>
+
             <!-- 产物版本 -->
             <section class="cg-block">
               <p class="cg-block-title">
@@ -943,6 +1037,29 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
               </div>
             </section>
 
+            <!-- 继续补充：带着选中的这一版接着改 -->
+            <section
+              v-if="shownArtifact && selectedSpec.stage === 'ready'"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                继续补充 <span class="cg-block-sub">在第 {{ shownArtifact.version }} 版上改</span>
+              </p>
+              <textarea
+                v-model="followUp"
+                class="cg-input cg-input--area"
+                placeholder="还要改什么？例如：第 2 场太拖，压到 20 秒内"
+              />
+              <button
+                class="cg-mini cg-mini--accent cg-follow"
+                type="button"
+                :disabled="!!runningCount"
+                @click="continueFrom(selected.id)"
+              >
+                <i class="i-lucide-sparkles" /> 带补充再生成一版
+              </button>
+            </section>
+
             <!-- 运行记录 -->
             <section class="cg-block">
               <p class="cg-block-title">
@@ -966,6 +1083,10 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                   {{ r.status === 'done' ? '成功' : r.status === 'failed' ? '失败' : '运行中' }}
                 </span>
                 <span class="cg-run-cost">{{ r.costCredits ? creditsToYuan(r.costCredits) : '—' }}</span>
+                <span
+                  v-if="r.baseArtifactId"
+                  class="cg-run-base"
+                >改自 v{{ nodeVersions.find(a => a.id === r.baseArtifactId)?.version ?? '?' }}</span>
                 <span class="cg-run-hash">#{{ r.paramsHash }}</span>
               </div>
               <p
@@ -1252,6 +1373,23 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 .cg-mini--accent:hover:not(:disabled) { background: var(--hg3-accent-hi); }
 
 .cg-empty-line { margin: 0; font-size: 11px; color: var(--hg3-faint); }
+
+.cg-fulltext {
+  margin: 0;
+  max-height: 210px;
+  overflow: auto;
+  padding: 8px 9px;
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  color: var(--hg3-ink);
+  background: var(--hg3-well);
+  border-radius: 8px;
+}
+
+.cg-follow { margin-top: 7px; }
+.cg-run-base { color: var(--hg3-i-orange); font-size: 10px; }
 
 .cg-run { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
 .cg-run-state[data-tone='ok'] { color: var(--hg3-ok); }

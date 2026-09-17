@@ -62,8 +62,10 @@ export function buildCanvasSample(): CanvasSample {
   const exp = createNode('export', { x: 2480, y: 300 }, '成片导出')
 
   script.params.text = '一句话梗概：她在自己婚礼的夜里死去，七天后又在同一座破庙里醒来。\n要求：民国悬疑、竖屏、少对白。'
+  write.params.prompt = '破庙里一个少年的奇遇，民国悬疑，竖屏'
   write.params.tone = '民国悬疑、冷冽、少对白'
   write.params.length = '180'
+  split.params.instruction = '人物只留两个；第 2 场不要拖，压到 20 秒内'
   castA.params.name = '林知遥'
   castA.params.appearance = '红衣、长发、左眉一道旧疤；眼神克制，笑的时候只看嘴角'
   castB.params.name = '陆青'

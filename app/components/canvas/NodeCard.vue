@@ -22,6 +22,8 @@ const props = defineProps<{
     artifacts: CanvasArtifact[]
     /** 这一步用的模型名（每一步不一样，显示出来才知道在烧哪个模型的钱）。 */
     modelLabel?: string
+    /** 正在流式输出的文本（SSE 未接前由本地模拟逐字推）。 */
+    streaming?: string
   }
   selected?: boolean
 }>()
@@ -35,6 +37,7 @@ const emit = defineEmits<{
   (e: 'pick', nodeId: string, artifactId: string): void
   (e: 'review', nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void
   (e: 'open', nodeId: string): void
+  (e: 'param', nodeId: string, key: string, value: string): void
 }>()
 
 const HEADER_H = 38
@@ -90,6 +93,10 @@ function commitRename(): void {
   const next = renameText.value.trim()
   if (next && next !== node.value.title) emit('rename', node.value.id, next)
 }
+
+/** 这一步的「指令」输入框（有 promptKey 的节点才有）。 */
+const promptSpec = computed(() => spec.value.params.find(p => p.key === spec.value.promptKey))
+const promptValue = computed(() => String(node.value.params[spec.value.promptKey ?? ''] ?? ''))
 
 const tableRows = computed(() => shown.value?.rows ?? [])
 const textPreview = computed(() => {
@@ -213,13 +220,39 @@ const textPreview = computed(() => {
 
     <!-- 内容预览 -->
     <div class="cg-node-body">
-      <!-- 文字 / 大纲 -->
-      <p
+      <!-- 文字 / 大纲：上面是「这一步要它干什么」的输入框，下面是结果 -->
+      <div
         v-if="spec.outputs[0]?.type === 'text' || spec.outputs[0]?.type === 'outline'"
-        class="cg-text"
+        class="cg-textblock"
       >
-        {{ textPreview || '还没有内容' }}
-      </p>
+        <textarea
+          v-if="promptSpec && state !== 'running'"
+          class="cg-prompt"
+          rows="2"
+          :value="promptValue"
+          :placeholder="promptSpec.placeholder ?? '这一步要它做什么？'"
+          @click.stop
+          @input="emit('param', node.id, spec.promptKey!, ($event.target as HTMLTextAreaElement).value)"
+        />
+        <p
+          v-if="props.data.streaming"
+          class="cg-text cg-text--live"
+        >
+          {{ props.data.streaming }}<span class="cg-caret" />
+        </p>
+        <p
+          v-else-if="textPreview"
+          class="cg-text"
+        >
+          {{ textPreview }}
+        </p>
+        <p
+          v-else
+          class="cg-prompt-hint"
+        >
+          写完点下面的运行
+        </p>
+      </div>
 
       <!-- 分镜表 -->
       <div
@@ -578,6 +611,41 @@ const textPreview = computed(() => {
   padding: 8px 10px 10px;
   border-top: 1px solid var(--hg3-line);
 }
+
+.cg-textblock { display: flex; flex-direction: column; gap: 6px; }
+
+.cg-prompt {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--hg3-ink);
+  background: var(--hg3-well);
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.cg-prompt:focus { outline: none; border-color: var(--hg3-accent-line); }
+.cg-prompt-hint { margin: 0; font-size: 10.5px; color: var(--hg3-faint); }
+
+.cg-text--live { color: var(--hg3-ink); }
+
+.cg-caret {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  margin-left: 2px;
+  vertical-align: -1px;
+  background: var(--hg3-accent-hi);
+  animation: cg-blink 1s steps(2, start) infinite;
+}
+
+@keyframes cg-blink {
+  to { opacity: 0; }
+}
+
+.cg-empty-line { margin: 0; font-size: 10.5px; color: var(--hg3-faint); }
 
 .cg-text {
   margin: 0;
