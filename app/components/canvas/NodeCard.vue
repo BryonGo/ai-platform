@@ -8,7 +8,7 @@
  * 这里**不做业务判断**：能不能跑、跑成什么样由页面决定，卡片只负责显示和把动作抛上去。
  */
 import { Handle, Position } from '@vue-flow/core'
-import type { CanvasArtifact, CanvasNode, CanvasNodeState } from '~/data/canvas-graph'
+import type { CanvasArtifact, CanvasNode, CanvasNodeState, CanvasShotRow } from '~/data/canvas-graph'
 import type { CanvasNodeTypeSpec } from '~/data/canvas-nodes'
 import { NODE_STATE_META, artifactsOf } from '~/data/canvas-graph'
 import { framesToSeconds, groupMeta, portMeta } from '~/data/canvas-nodes'
@@ -21,6 +21,14 @@ const props = defineProps<{
     state: CanvasNodeState
     /** 参数或输入变了、还没重跑（界面给个"待重跑"的提示）。 */
     dirty?: boolean
+    /** 鼠标悬停某条连线时，这条线两端的节点。 */
+    linked?: boolean
+    /** H3 帧数网格与模型候选：卡片上也能改参数，取值必须与右栏同一份。 */
+    frameGrid?: number[]
+    modelOptions?: Record<string, { value: string, label: string }[]>
+    /** 分镜表当前的行（草稿优先）与"改过没存"标记。 */
+    tableRows?: CanvasShotRow[]
+    tableDirty?: boolean
     artifacts: CanvasArtifact[]
     /** 这一步用的模型名（每一步不一样，显示出来才知道在烧哪个模型的钱）。 */
     modelLabel?: string
@@ -42,6 +50,9 @@ const emit = defineEmits<{
   (e: 'open', nodeId: string): void
   (e: 'param', nodeId: string, key: string, value: string): void
   (e: 'collapse', nodeId: string, collapsed: boolean): void
+  (e: 'row-update', nodeId: string, index: number, key: keyof CanvasShotRow, value: string | number): void
+  (e: 'rows-save', nodeId: string): void
+  (e: 'rows-discard', nodeId: string): void
 }>()
 
 const HEADER_H = 38
@@ -81,6 +92,9 @@ function portTop(index: number): string {
 }
 
 const menuOpen = ref(false)
+/** 卡片内的参数区是否展开（就地改参数，不用开右栏）。 */
+const paramsOpen = ref(false)
+const editableParams = computed(() => spec.value.params.filter(p => p.key !== spec.value.promptKey))
 function closeMenu(): void {
   menuOpen.value = false
 }
@@ -102,7 +116,9 @@ function commitRename(): void {
 const promptSpec = computed(() => spec.value.params.find(p => p.key === spec.value.promptKey))
 const promptValue = computed(() => String(node.value.params[spec.value.promptKey ?? ''] ?? ''))
 
-const tableRows = computed(() => shown.value?.rows ?? [])
+const tableRows = computed(() => props.data.tableRows ?? shown.value?.rows ?? [])
+/** 分镜表节点：行就地可改（点景别打字、点帧数弹下拉），改完存新版本。 */
+const editableTable = computed(() => node.value.kind === 'shotlist' && tableRows.value.length > 0)
 
 /**
  * 多输出槽节点的产出摘要（剧本拆解这种：人物 / 场景 / 分镜各一口）。
@@ -134,7 +150,7 @@ const textPreview = computed(() => {
 
 <template>
   <div
-    :class="['cg-node', `cg-node--${spec.group}`, { 'is-active': selected, 'is-running': state === 'running' }]"
+    :class="['cg-node', `cg-node--${spec.group}`, { 'is-active': selected, 'is-running': state === 'running', 'is-linked': props.data.linked }]"
     :style="{ width: `${spec.width}px` }"
     @click="emit('open', node.id)"
   >
@@ -338,13 +354,36 @@ const textPreview = computed(() => {
             <span>镜</span><span>景别</span><span>帧</span><span>秒</span>
           </div>
           <div
-            v-for="r in tableRows.slice(0, 6)"
-            :key="r.idx"
+            v-for="(r, i) in tableRows.slice(0, 6)"
+            :key="i"
             class="cg-table-row"
           >
             <span>{{ String(r.idx).padStart(2, '0') }}</span>
-            <span>{{ r.shotSize }}</span>
-            <span>{{ r.frames }}</span>
+            <input
+              v-if="editableTable"
+              class="cg-cell"
+              :value="r.shotSize"
+              placeholder="景别"
+              @click.stop
+              @input="emit('row-update', node.id, i, 'shotSize', ($event.target as HTMLInputElement).value)"
+            >
+            <span v-else>{{ r.shotSize }}</span>
+            <select
+              v-if="editableTable"
+              class="cg-cell cg-cell--num"
+              :value="r.frames"
+              @click.stop
+              @change="emit('row-update', node.id, i, 'frames', Number(($event.target as HTMLSelectElement).value))"
+            >
+              <option
+                v-for="f in (props.data.frameGrid ?? [r.frames])"
+                :key="f"
+                :value="f"
+              >
+                {{ f }}
+              </option>
+            </select>
+            <span v-else>{{ r.frames }}</span>
             <span>{{ framesToSeconds(r.frames) }}</span>
           </div>
           <p
@@ -352,6 +391,31 @@ const textPreview = computed(() => {
             class="cg-table-more"
           >
             还有 {{ tableRows.length - 6 }} 镜
+          </p>
+          <div
+            v-if="editableTable && props.data.tableDirty"
+            class="cg-row-actions"
+          >
+            <button
+              class="cg-btn"
+              type="button"
+              @click.stop="emit('rows-save', node.id)"
+            >
+              <i class="i-lucide-save" /> 保存为新版本
+            </button>
+            <button
+              class="cg-btn cg-btn--ghost"
+              type="button"
+              @click.stop="emit('rows-discard', node.id)"
+            >
+              放弃
+            </button>
+          </div>
+          <p
+            v-else-if="editableTable"
+            class="cg-table-more"
+          >
+            格子里能直接改，改完存新版本
           </p>
         </template>
       </div>
@@ -461,6 +525,21 @@ const textPreview = computed(() => {
       </p>
     </div>
 
+    <div
+      v-if="paramsOpen && editableParams.length"
+      class="cg-node-params"
+    >
+      <CanvasParamFields
+        :node="node"
+        :spec="spec"
+        :frame-grid="props.data.frameGrid ?? []"
+        :model-options="props.data.modelOptions"
+        :skip-key="spec.promptKey"
+        dense
+        @update="(key: string, value: unknown) => emit('param', node.id, key, String(value))"
+      />
+    </div>
+
     <footer class="cg-node-foot">
       <button
         v-if="spec.stage === 'planned'"
@@ -515,6 +594,18 @@ const textPreview = computed(() => {
         </button>
       </span>
 
+      <button
+        v-if="editableParams.length"
+        class="cg-foot-toggle"
+        type="button"
+        :class="{ 'is-on': paramsOpen }"
+        :title="paramsOpen ? '收起参数' : '在卡片上改参数'"
+        @click.stop="paramsOpen = !paramsOpen"
+      >
+        <i :class="paramsOpen ? 'i-lucide-chevron-up' : 'i-lucide-sliders-horizontal'" />
+        参数
+      </button>
+
       <span
         v-if="props.data.modelLabel"
         class="cg-model"
@@ -551,6 +642,11 @@ const textPreview = computed(() => {
 
 .cg-node.is-running {
   border-color: var(--hg3-run);
+}
+
+.cg-node.is-linked {
+  border-color: var(--hg3-accent-line);
+  box-shadow: 0 0 0 3px rgb(217 131 77 / 12%), 0 10px 26px rgb(0 0 0 / 34%);
 }
 
 .cg-node-head {
@@ -771,6 +867,22 @@ const textPreview = computed(() => {
 .cg-table-row span:first-child { color: var(--hg3-ink); }
 .cg-table-more { margin: 2px 0 0; font-size: 10px; color: var(--hg3-faint); }
 
+.cg-cell {
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  font-size: 10.5px;
+  color: var(--hg3-ink);
+  background: var(--hg3-well);
+  border: 1px solid var(--hg3-line);
+  border-radius: 4px;
+}
+
+.cg-cell:focus { outline: none; border-color: var(--hg3-accent-line); }
+.cg-cell--num { padding: 0 2px; }
+.cg-row-actions { display: flex; gap: 5px; margin-top: 6px; }
+
 .cg-images { display: flex; gap: 5px; }
 
 .cg-image-btn {
@@ -946,6 +1058,27 @@ const textPreview = computed(() => {
 }
 
 .cg-ver.is-on { color: var(--hg3-ink); background: var(--hg3-accent-soft); box-shadow: inset 0 0 0 1px var(--hg3-accent-line); }
+.cg-node-params {
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--hg3-line);
+  background: var(--hg3-well);
+}
+
+.cg-foot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 6%);
+  border-radius: 999px;
+}
+
+.cg-foot-toggle:hover { color: var(--hg3-ink); background: rgb(255 255 255 / 12%); }
+.cg-foot-toggle.is-on { color: var(--hg3-ink); background: var(--hg3-accent-soft); }
+
 .cg-model {
   display: inline-flex;
   align-items: center;

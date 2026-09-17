@@ -56,6 +56,14 @@ import {
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasParamSpec, CanvasPortSpec } from '~/data/canvas-nodes'
 import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import type { CanvasTemplateInfo } from '~/data/canvas-templates'
+import {
+  emptyCanvas,
+  listTemplates,
+  loadTemplate,
+  removeTemplate,
+  saveTemplate
+} from '~/data/canvas-templates'
 import { createHistory } from '~/data/canvas-history'
 import { buildCanvasSample } from '~/data/canvas-sample'
 
@@ -80,6 +88,60 @@ const streaming = ref<Record<string, string>>({})
 const followUp = ref('')
 /** 右键菜单：点到了什么 + 屏幕坐标。 */
 const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge' | 'selection' | 'connect', nodeId?: string, edgeId?: string } | null>(null)
+// ---------------------------------------------------------------- 新建 / 模板
+
+/** 起始面板：新建（空白或套模板）与另存为模板。 */
+const startPanel = ref<{ mode: 'new' | 'save' } | null>(null)
+const templates = ref<CanvasTemplateInfo[]>([])
+
+function openStart(mode: 'new' | 'save'): void {
+  templates.value = listTemplates()
+  startPanel.value = { mode }
+}
+
+/** 换一张图（新建/套模板）后，历史基线要重建，否则能"撤销"回上一张图，很怪。 */
+function replaceCanvas(payload: { graph: CanvasGraph, artifacts: CanvasArtifact[], runs: CanvasRun[] }): void {
+  graph.value = payload.graph
+  artifacts.value = payload.artifacts
+  runs.value = payload.runs
+  selectedId.value = ''
+  clearSelection()
+  rowDrafts.value = {}
+  demo.value = false
+  history.reset(snapshotNow())
+  historyVersion.value++
+  nextTick(() => fit())
+}
+
+function newBlank(): void {
+  startPanel.value = null
+  replaceCanvas(emptyCanvas())
+  showToast('空白画布：从左栏拖节点，或从端口拖线到空白处建节点')
+}
+
+function useTemplate(id: string): void {
+  const payload = loadTemplate(id)
+  startPanel.value = null
+  if (!payload) {
+    showToast('这个模板读不出来了')
+    return
+  }
+  replaceCanvas(payload)
+  showToast('已套用模板')
+}
+
+function saveAsTemplate(name: string): void {
+  const saved = saveTemplate(name, JSON.parse(JSON.stringify(graph.value)) as CanvasGraph)
+  startPanel.value = null
+  showToast(saved ? `已存成模板「${saved.name}」（存在这台浏览器本地）` : '这台浏览器存不了模板')
+}
+
+function dropTemplate(id: string): void {
+  removeTemplate(id)
+  templates.value = listTemplates()
+  showToast('模板已删除')
+}
+
 // ---------------------------------------------------------------- 撤销 / 重做
 //
 // 做法：整图快照（graph + artifacts 的 JSON），深监听变化后压栈，上限 50 步。
@@ -231,6 +293,14 @@ function showToast(text: string): void {
   }, 2600)
 }
 
+/** 悬停某条线时，它两端的节点算"被关联"。 */
+function linkHighlighted(nodeId: string): boolean {
+  const edgeId = hoveredEdge.value
+  if (!edgeId) return false
+  const edge = graph.value.edges.find(e => e.id === edgeId)
+  return !!edge && (edge.from.node === nodeId || edge.to.node === nodeId)
+}
+
 function stateOf(node: CanvasNode): CanvasNodeState {
   return nodeState(graph.value, node, runs.value, artifacts.value)
 }
@@ -256,8 +326,13 @@ const flowNodes = computed<Node[]>(() =>
       spec: nodeTypeSpec(n.kind),
       state: stateOf(n),
       dirty: isDirty(n, runs.value),
+      linked: linkHighlighted(n.id),
       artifacts: artifacts.value.filter(a => a.nodeId === n.id),
       modelLabel: modelLabelOf(n),
+      frameGrid: graph.value.frameGrid,
+      tableRows: tableRowsOf(n),
+      tableDirty: rowsDirty(n.id),
+      modelOptions: modelOptions.value,
       streaming: streaming.value[n.id]
     }
   }))
@@ -276,9 +351,10 @@ const flowEdges = computed<Edge[]>(() => {
       target: e.to.node,
       sourceHandle: e.from.slot,
       targetHandle: e.to.slot,
-      type: 'smoothstep',
+      type: 'cg',
       animated: stateOf(from) === 'running',
       style: { stroke: color, strokeWidth: 1.6 },
+      data: { color },
       markerEnd: MarkerType.ArrowClosed
     })
   }
@@ -353,6 +429,14 @@ function onNodeDragStop(): void {
     const node = graph.value.nodes.find(n => n.id === flowNode.id)
     if (node) node.at = { x: Math.round(flowNode.position.x), y: Math.round(flowNode.position.y) }
   }
+}
+
+/** 鼠标停在哪条线上（两端节点跟着轻微高亮，看清"这条线连的是谁"）。 */
+const hoveredEdge = ref<string | null>(null)
+
+function removeEdge(edgeId: string): void {
+  disconnect(graph.value, edgeId)
+  hoveredEdge.value = null
 }
 
 function onEdgesChange(changes: { type: string, id?: string }[]): void {
@@ -434,6 +518,8 @@ const paneMenuItems = computed<ContextMenuItem[]>(() => [
   { key: 'redo', label: '重做', icon: 'i-lucide-redo-2', hint: '⇧⌘Z', disabled: !canRedo.value },
   { key: 'collapse-all', label: '全部折叠', icon: 'i-lucide-minimize-2' },
   { key: 'expand-all', label: '全部展开', icon: 'i-lucide-maximize-2' },
+  { key: 'new', label: '新建画布 / 套模板', icon: 'i-lucide-file-plus-2' },
+  { key: 'save-template', label: '另存为模板', icon: 'i-lucide-bookmark-plus' },
   { key: 'fit', label: '适应画布', icon: 'i-lucide-maximize' },
   { key: 'reset', label: '重置示例', icon: 'i-lucide-rotate-ccw' },
   { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined }
@@ -573,6 +659,8 @@ function onMenuPick(key: string): void {
     case 'detach': if (nodeId) detachNode(nodeId); break
     case 'remove': if (nodeId) drop(nodeId); break
     case 'paste': pasteNode(at ? { x: Math.round(at.x), y: Math.round(at.y) } : undefined); break
+    case 'new': openStart('new'); break
+    case 'save-template': openStart('save'); break
     case 'fit': fit(); break
     case 'reset': resetSample(); break
     case 'run-all': void runAll(); break
@@ -1147,50 +1235,67 @@ const selectedTableRows = computed(() => {
 /**
  * 分镜表是一行一镜，改一镜不该把整张图重跑。
  *
- * 所以编辑不直接改老版本：攒一份草稿，点「保存为新版本」才生成 v(n+1)，
- * 并把新的那一版设为当前选用 —— 下游因此变脏，只有依赖这一镜的节点需要重跑。
+ * 草稿**按节点 id 存**（不是只跟"当前选中的节点"绑定）：这样卡片上直接改、
+ * 右栏里改，用的是同一份草稿，不会出现"两处显示不一样"。
+ * 点「保存为新版本」才生成 v(n+1) 并设为当前选用，老版本不动。
  */
-const draftRows = ref<CanvasShotRow[]>([])
-const draftDirty = ref(false)
+const rowDrafts = ref<Record<string, { rows: CanvasShotRow[], dirty: boolean }>>({})
 
-watch(
-  () => shownArtifact.value?.id,
-  () => {
-    const rows = shownArtifact.value?.rows
-    draftRows.value = rows ? rows.map(r => ({ ...r })) : []
-    draftDirty.value = false
-  },
-  { immediate: true }
-)
-
-function updateRow(index: number, key: keyof CanvasShotRow, value: string | number): void {
-  const row = draftRows.value[index]
-  if (!row) return
-  if (key === 'frames') row.frames = Number(value)
-  else if (key === 'idx') row.idx = Number(value)
-  else (row as Record<string, unknown>)[key] = value
-  draftDirty.value = true
+/** 该节点当前的分镜表：有草稿用草稿，否则用当前选用产物的行。 */
+function tableRowsOf(node: CanvasNode): CanvasShotRow[] {
+  const draft = rowDrafts.value[node.id]
+  if (draft) return draft.rows
+  const slot = nodeTypeSpec(node.kind).outputs[0]?.slot ?? ''
+  const picked = node.outputs[slot]
+  const artifact = picked ? artifacts.value.find(a => a.id === picked.artifactId) : undefined
+  return artifact?.rows ?? []
 }
 
-/** 把草稿存成新版本（不动老版本）。 */
-function saveRowsAsVersion(): void {
-  const node = selected.value
-  const base = shownArtifact.value
-  if (!node || !base) return
-  const version = nextVersion(artifacts.value, node.id, base.slot)
+function rowsDirty(nodeId: string): boolean {
+  return !!rowDrafts.value[nodeId]?.dirty
+}
+
+function updateRow(nodeId: string, index: number, key: keyof CanvasShotRow, value: string | number): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const rows = (rowDrafts.value[nodeId]?.rows ?? tableRowsOf(node)).map(r => ({ ...r }))
+  const row = rows[index]
+  if (!row) return
+  if (key === 'frames' || key === 'idx') row[key] = Number(value)
+  else (row as Record<string, unknown>)[key] = value
+  rowDrafts.value = { ...rowDrafts.value, [nodeId]: { rows, dirty: true } }
+}
+
+function discardRows(nodeId: string): void {
+  const rest = { ...rowDrafts.value }
+  delete rest[nodeId]
+  rowDrafts.value = rest
+}
+
+/** 把草稿存成新版本（不动老版本），并把新的那一版设为当前选用。 */
+function saveRowsAsVersion(nodeId: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const rows = tableRowsOf(node)
+  const slot = nodeTypeSpec(node.kind).outputs[0]?.slot ?? 'table'
+  const picked = node.outputs[slot]
+  const base = picked ? artifacts.value.find(a => a.id === picked.artifactId) : undefined
+  const version = nextVersion(artifacts.value, node.id, slot)
   const artifact: CanvasArtifact = {
-    ...base,
     id: `a_${node.id}_${version}`,
+    nodeId: node.id,
+    slot,
+    type: 'table',
     version,
-    rows: draftRows.value.map(r => ({ ...r })),
-    note: `${draftRows.value.length} 镜 · 手工改过`,
+    rows: rows.map(r => ({ ...r })),
+    note: `${rows.length} 镜 · 手工改过`,
     review: 'pending',
     createdAt: new Date().toISOString()
   }
   artifacts.value = [...artifacts.value, artifact]
   selectArtifact(graph.value, artifact)
-  draftDirty.value = false
-  showToast(`已存为 v${version}（待确认）—— 认可后下游才能跑`)
+  discardRows(nodeId)
+  showToast(`已存为 v${version}（待确认）—— 认可后下游才能跑${base ? '' : ''}`)
 }
 
 function setParam(node: CanvasNode, key: string, value: unknown): void {
@@ -1350,6 +1455,13 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
         <button
           class="cg-ghost"
           type="button"
+          @click="openStart('new')"
+        >
+          <i class="i-lucide-file-plus-2" /> 新建
+        </button>
+        <button
+          class="cg-ghost"
+          type="button"
           @click="fit"
         >
           <i class="i-lucide-maximize" /> 适应画布
@@ -1431,10 +1543,21 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @rename="rename"
                 @pick="pick"
                 @pick-item="pickItem"
+                @row-update="(id: string, index: number, key: keyof CanvasShotRow, value: string | number) => updateRow(id, index, key, value)"
+                @rows-save="saveRowsAsVersion"
+                @rows-discard="discardRows"
                 @collapse="(id: string, collapsed: boolean) => { const n = graph.nodes.find(x => x.id === id); if (n) n.collapsed = collapsed }"
                 @review="review"
                 @param="(id: string, key: string, value: string) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
                 @open="selectedId = $event"
+              />
+            </template>
+
+            <template #edge-cg="edgeProps">
+              <CanvasEdgeLine
+                v-bind="edgeProps"
+                @hover="hoveredEdge = $event"
+                @remove="removeEdge"
               />
             </template>
 
@@ -1481,6 +1604,37 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           </div>
         </ClientOnly>
 
+        <!-- 空画布引导：没有任何节点时告诉人从哪儿开始 -->
+        <div
+          v-if="!graph.nodes.length"
+          class="cg-blank"
+        >
+          <i class="i-lucide-mouse-pointer-2" />
+          <p class="cg-blank-title">
+            这张画布还是空的
+          </p>
+          <p class="cg-blank-sub">
+            从左边「节点库」拖一个节点进来（先放「剧本输入」），<br>
+            也可以从端口拖线到空白处、松手直接建下一个节点。
+          </p>
+          <div class="cg-blank-actions">
+            <button
+              class="cg-primary"
+              type="button"
+              @click="openStart('new')"
+            >
+              <i class="i-lucide-sparkles" /> 套一条现成产线
+            </button>
+            <button
+              class="cg-ghost"
+              type="button"
+              @click="openStart('new')"
+            >
+              看看有哪些模板
+            </button>
+          </div>
+        </div>
+
         <!-- 多选时的悬浮工具条：批量动作不用再右键 -->
         <div
           v-if="selectedCount > 1"
@@ -1513,6 +1667,17 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             取消选择
           </button>
         </div>
+
+        <CanvasStartDialog
+          v-if="startPanel"
+          :mode="startPanel.mode"
+          :templates="templates"
+          @blank="newBlank"
+          @use="useTemplate"
+          @remove="dropTemplate"
+          @save="saveAsTemplate"
+          @close="startPanel = null"
+        />
 
         <CanvasContextMenu
           v-if="menu"
@@ -1621,7 +1786,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
               </div>
             </section>
 
-            <!-- 参数 -->
+            <!-- 参数（与卡片上的是同一个组件，取值与候选必须一致） -->
             <section
               v-if="selectedSpec.params.length"
               class="cg-block"
@@ -1629,79 +1794,25 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
               <p class="cg-block-title">
                 参数
               </p>
-              <label
-                v-for="p in selectedSpec.params"
-                :key="p.key"
-                class="cg-field"
-              >
-                <span class="cg-field-label">{{ p.label }}</span>
-                <textarea
-                  v-if="p.kind === 'textarea'"
-                  class="cg-input cg-input--area"
-                  :value="paramValue(selected, p.key)"
-                  :placeholder="p.placeholder"
-                  @input="setParam(selected, p.key, ($event.target as HTMLTextAreaElement).value)"
-                />
-                <select
-                  v-else-if="p.kind === 'select'"
-                  class="cg-input"
-                  :value="paramValue(selected, p.key)"
-                  @change="setParam(selected, p.key, ($event.target as HTMLSelectElement).value)"
-                >
-                  <option
-                    v-for="o in paramOptions(p, selectedSpec.modelKind)"
-                    :key="o.value"
-                    :value="o.value"
-                  >
-                    {{ o.label }}
-                  </option>
-                </select>
-                <select
-                  v-else-if="p.kind === 'frames'"
-                  class="cg-input"
-                  :value="paramValue(selected, p.key)"
-                  @change="setParam(selected, p.key, Number(($event.target as HTMLSelectElement).value))"
-                >
-                  <option
-                    v-for="f in graph.frameGrid"
-                    :key="f"
-                    :value="f"
-                  >
-                    {{ f }} 帧 · {{ framesToSeconds(f) }}s
-                  </option>
-                </select>
-                <input
-                  v-else-if="p.kind === 'number'"
-                  class="cg-input"
-                  type="number"
-                  min="1"
-                  :value="paramValue(selected, p.key)"
-                  @input="setParam(selected, p.key, Number(($event.target as HTMLInputElement).value))"
-                >
-                <input
-                  v-else
-                  class="cg-input"
-                  :value="paramValue(selected, p.key)"
-                  :placeholder="p.placeholder"
-                  @input="setParam(selected, p.key, ($event.target as HTMLInputElement).value)"
-                >
-                <span
-                  v-if="p.hint"
-                  class="cg-field-hint"
-                >{{ p.hint }}</span>
-              </label>
+              <CanvasParamFields
+                :node="selected!"
+                :spec="selectedSpec"
+                :frame-grid="graph.frameGrid"
+                :model-options="modelOptions"
+                @update="(key: string, value: unknown) => setParam(selected!, key, value)"
+              />
             </section>
 
             <!-- 分镜表：逐行可改，改的是草稿，存成新版本 -->
             <section
-              v-if="selected.kind === 'shotlist' && draftRows.length"
+              v-if="selected.kind === 'shotlist' && tableRowsOf(selected).length"
               class="cg-block"
             >
               <p class="cg-block-title">
                 分镜表 <span class="cg-block-sub">v{{ shownArtifact?.version }} · 改完存新版本，老版本不动</span>
               </p>
               <div
-                v-for="(row, i) in draftRows"
+                v-for="(row, i) in tableRowsOf(selected)"
                 :key="i"
                 class="cg-row"
               >
@@ -1711,18 +1822,18 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                     class="cg-input cg-input--tiny"
                     :value="row.shotSize"
                     placeholder="景别"
-                    @input="updateRow(i, 'shotSize', ($event.target as HTMLInputElement).value)"
+                    @input="updateRow(selected.id, i, 'shotSize', ($event.target as HTMLInputElement).value)"
                   >
                   <input
                     class="cg-input cg-input--tiny"
                     :value="row.camera"
                     placeholder="运镜"
-                    @input="updateRow(i, 'camera', ($event.target as HTMLInputElement).value)"
+                    @input="updateRow(selected.id, i, 'camera', ($event.target as HTMLInputElement).value)"
                   >
                   <select
                     class="cg-input cg-input--tiny"
                     :value="row.frames"
-                    @change="updateRow(i, 'frames', Number(($event.target as HTMLSelectElement).value))"
+                    @change="updateRow(selected.id, i, 'frames', Number(($event.target as HTMLSelectElement).value))"
                   >
                     <option
                       v-for="f in graph.frameGrid"
@@ -1737,29 +1848,29 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                   class="cg-input cg-input--tiny"
                   :value="row.keyframePrompt"
                   placeholder="关键帧提示词"
-                  @input="updateRow(i, 'keyframePrompt', ($event.target as HTMLInputElement).value)"
+                  @input="updateRow(selected.id, i, 'keyframePrompt', ($event.target as HTMLInputElement).value)"
                 >
                 <input
                   class="cg-input cg-input--tiny"
                   :value="row.line ?? ''"
                   placeholder="台词"
-                  @input="updateRow(i, 'line', ($event.target as HTMLInputElement).value)"
+                  @input="updateRow(selected.id, i, 'line', ($event.target as HTMLInputElement).value)"
                 >
               </div>
               <div class="cg-row-actions">
                 <button
                   class="cg-mini cg-mini--accent"
                   type="button"
-                  :disabled="!draftDirty"
-                  @click="saveRowsAsVersion"
+                  :disabled="!rowsDirty(selected.id)"
+                  @click="saveRowsAsVersion(selected.id)"
                 >
                   <i class="i-lucide-save" /> 保存为新版本
                 </button>
                 <button
                   class="cg-mini"
                   type="button"
-                  :disabled="!draftDirty"
-                  @click="draftRows = (shownArtifact?.rows ?? []).map(r => ({ ...r })); draftDirty = false"
+                  :disabled="!rowsDirty(selected.id)"
+                  @click="discardRows(selected.id)"
                 >
                   放弃修改
                 </button>
@@ -2119,6 +2230,40 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 
 .cg-icon:hover:not(:disabled) { color: var(--hg3-ink); background: rgb(255 255 255 / 11%); }
 .cg-icon:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.cg-blank {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+  padding: 26px 30px;
+  text-align: center;
+  background: rgb(23 24 27 / 82%);
+  border: 1px dashed var(--hg3-line-strong);
+  border-radius: 18px;
+  backdrop-filter: blur(6px);
+}
+
+.cg-blank > i { font-size: 24px; color: var(--hg3-accent-hi); }
+.cg-blank-title { margin: 0; font-size: 14px; color: var(--hg3-ink); }
+.cg-blank-sub { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--hg3-faint); }
+.cg-blank-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+.cg-blank-actions .cg-primary,
+.cg-blank-actions .cg-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-radius: 999px;
+}
 
 .cg-selbar {
   position: absolute;
