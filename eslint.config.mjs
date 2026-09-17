@@ -25,7 +25,7 @@ export default withNuxt(
     rules: {
       '@typescript-eslint/unified-signatures': 'off',
       '@typescript-eslint/no-dynamic-delete': 'off',
-      '@stylistic/max-statements-per-line': ['error', { max: 4 }],
-    },
-  },
+      '@stylistic/max-statements-per-line': ['error', { max: 4 }]
+    }
+  }
 )
