@@ -1282,111 +1282,28 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 <template>
   <div class="cg-page">
     <!-- 顶栏 -->
-    <header class="cg-top">
-      <div class="cg-top-left">
-        <h1 class="cg-brand">
-          织幕
-        </h1>
-        <span class="cg-tag">PROTOTYPE · AI 影剧无界画布</span>
-        <span
-          v-if="demo"
-          class="cg-demo"
-        >示例数据 · 本地模拟</span>
-      </div>
-
-      <div class="cg-top-mid">
-        <span class="cg-metric"><i class="i-lucide-layers" /> 就绪 {{ readyCount }}/{{ graph.nodes.length }}</span>
-        <span
-          class="cg-metric"
-          :data-tone="pending ? 'warn' : 'muted'"
-        ><i class="i-lucide-bell" /> 待确认 {{ pending }}</span>
-        <span
-          v-if="dirtyCount"
-          class="cg-metric"
-          data-tone="warn"
-        ><i class="i-lucide-refresh-cw" /> 待重跑 {{ dirtyCount }}</span>
-        <span
-          v-if="selectedCount"
-          class="cg-metric"
-          data-tone="warn"
-        ><i class="i-lucide-box-select" /> 已选 {{ selectedCount }}</span>
-        <span class="cg-metric"><i class="i-lucide-coins" /> 已花 {{ creditsToYuan(totalCost) }}</span>
-        <span
-          v-if="estimatedBatch"
-          class="cg-metric"
-          data-tone="warn"
-        ><i class="i-lucide-calculator" /> 本次预计 {{ creditsToYuan(estimatedBatch) }}</span>
-      </div>
-
-      <div class="cg-top-right">
-        <button
-          class="cg-icon"
-          type="button"
-          title="撤销（⌘Z）"
-          :disabled="!canUndo"
-          @click="undo"
-        >
-          <i class="i-lucide-undo-2" />
-        </button>
-        <button
-          class="cg-icon"
-          type="button"
-          title="重做（⇧⌘Z）"
-          :disabled="!canRedo"
-          @click="redo"
-        >
-          <i class="i-lucide-redo-2" />
-        </button>
-
-        <div class="cg-zoom">
-          <button
-            type="button"
-            title="缩小"
-            @click="zoomOut()"
-          >
-            <i class="i-lucide-minus" />
-          </button>
-          <span>{{ zoomPercent }}</span>
-          <button
-            type="button"
-            title="放大"
-            @click="zoomIn()"
-          >
-            <i class="i-lucide-plus" />
-          </button>
-        </div>
-        <button
-          class="cg-ghost"
-          type="button"
-          @click="openStart('new')"
-        >
-          <i class="i-lucide-file-plus-2" /> 新建
-        </button>
-        <button
-          class="cg-ghost"
-          type="button"
-          @click="fit"
-        >
-          <i class="i-lucide-maximize" /> 适应画布
-        </button>
-        <button
-          class="cg-ghost"
-          type="button"
-          @click="resetSample"
-        >
-          <i class="i-lucide-rotate-ccw" /> 重置示例
-        </button>
-        <button
-          class="cg-primary"
-          type="button"
-          :disabled="!!runningCount"
-          @click="runAll"
-        >
-          <i :class="runningCount ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
-          {{ runningCount ? `运行中 ${runningCount}` : `运行全部${estimatedBatch ? ` · 约 ${creditsToYuan(estimatedBatch)}` : ''}` }}
-        </button>
-      </div>
-    </header>
+    <CanvasTopbar
+      :demo="demo"
+      :node-count="graph.nodes.length"
+      :ready-count="readyCount"
+      :pending="pending"
+      :dirty-count="dirtyCount"
+      :selected-count="selectedCount"
+      :total-cost="totalCost"
+      :estimated-batch="estimatedBatch"
+      :running-count="runningCount"
+      :zoom-percent="zoomPercent"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
+      @undo="undo"
+      @redo="redo"
+      @zoom-in="zoomIn()"
+      @zoom-out="zoomOut()"
+      @new="openStart('new')"
+      @fit="fit"
+      @reset="resetSample"
+      @run-all="runAll"
+    />
 
     <div class="cg-body">
       <!-- 左栏节点库 -->
