@@ -1,1702 +1,1236 @@
 <script setup lang="ts">
 /**
- * 画布（织幕一期）—— 前端先行版。
+ * 画布（织幕）—— 节点工作台，前端先行版。
  *
- * 为什么先做前端：节点、状态机、审核卡点、成本口径这些东西，画出来比写在接口文档里
- * 好判断得多；界面定稿后，字段名就是后端契约（见 ~/data/hougong-canvas.ts 的类型）。
+ * 照界面原型重画：顶栏（缩放 / 适应画布 / 重置示例 / 运行全部）、左栏节点库、
+ * 无限画布（端口拖线）、节点卡（内容预览 + 节点内运行）、右栏节点详情（参数 / 产物版本 / 运行记录）。
  *
- * 三层结构（对应《织幕方案B》的 S1–S9）：
- *   1. 剧集画布：剧本 → 资产 → 15 个镜头 → 合成，节点式，Vue Flow 提供平移/缩放/小地图；
- *   2. 单镜详情：候选选片、提示词、帧数档位、重跑与驳回（右侧抽屉）；
- *   3. 手机端：画布在窄屏没法用，退化成镜头列表（同一份数据、同一套操作）。
+ * 数据模型与后端契约见 aicodcms/docs/canvas/ZHIMU-DATA-MODEL-R2.md：
+ *   产物是实体、依赖是数据、审核的对象是产物。
  *
- * 本轮全部数据来自 mock，按钮只改本地状态并给出提示；接后端时替换 loadShots()/执行动作即可。
+ * 当前是**示例数据**（顶部有标记）：后端 canvas_run / canvas_artifact 两张表还没建，
+ * 所以节点内运行走本地模拟，把「运行 → 出新版本 → 下游变脏」这条链路先跑通；
+ * 后端就绪后把 runNode() 里的 simulateRun 换成真接口即可，其余不用改。
  */
-import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
+import { MarkerType, VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
-// Vue Flow 的基础样式必须显式引入：节点定位（absolute）与连线样式都在里面，
-// 少了它画布会退化成一堆堆叠的 div。
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
-import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+
+import type {
+  CanvasArtifact,
+  CanvasGraph,
+  CanvasNode,
+  CanvasNodeState,
+  CanvasRun
+} from '~/data/canvas-graph'
 import {
-  FRAME_GRID,
-  MOCK_EPISODE,
-  MOCK_SERIES,
-  SHOT_STATUS,
-  creditsToYuan,
-  framesToSeconds,
-  pendingCount,
-  totalCost,
-  type CanvasEpisode,
-  type CanvasSeries,
-  type CanvasShot,
-  type RenderTier,
-  type ShotCandidate
-} from '~/data/hougong-canvas'
+  NODE_STATE_META,
+  addNode,
+  artifactsOf,
+  connectNodes,
+  createNode,
+  dirtyNodes,
+  disconnect,
+  expandShotlist,
+  nextVersion,
+  nodeState,
+  paramsHash,
+  pendingReviewCount,
+  removeNode,
+  selectArtifact,
+  topoOrder
+} from '~/data/canvas-graph'
+import type { CanvasNodeKind, CanvasParamSpec } from '~/data/canvas-nodes'
+import { creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import { buildCanvasSample } from '~/data/canvas-sample'
+
+useHead({ title: '画布 · 织幕' })
+
+// ---------------------------------------------------------------- 状态
+
+const sample = buildCanvasSample()
+const graph = ref<CanvasGraph>(sample.graph)
+const artifacts = ref<CanvasArtifact[]>(sample.artifacts)
+const runs = ref<CanvasRun[]>(sample.runs)
+
+/** 示例数据模式：显式开关，顶部挂标记，免得把演示数据当成真数据。 */
+const demo = ref(true)
+const selectedId = ref('')
+const toast = ref('')
+const detailOpen = ref(true)
+const runningIds = ref<string[]>([])
+const modelOptions = ref<{ value: string, label: string }[]>([])
 
 const hgApi = useHougongApi()
 
-/** 是否在用本地示例数据（后端 empty=true 或读失败时为 true）。 */
-const mockMode = ref(true)
+const { fitView, zoomIn, zoomOut, viewport, screenToFlowCoordinate } = useVueFlow()
 
-/** 目录里的可选模型：关键帧用图像模型，预览/定稿用视频模型。 */
-const imageModels = ref<{ id: string, name: string }[]>([])
-const videoModels = ref<{ id: string, name: string }[]>([])
-const pickedModel = ref('')
+const selected = computed(() => graph.value.nodes.find(n => n.id === selectedId.value) ?? null)
+const selectedSpec = computed(() => (selected.value ? nodeTypeSpec(selected.value.kind) : null))
+const pending = computed(() => pendingReviewCount(artifacts.value))
+const totalCost = computed(() => runs.value.reduce((sum, r) => sum + (r.costCredits ?? 0), 0))
+const runningCount = computed(() => runs.value.filter(r => r.status === 'running').length)
+const readyCount = computed(() =>
+  graph.value.nodes.filter(n => nodeState(graph.value, n, runs.value) === 'ready').length
+)
+const dirtyCount = computed(() =>
+  dirtyNodes(graph.value, runs.value).filter((id) => {
+    const node = graph.value.nodes.find(n => n.id === id)
+    // 未开放的节点不算"待重跑"：它跑不了，挂个数字只会让人以为图是脏的
+    return node ? nodeTypeSpec(node.kind).stage === 'ready' : false
+  }).length
+)
 
-async function loadModels() {
-  try {
-    const cat = await hgApi.getCatalog()
-    imageModels.value = (cat.cloudModels || []).map(m => ({ id: m.id, name: m.name }))
-    videoModels.value = (cat.videoModels || []).filter(m => m.available !== false).map(m => ({ id: m.id, name: m.name }))
-  } catch {
-    /* 目录读不到就先不给选：提交时服务端会明确要求选模型 */
-  }
-}
-
-const episode = ref<CanvasEpisode>(structuredClone(MOCK_EPISODE))
-const series = ref<CanvasSeries>(structuredClone(MOCK_SERIES))
-const shots = ref<CanvasShot[]>(structuredClone(MOCK_EPISODE.shots))
-const frameGrid = ref<number[]>([...FRAME_GRID])
-
-/**
- * 拉后端数据；`empty` 或失败就保持示例数据。
- *
- * 为什么保留示例兜底：写侧（生成分镜、提交渲染）还没接，绝大多数账号此刻确实没有
- * 画布数据 —— 直接给空页面既看不出设计，也没法评审。真实数据一旦存在就自动切换。
- */
-async function loadCanvas(episodeID = '') {
-  try {
-    // 直接传字符串 id（不要 Number()：雪花 id 会被舍入，切集就会切不过去）
-    const data = await hgApi.getCanvasOverview('', episodeID)
-    if (!data || data.empty || !data.shots?.length) return
-    mockMode.value = false
-    series.value = data.series as unknown as CanvasSeries
-    episode.value = {
-      id: data.episode.id,
-      title: data.episode.title,
-      budgetCredits: data.episode.budgetCredits,
-      shots: [],
-      costs: data.costs
-    }
-    shots.value = data.shots as unknown as CanvasShot[]
-    if (data.frameGrid?.length) frameGrid.value = data.frameGrid
-    selectedId.value = shots.value[3]?.id ?? shots.value[0]?.id ?? ''
-    // 数据换了（切集/新建集）就重新适应一次画布
-    window.setTimeout(fitCanvas, 320)
-  } catch {
-    /* 读失败保持示例数据，不打扰用户 */
-  }
-}
-const selectedId = ref<string>(shots.value[3]?.id ?? '')
-const tier = ref<RenderTier>('final')
-const draftFrames = ref<number>(158)
-const toast = ref('')
-const busy = ref(false)
-/**
- * 宽屏下详情面板是否展开。
- *
- * 为什么要能收起：1440 窗口里左栏 224 + 详情 336 之后，画布只剩 ~600px，
- * 5 列镜头就看不全（合成节点直接被挤出屏幕）。收起详情后画布多 336px，
- * 整条流水线一屏看得完；点任一镜头会自动展开。
- */
-const detailOpen = ref(true)
-
-/**
- * 画布实例：用于「适应画布」。
- *
- * 必须在 <VueFlow> 渲染前调用（Vue Flow 会认领这个先建好的实例），
- * 所以放在 setup 顶层，而不是某个回调里。
- */
-const { fitView } = useVueFlow()
-
-/**
- * 适应画布：尽量把整条流水线收进视口，但**不缩到看不清**。
- *
- * 下限取 0.62 而不是 0.45：完整收进来但节点文字糊成一片，等于没适应 ——
- * 需要"全都要"时用户还可以点右下角 Vue Flow 自带的适应按钮（它没有下限）。
- */
-function fitCanvas() {
-  void nextTick(() => {
-    fitView({ padding: 0.12, maxZoom: 0.9, minZoom: 0.62 })
-  })
-}
-
-/** 当前集的 id（真实数据来自后端；示例数据下为空串）。 */
-const episodeId = computed(() => episode.value.id ?? '')
-/** 当前系列的 id：新建集时挂在它下面，不再另建系列。 */
-const seriesId = computed(() => (mockMode.value ? '' : series.value.id))
-
-/** 画布只在宽屏挂载：窄屏下容器 display:none，Vue Flow 量不到尺寸只会刷警告。 */
-const wideScreen = ref(true)
-/** 窄屏详情抽屉开关（宽屏常驻，不用这个）。 */
-const mobileDetailOpen = ref(false)
-onMounted(() => {
-  void loadCanvas()
-  void loadModels()
-  // 首屏：等节点渲染完适应一次，保证一进来就看得到整条流水线
-  window.setTimeout(fitCanvas, 900)
-  const mq = window.matchMedia('(min-width: 761px)')
-  wideScreen.value = mq.matches
-  mq.addEventListener('change', (e) => {
-    wideScreen.value = e.matches
-  })
-})
-
-const selected = computed(() => shots.value.find(s => s.id === selectedId.value) ?? null)
-const spent = computed(() => totalCost(shots.value))
-const pending = computed(() => pendingCount(shots.value))
-const progress = computed(() => Math.round((shots.value.filter(s => s.status === 'approved').length / shots.value.length) * 100))
-
-/** 当前预览的候选（默认取已选中的那张，没有就取第一张）。 */
-const activeCandidateId = ref<string>('')
-const activeCandidate = computed<ShotCandidate | null>(() => {
-  const list = selected.value?.candidates ?? []
-  return list.find(c => c.id === activeCandidateId.value) ?? list.find(c => c.picked) ?? list[0] ?? null
-})
-
-watch(selectedId, () => {
-  activeCandidateId.value = ''
-  draftFrames.value = selected.value?.frames ?? 158
-})
-
-function flash(message: string) {
-  toast.value = message
+function showToast(text: string): void {
+  toast.value = text
   window.setTimeout(() => {
-    if (toast.value === message) toast.value = ''
-  }, 2400)
+    if (toast.value === text) toast.value = ''
+  }, 2600)
 }
 
-/* ---------------- 节点图 ---------------- */
+function stateOf(node: CanvasNode): CanvasNodeState {
+  return nodeState(graph.value, node, runs.value)
+}
 
-const COL = 178
-const PER_ROW = 5
-const ROW = 300
+// ---------------------------------------------------------------- Vue Flow 节点与边
 
-const nodes = computed<Node[]>(() => {
-  const list: Node[] = []
-  // 阶段节点：剧本（S1–S3）与资产（S4）在左，合成（S8–S9）在右。
-  list.push({
-    id: 'stage-script',
-    type: 'stage',
-    position: { x: 0, y: 0 },
-    data: { title: '剧本与分镜', sub: 'S1–S3 · Grok', value: '15 镜 · 已校验', tone: 'ok' },
-    draggable: true
-  })
-  list.push({
-    id: 'stage-asset',
-    type: 'stage',
-    position: { x: 0, y: ROW },
-    data: { title: '角色与场景', sub: 'S4 · Seedream', value: '64 张 · 已定稿', tone: 'ok' },
-    draggable: true
-  })
-  // 镜头按 3 行 × 5 列排：整条流水线（含合成）在一屏里看得完。
-  // 之前是 2 行 × 8 列，宽度 1600+，合成节点被挤到屏幕外，"合成"这一环等于看不见。
-  shots.value.forEach((shot, i) => {
-    const row = Math.floor(i / PER_ROW)
-    const col = i % PER_ROW
-    list.push(shotNode(shot, 240 + col * COL, row * ROW))
-  })
-  list.push({
-    id: 'stage-compose',
-    type: 'stage',
-    position: { x: 240 + PER_ROW * COL + 20, y: ROW },
-    data: { title: '合成与标识', sub: 'S8–S9 · ffmpeg', value: `${progress.value}% 镜头已定稿`, tone: progress.value === 100 ? 'ok' : 'muted' },
-    draggable: true
-  })
+const flowNodes = computed<Node[]>(() =>
+  graph.value.nodes.map(n => ({
+    id: n.id,
+    type: 'cg',
+    position: { x: n.at.x, y: n.at.y },
+    data: {
+      node: n,
+      spec: nodeTypeSpec(n.kind),
+      state: stateOf(n),
+      artifacts: artifacts.value.filter(a => a.nodeId === n.id)
+    }
+  }))
+)
+
+const flowEdges = computed<Edge[]>(() => {
+  const list: Edge[] = []
+  for (const e of graph.value.edges) {
+    const from = graph.value.nodes.find(n => n.id === e.from.node)
+    if (!from) continue
+    const port = nodeTypeSpec(from.kind).outputs.find(p => p.slot === e.from.slot)
+    const color = port ? portMeta(port.type).color : 'var(--hg3-line-strong)'
+    list.push({
+      id: e.id,
+      source: e.from.node,
+      target: e.to.node,
+      sourceHandle: e.from.slot,
+      targetHandle: e.to.slot,
+      type: 'smoothstep',
+      animated: stateOf(from) === 'running',
+      style: { stroke: color, strokeWidth: 1.6 },
+      markerEnd: MarkerType.ArrowClosed
+    })
+  }
   return list
 })
 
-function shotNode(s: CanvasShot, x: number, y: number): Node {
-  return {
-    id: s.id,
-    type: 'shot',
-    position: { x, y },
-    data: { shot: s, active: s.id === selectedId.value },
-    draggable: true
+function onConnect(connection: { source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null }): void {
+  if (!connection.sourceHandle || !connection.targetHandle) return
+  const res = connectNodes(
+    graph.value,
+    { node: connection.source, slot: connection.sourceHandle },
+    { node: connection.target, slot: connection.targetHandle }
+  )
+  if (!res.ok) showToast(res.reason)
+}
+
+function onNodeDragStop(event: { node: { id: string, position: { x: number, y: number } } }): void {
+  const node = graph.value.nodes.find(n => n.id === event.node.id)
+  if (node) node.at = { x: Math.round(event.node.position.x), y: Math.round(event.node.position.y) }
+}
+
+function onEdgesChange(changes: { type: string, id?: string }[]): void {
+  for (const c of changes) {
+    if (c.type === 'remove' && c.id) disconnect(graph.value, c.id)
   }
 }
+
+// ---------------------------------------------------------------- 增删节点
+
+/** 找一个空位：已有节点最下方的下一行，避免新节点盖在别人身上。 */
+function freeSpot(): { x: number, y: number } {
+  if (!graph.value.nodes.length) return { x: 80, y: 120 }
+  const maxY = Math.max(...graph.value.nodes.map(n => n.at.y))
+  const minX = Math.min(...graph.value.nodes.map(n => n.at.x))
+  return { x: minX, y: maxY + 200 }
+}
+
+function add(kind: CanvasNodeKind, at?: { x: number, y: number }): void {
+  const node = createNode(kind, at ?? freeSpot())
+  addNode(graph.value, node)
+  selectedId.value = node.id
+  if (nodeTypeSpec(kind).stage === 'planned') showToast('这个节点本版未开放，先把结构摆上')
+}
+
+/** 拖拽落点：把屏幕坐标换算成画布坐标。 */
+function onDrop(event: DragEvent): void {
+  const kind = event.dataTransfer?.getData('application/x-canvas-node') as CanvasNodeKind | ''
+  if (!kind) return
+  const point = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+  add(kind, { x: Math.round(point.x), y: Math.round(point.y) })
+}
+
+function duplicate(nodeId: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const copy = createNode(node.kind, { x: node.at.x + 40, y: node.at.y + 40 }, `${node.title} 副本`, node.ref?.shotIdx)
+  copy.params = { ...node.params }
+  addNode(graph.value, copy)
+  selectedId.value = copy.id
+}
+
+function rename(nodeId: string, title: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (node) node.title = title
+}
+
+function drop(nodeId: string): void {
+  removeNode(graph.value, nodeId)
+  if (selectedId.value === nodeId) selectedId.value = ''
+  showToast('节点已删除')
+}
+
+/** 把上游已选定的产物补进新节点的输入槽（分镜表 → 关键帧这种批量生成的场景要用）。 */
+function hydrateInputs(): void {
+  for (const node of graph.value.nodes) {
+    for (const edge of graph.value.edges.filter(e => e.to.node === node.id)) {
+      const upstream = graph.value.nodes.find(n => n.id === edge.from.node)
+      const ref = upstream?.outputs[edge.from.slot]
+      if (upstream && ref && !node.inputs[edge.to.slot]) {
+        node.inputs[edge.to.slot] = { from: upstream.id, slot: edge.from.slot, ...ref }
+      }
+    }
+  }
+}
+
+/** 方案 A：按分镜表批量生成关键帧 + 图生视频节点。 */
+function expand(nodeId: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const rows = selectedTableRows.value.length
+  if (!rows) {
+    showToast('分镜表还没有内容，先运行「分镜生成」')
+    return
+  }
+  const res = expandShotlist(graph.value, nodeId, rows)
+  graph.value.nodes.push(...res.nodes)
+  graph.value.edges.push(...res.edges)
+  hydrateInputs()
+  showToast(`已按分镜表生成 ${rows} 组节点（关键帧 + 视频）`)
+}
+
+// ---------------------------------------------------------------- 运行
 
 /**
- * 依赖连线：剧本 → 资产 → 每镜 → 合成。
+ * 跑一个节点。
  *
- * 刻意**不**画「剧本 → 每个镜头」的直连：一条链上的两跳都画，等于给画布加一倍噪音
- * （15 镜就是 30 条扇形线），而依赖关系并没有多出信息。
- * 动效只留给当前选中的镜头 —— 全都在动时，用户的注意力没有落点。
+ * 现在是本地模拟：写一条 running 的 run → 一会儿写产物、写 done。
+ * 后端接上以后，这里换成 POST /canvas/node/{id}/run + SSE 回推，其余逻辑不变。
  */
-const edges = computed<Edge[]>(() => {
-  const list: Edge[] = []
-  list.push({ id: 'e-script-asset', source: 'stage-script', target: 'stage-asset' })
-  shots.value.forEach((s) => {
-    const active = s.id === selectedId.value
-    list.push({
-      id: `e-asset-${s.id}`,
-      source: 'stage-asset',
-      target: s.id,
-      animated: active,
-      style: edgeStyle(active)
-    })
-    list.push({
-      id: `e-${s.id}-compose`,
-      source: s.id,
-      target: 'stage-compose',
-      animated: active,
-      style: edgeStyle(active)
-    })
+async function runNode(nodeId: string, opts: { silent?: boolean } = {}): Promise<void> {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const spec = nodeTypeSpec(node.kind)
+  if (spec.stage === 'planned') {
+    if (!opts.silent) showToast('这个节点本版未开放')
+    return
+  }
+  const state = stateOf(node)
+  if (state === 'blocked') {
+    if (!opts.silent) showToast('上游还没就绪，先跑上游节点')
+    return
+  }
+  if (state === 'running') return
+
+  runningIds.value = [...runningIds.value, nodeId]
+  const run: CanvasRun = {
+    id: `r_${nodeId}_${Date.now().toString(36)}`,
+    nodeId,
+    paramsHash: paramsHash(node),
+    status: 'running',
+    startedAt: new Date().toISOString()
+  }
+  runs.value = [...runs.value, run]
+
+  await simulateRun(node, run)
+
+  runningIds.value = runningIds.value.filter(id => id !== nodeId)
+}
+
+/** 本地模拟：出一个新版本的产物，并把它设成当前选定（下游输入随之更新）。 */
+async function simulateRun(node: CanvasNode, run: CanvasRun): Promise<void> {
+  await new Promise(resolve => window.setTimeout(resolve, 900 + Math.random() * 700))
+  completeRun(node, run)
+}
+
+/** 结算一条运行：写产物 + 标记成功。示例数据里预置的"运行中"也走这里落地。 */
+function completeRun(node: CanvasNode, run: CanvasRun): void {
+  if (run.status !== 'running') return
+  const spec = nodeTypeSpec(node.kind)
+  const slot = spec.outputs[0]?.slot ?? 'text'
+  const type = spec.outputs[0]?.type ?? 'text'
+
+  const version = nextVersion(artifacts.value, node.id, slot)
+  const note = artifactNote(node, type)
+  const artifact: CanvasArtifact = {
+    id: `a_${node.id}_${version}`,
+    nodeId: node.id,
+    slot,
+    type,
+    version,
+    note,
+    review: 'pending',
+    createdAt: new Date().toISOString()
+  }
+  if (type === 'image' || type === 'video') {
+    artifact.url = `/mock/home/explore-0${(version % 4) + 1}.png`
+  }
+  if (type === 'text') artifact.text = String(node.params.text ?? '')
+  if (type === 'outline') artifact.text = '拆解完成：场次与镜头已分好，可继续生成角色与分镜表'
+  if (type === 'table') {
+    artifact.rows = Array.from({ length: 3 }, (_, i) => ({
+      idx: i + 1,
+      shotSize: ['远景', '中景', '特写'][i % 3]!,
+      camera: ['固定', '缓慢推近', '跟拍'][i % 3]!,
+      frames: [124, 158, 141][i % 3]!,
+      scene: 'SC-新场次',
+      keyframePrompt: '示例提示词（本地模拟生成）'
+    }))
+    artifact.note = '3 镜'
+  }
+  if (type === 'audio') artifact.note = '配音 + 配乐'
+  if (type === 'zip') artifact.note = 'E01 全镜'
+
+  artifacts.value = [...artifacts.value, artifact]
+  selectArtifact(graph.value, artifact)
+  runs.value = runs.value.map(r =>
+    r.id === run.id
+      ? { ...r, status: 'done', costCredits: spec.estimateCredits ?? 0, finishedAt: new Date().toISOString() }
+      : r
+  )
+}
+
+/** 示例数据里预置了一条"运行中"的 run：挂载后让它落地，免得顶栏一直显示运行中。 */
+function settleSeededRuns(): void {
+  for (const run of [...runs.value].filter(r => r.status === 'running')) {
+    const node = graph.value.nodes.find(n => n.id === run.nodeId)
+    if (!node) continue
+    window.setTimeout(() => completeRun(node, run), 2000)
+  }
+}
+
+function artifactNote(node: CanvasNode, type: string): string {
+  if (type === 'image') {
+    const count = node.kind === 'character' ? '三视图 3 张' : '3 张 · 768x1344'
+    return count
+  }
+  if (type === 'video') {
+    const tier = String(node.params.tier ?? 'preview')
+    const frames = Number(node.params.frames ?? 158)
+    return `${tier === 'final' ? '768x1344' : '432x768'} · ${framesToSeconds(frames)}s`
+  }
+  return ''
+}
+
+/** 运行全部：只跑脏节点，按拓扑序一个一个来（重复点应该零花费）。 */
+async function runAll(): Promise<void> {
+  const queue = dirtyNodes(graph.value, runs.value).filter((id) => {
+    const node = graph.value.nodes.find(n => n.id === id)
+    return node ? nodeTypeSpec(node.kind).stage === 'ready' && stateOf(node) !== 'blocked' : false
   })
-  list.push({ id: 'e-asset-compose', source: 'stage-asset', target: 'stage-compose', style: edgeStyle(false) })
-  return list
+  if (!queue.length) {
+    showToast('没有需要重跑的节点（参数和输入都没变）')
+    return
+  }
+  showToast(`开始运行 ${queue.length} 个节点`)
+  for (const id of queue) {
+    const node = graph.value.nodes.find(n => n.id === id)
+    if (!node || stateOf(node) === 'blocked') continue
+    await runNode(id, { silent: true })
+  }
+  showToast(`运行完成：${queue.length} 个节点`)
+}
+
+// ---------------------------------------------------------------- 产物操作
+
+function pick(nodeId: string, artifactId: string): void {
+  const artifact = artifacts.value.find(a => a.id === artifactId)
+  if (!artifact) return
+  selectArtifact(graph.value, artifact)
+}
+
+function review(nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void {
+  artifacts.value = artifacts.value.map(a => (a.id === artifactId ? { ...a, review: action } : a))
+  showToast(action === 'approved' ? '已认可这一份' : '已驳回，产物还在，可重跑')
+}
+
+function openArtifact(artifact: CanvasArtifact): void {
+  if (artifact.url) window.open(artifact.url, '_blank')
+}
+
+// ---------------------------------------------------------------- 详情面板
+
+const shownArtifact = computed(() => {
+  const node = selected.value
+  if (!node || !selectedSpec.value) return undefined
+  const slot = selectedSpec.value.outputs[0]?.slot
+  if (!slot) return undefined
+  const list = artifactsOf(artifacts.value, node.id, slot)
+  const picked = node.outputs[slot]
+  return list.find(a => a.id === picked?.artifactId) ?? list[0]
 })
 
-/** 细、淡的依赖线；选中的镜头那条加亮。 */
-function edgeStyle(active: boolean) {
-  return active
-    ? { stroke: 'var(--hg3-accent)', strokeWidth: 1.6 }
-    : { stroke: 'rgb(255 255 255 / 14%)', strokeWidth: 1 }
+const nodeVersions = computed(() => {
+  const node = selected.value
+  if (!node || !selectedSpec.value) return []
+  const slot = selectedSpec.value.outputs[0]?.slot
+  return slot ? artifactsOf(artifacts.value, node.id, slot) : []
+})
+
+const nodeRuns = computed(() => {
+  const node = selected.value
+  if (!node) return []
+  return [...runs.value].filter(r => r.nodeId === node.id).reverse().slice(0, 4)
+})
+
+const selectedTableRows = computed(() => {
+  const node = selected.value
+  if (!node) return []
+  const board = graph.value.nodes.find(n => n.kind === 'shotlist')
+  const slot = board?.outputs.table?.artifactId
+  const artifact = artifacts.value.find(a => a.id === slot)
+  return artifact?.rows ?? []
+})
+
+function setParam(node: CanvasNode, key: string, value: unknown): void {
+  node.params = { ...node.params, [key]: value }
 }
 
-/* ---------------- 交互（本轮只改本地状态） ---------------- */
-
-function pickShot(id: string) {
-  selectedId.value = id
-  detailOpen.value = true
-  // 窄屏：详情是底部抽屉，点条目即打开（宽屏详情常驻右侧，不受影响）。
-  if (!wideScreen.value) mobileDetailOpen.value = true
+function paramValue(node: CanvasNode, key: string): string {
+  const v = node.params[key]
+  return v === undefined || v === null ? '' : String(v)
 }
 
-function applyToSelected(patch: Partial<CanvasShot>, message: string) {
-  const s = selected.value
-  if (!s) return
-  Object.assign(s, patch)
-  s.updatedAt = '刚刚'
-  flash(message)
+function paramOptions(p: CanvasParamSpec): { value: string, label: string }[] {
+  if (p.key === 'modelId' && modelOptions.value.length) return modelOptions.value
+  return p.options ?? []
 }
 
-/* ---------------- 新建一集 ---------------- */
+// ---------------------------------------------------------------- 生命周期
 
-const newOpen = ref(false)
-const newTitle = ref('')
-const newCount = ref(15)
-const newFrames = ref(158)
-const newJSON = ref('')
-const newBusy = ref(false)
-
-/** 打开新建对话框（默认 15 镜 × 158 帧，与方案里的一集规格一致）。 */
-function openNewEpisode() {
-  newTitle.value = ''
-  newCount.value = 15
-  newFrames.value = 158
-  newJSON.value = ''
-  newOpen.value = true
+const wideScreen = ref(true)
+let mq: MediaQueryList | null = null
+function syncWide(event?: MediaQueryListEvent): void {
+  wideScreen.value = event ? event.matches : (mq?.matches ?? true)
 }
 
-/** 建集：粘贴了 JSON 就按分镜导入，否则生成空镜。 */
-async function submitNewEpisode() {
-  const shots = parseStoryboard(newJSON.value)
-  if (shots === false) return
-  newBusy.value = true
+onMounted(async () => {
+  mq = window.matchMedia('(min-width: 900px)')
+  syncWide()
+  mq.addEventListener('change', syncWide)
+  // 首屏适应一次，保证一进来就看得到整条产线
+  window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
+  // 示例里预置的"运行中"落地，让状态机动起来
+  settleSeededRuns()
+  // 关键帧节点的模型下拉：有目录就用真目录，没有就留一句"服务端默认"
   try {
-    const res = await hgApi.createCanvasEpisode({
-      storyId: mockMode.value ? '' : seriesId.value,
-      seriesTitle: '未命名系列',
-      title: newTitle.value,
-      shotCount: shots ? undefined : newCount.value,
-      frames: shots ? undefined : newFrames.value,
-      shots: shots || undefined
-    })
-    newOpen.value = false
-    flash(`已建${res.title}（${res.shotIds.length} 镜）${res.issues?.length ? '，有 ' + res.issues.length + ' 条提醒' : ''}`)
-    // 切到新建的这一集：否则画布还停在上一次看的那一集，用户会以为没建成
-    await loadCanvas(res.episodeId)
-  } catch (e) {
-    flash(e instanceof Error ? e.message : '建集失败')
-  } finally {
-    newBusy.value = false
-  }
-}
-
-/** 解析粘贴的分镜 JSON；空串返回 null（表示走"生成空镜"），解析失败返回 false。 */
-function parseStoryboard(text: string): Record<string, unknown>[] | null | false {
-  const raw = text.trim()
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    const shots = Array.isArray(parsed) ? parsed : parsed?.shots
-    if (!Array.isArray(shots) || !shots.length) {
-      flash('分镜 JSON 里没有 shots 数组')
-      return false
-    }
-    return shots as Record<string, unknown>[]
+    const catalog = await hgApi.getCatalog()
+    const list = (catalog.cloudModels ?? []).map(m => ({ value: m.id, label: m.name }))
+    modelOptions.value = list.length ? list : [{ value: '', label: '服务端默认' }]
   } catch {
-    flash('分镜 JSON 解析失败，请检查格式')
-    return false
+    modelOptions.value = [{ value: '', label: '服务端默认（目录未接通）' }]
   }
+})
+
+onBeforeUnmount(() => mq?.removeEventListener('change', syncWide))
+
+function fit(): void {
+  fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 })
 }
 
-/** 切集：左栏点哪一集就看哪一集。 */
-function switchEpisode(id: string) {
-  if (id === episodeId.value) return
-  void loadCanvas(id)
+/** 重置示例：回到内置的那条产线（后端接通后这个按钮改成"载入模板"）。 */
+function resetSample(): void {
+  const fresh = buildCanvasSample()
+  graph.value = fresh.graph
+  artifacts.value = fresh.artifacts
+  runs.value = fresh.runs
+  selectedId.value = ''
+  demo.value = true
+  showToast('已重置为示例数据')
+  window.setTimeout(fit, 120)
 }
 
-/** 提交渲染：走平台任务链路，返回任务 id；产物与花费由读模型自动回挂。 */
-async function submitRender(stage: 'keyframe' | 'preview' | 'final') {
-  const s = selected.value
-  if (!s) return
-  if (mockMode.value) {
-    flash('当前是示例数据：先有真实的一集（或让后端生成）才能提交渲染')
-    return
-  }
-  if (!pickedModel.value) {
-    flash('请先选择模型')
-    return
-  }
-  busy.value = true
-  try {
-    const res = await hgApi.renderCanvasShot({
-      episodeId: episodeId.value,
-      idx: s.index,
-      stage,
-      modelId: pickedModel.value,
-      count: stage === 'keyframe' ? 3 : undefined
-    })
-    const clamped = stage === 'keyframe' && res.count && res.count < 3
-    flash(clamped
-      ? `已提交（任务 #${res.taskId}）：该模型一次只出 ${res.count} 张，可再点一次补候选`
-      : `已提交渲染（任务 #${res.taskId}，预占 ${res.reservedCredits} 分）`)
-    // 任务在跑：等一会儿再刷新，能立刻看到候选与花费
-    window.setTimeout(() => void loadCanvas(), 12000)
-  } catch (e) {
-    flash(e instanceof Error ? e.message : '提交失败')
-  } finally {
-    busy.value = false
-  }
-}
-
-/** 关键帧：一镜一次出 3 张候选（模型不支持多张时服务端会夹到 1）。 */
-function rerollKeyframes() {
-  return submitRender('keyframe')
-}
-
-function renderTier(next: RenderTier) {
-  tier.value = next
-  return submitRender(next === 'preview' ? 'preview' : 'final')
-}
-
-/** 审核动作：pick=选为定稿 / approve=通过 / reject=驳回重跑。 */
-async function review(action: 'pick' | 'approve' | 'reject', assetId?: string) {
-  const s = selected.value
-  if (!s) return
-  if (mockMode.value) {
-    // 示例数据下只改本地状态，保证交互能被评审
-    if (action === 'reject') applyToSelected({ status: 'rejected' }, '已驳回（示例数据，未提交）')
-    else applyToSelected({ status: 'approved' }, '已通过（示例数据，未提交）')
-    return
-  }
-  try {
-    const res = await hgApi.reviewCanvasShot({
-      episodeId: episodeId.value, idx: s.index, action, assetId
-    })
-    s.status = res.status as CanvasShot['status']
-    if (action === 'pick') {
-      s.candidates.forEach((c) => {
-        c.picked = c.id === assetId
-      })
-      flash('已选为定稿')
-    } else if (action === 'reject') {
-      flash('已驳回，可重新提交渲染')
-    } else {
-      flash('已通过，进入合成队列')
-    }
-  } catch (e) {
-    flash(e instanceof Error ? e.message : '操作失败')
-  }
-}
+const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 100)}%`)
 </script>
 
 <template>
-  <div class="canvas-page">
-    <!-- 顶栏：项目/集 + 本集账 -->
-    <header class="cv-head">
-      <div class="cv-head-left">
-        <span class="cv-series">{{ series.title }}</span>
-        <span class="cv-episode">{{ episode.title }}</span>
+  <div class="cg-page">
+    <!-- 顶栏 -->
+    <header class="cg-top">
+      <div class="cg-top-left">
+        <h1 class="cg-brand">
+          织幕
+        </h1>
+        <span class="cg-tag">PROTOTYPE · AI 影剧无界画布</span>
         <span
-          v-if="pending"
-          class="cv-pending"
-        >
-          <UIcon name="i-lucide-circle-alert" /> {{ pending }} 处待处理
-        </span>
+          v-if="demo"
+          class="cg-demo"
+        >示例数据 · 本地模拟</span>
       </div>
-      <div class="cv-head-right">
+
+      <div class="cg-top-mid">
+        <span class="cg-metric"><i class="i-lucide-layers" /> 就绪 {{ readyCount }}/{{ graph.nodes.length }}</span>
         <span
-          v-if="mockMode"
-          class="cv-mock"
-          title="还没有真实数据：这一集是本地示例数据"
-        >示例数据</span>
+          class="cg-metric"
+          :data-tone="pending ? 'warn' : 'muted'"
+        ><i class="i-lucide-bell" /> 待确认 {{ pending }}</span>
+        <span
+          v-if="dirtyCount"
+          class="cg-metric"
+          data-tone="warn"
+        ><i class="i-lucide-refresh-cw" /> 待重跑 {{ dirtyCount }}</span>
+        <span class="cg-metric"><i class="i-lucide-coins" /> {{ creditsToYuan(totalCost) }}</span>
+      </div>
+
+      <div class="cg-top-right">
+        <div class="cg-zoom">
+          <button
+            type="button"
+            title="缩小"
+            @click="zoomOut()"
+          >
+            <i class="i-lucide-minus" />
+          </button>
+          <span>{{ zoomPercent }}</span>
+          <button
+            type="button"
+            title="放大"
+            @click="zoomIn()"
+          >
+            <i class="i-lucide-plus" />
+          </button>
+        </div>
         <button
+          class="cg-ghost"
           type="button"
-          class="cv-new"
-          @click="openNewEpisode"
+          @click="fit"
         >
-          <UIcon name="i-lucide-plus" /> 新建一集
+          <i class="i-lucide-maximize" /> 适应画布
         </button>
-        <span class="cv-stat"><b>{{ progress }}%</b> 已定稿</span>
-        <span class="cv-stat"><b>{{ creditsToYuan(spent) }}</b> / 预算 {{ creditsToYuan(episode.budgetCredits) }}</span>
+        <button
+          class="cg-ghost"
+          type="button"
+          @click="resetSample"
+        >
+          <i class="i-lucide-rotate-ccw" /> 重置示例
+        </button>
+        <button
+          class="cg-primary"
+          type="button"
+          :disabled="!!runningCount"
+          @click="runAll"
+        >
+          <i :class="runningCount ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
+          {{ runningCount ? `运行中 ${runningCount}` : '运行全部' }}
+        </button>
       </div>
     </header>
 
-    <div
-      class="cv-body"
-      :class="{ 'no-detail': !detailOpen && wideScreen }"
-    >
-      <!-- 左：分集与成本构成 -->
-      <aside class="cv-side">
-        <p class="cv-side-title">
-          分集
-        </p>
-        <ul class="cv-eps">
-          <li
-            v-for="ep in series.episodes"
-            :key="ep.id"
-            :class="['cv-ep', { 'is-active': ep.id === episode.id }]"
-            role="button"
-            tabindex="0"
-            @click="switchEpisode(ep.id)"
-            @keydown.enter="switchEpisode(ep.id)"
-          >
-            <span
-              class="cv-ep-dot"
-              :data-status="ep.status"
-            />
-            <span class="cv-ep-name">{{ ep.title }}</span>
-            <span class="cv-ep-state">{{ ep.status === 'running' ? '进行中' : ep.status === 'done' ? '已完成' : '未开始' }}</span>
-          </li>
-        </ul>
+    <div class="cg-body">
+      <!-- 左栏节点库 -->
+      <CanvasNodeLibrary @add="add" />
 
-        <p class="cv-side-title">
-          成本构成
-        </p>
-        <ul class="cv-costs">
-          <li
-            v-for="c in episode.costs"
-            :key="c.stage"
-          >
-            <span class="cv-cost-stage">{{ c.stage }}</span>
-            <span
-              class="cv-cost-value"
-              :class="{ 'is-zero': !c.credits }"
-            >{{ c.credits ? creditsToYuan(c.credits) : '—' }}</span>
-            <span class="cv-cost-bar">
-              <i :style="{ width: `${Math.round((c.credits / spent) * 100)}%` }" />
-            </span>
-          </li>
-        </ul>
-        <p class="cv-hint">
-          一次定稿渲染 ≈ 几分钟 GPU，关键帧只要几毛钱 —— 卡点都放在"下一步更贵"的位置。
-        </p>
-      </aside>
+      <!-- 画布 -->
+      <section
+        class="cg-stage"
+        @dragover.prevent
+        @drop="onDrop"
+      >
+        <div
+          v-if="wideScreen"
+          class="cg-hint"
+        >
+          拖动空白处平移 · 滚轮缩放（或 Ctrl+滚轮）· 从端口小圆点拖出连线 · 连线只允许同类型
+        </div>
 
-      <!-- 中：节点画布 -->
-      <section class="cv-stage">
         <ClientOnly>
           <VueFlow
             v-if="wideScreen"
-            :nodes="nodes"
-            :edges="edges"
-            :min-zoom="0.3"
+            :nodes="flowNodes"
+            :edges="flowEdges"
+            :min-zoom="0.25"
             :max-zoom="1.6"
-            :default-viewport="{ x: 28, y: 36, zoom: 0.72 }"
-            :nodes-connectable="false"
+            :default-viewport="{ x: 40, y: 40, zoom: 0.6 }"
+            :nodes-connectable="true"
+            :nodes-draggable="true"
             :elements-selectable="true"
-            class="cv-flow"
-            @node-click="(e) => e.node.type === 'shot' && pickShot(e.node.id)"
+            :delete-key-code="null"
+            class="cg-flow"
+            @connect="onConnect"
+            @node-drag-stop="onNodeDragStop"
+            @edges-change="onEdgesChange"
+            @pane-click="selectedId = ''"
           >
-            <template #node-shot="{ data }">
-              <div :class="['cv-node', 'cv-node--shot', { 'is-active': data.active }]">
-                <div class="cv-node-top">
-                  <span class="cv-node-id">{{ data.shot.id }}</span>
-                  <span
-                    class="cv-tag"
-                    :data-tone="SHOT_STATUS[data.shot.status as keyof typeof SHOT_STATUS].tone"
-                  >{{ SHOT_STATUS[data.shot.status as keyof typeof SHOT_STATUS].label }}</span>
-                </div>
-                <div class="cv-node-media">
-                  <img
-                    v-if="data.shot.candidates.length"
-                    class="media-fg"
-                    :src="data.shot.candidates[0]?.url"
-                    alt=""
-                  >
-                  <span
-                    v-else
-                    class="cv-node-empty"
-                  >
-                    <b>{{ data.shot.index }}</b>
-                    <i>待生成</i>
-                  </span>
-                </div>
-                <div class="cv-node-foot">
-                  <span>{{ data.shot.shotSize }} · {{ framesToSeconds(data.shot.frames) }}s</span>
-                  <span class="cv-node-cost">{{ data.shot.costCredits ? creditsToYuan(data.shot.costCredits) : '—' }}</span>
-                </div>
-              </div>
+            <template #node-cg="{ id, data, selected: isSelected }">
+              <CanvasNodeCard
+                :id="id"
+                :data="data"
+                :selected="isSelected"
+                @run="runNode"
+                @expand="expand"
+                @remove="drop"
+                @duplicate="duplicate"
+                @rename="rename"
+                @pick="pick"
+                @review="review"
+                @open="selectedId = $event"
+              />
             </template>
-            <template #node-stage="{ data }">
-              <div class="cv-node cv-node--stage">
-                <p class="cv-stage-title">
-                  {{ data.title }}
-                </p>
-                <p class="cv-stage-sub">
-                  {{ data.sub }}
-                </p>
-                <p
-                  class="cv-stage-value"
-                  :data-tone="data.tone"
-                >
-                  {{ data.value }}
-                </p>
-              </div>
-            </template>
+
             <Background
-              pattern-color="#2a2d33"
-              :gap="26"
+              :gap="22"
               :size="1.4"
+              pattern-color="rgba(255,255,255,0.07)"
             />
-            <Controls position="bottom-right" />
             <MiniMap
               pannable
               zoomable
-              class="cv-minimap"
-              node-color="#3b3f47"
-              mask-color="rgb(16 17 20 / 72%)"
+              :node-color="(n) => groupMeta(nodeTypeSpec(graph.nodes.find(x => x.id === n.id)?.kind ?? 'script_in').group).color"
             />
           </VueFlow>
+
+          <!-- 窄屏：画布没法用，退化成节点列表（同一份数据、同一套操作） -->
+          <div
+            v-else
+            class="cg-narrow"
+          >
+            <button
+              v-for="n in graph.nodes"
+              :key="n.id"
+              class="cg-narrow-item"
+              type="button"
+              :class="{ 'is-active': n.id === selectedId }"
+              @click="selectedId = n.id"
+            >
+              <span
+                class="cg-narrow-icon"
+                :style="{ color: groupMeta(nodeTypeSpec(n.kind).group).color }"
+              >
+                <i :class="nodeTypeSpec(n.kind).icon" />
+              </span>
+              <span class="cg-narrow-text">
+                <b>{{ n.title }}</b>
+                <i>{{ nodeTypeSpec(n.kind).subtitle }}</i>
+              </span>
+              <span
+                class="cg-narrow-state"
+                :data-tone="NODE_STATE_META[stateOf(n)].tone"
+              >{{ NODE_STATE_META[stateOf(n)].label }}</span>
+            </button>
+          </div>
         </ClientOnly>
 
-        <!-- 收起详情后的展开入口（宽屏）与画布操作提示 -->
-        <button
-          v-if="wideScreen && !detailOpen && selected"
-          type="button"
-          class="cv-panel-open"
-          @click="detailOpen = true"
-        >
-          <UIcon name="i-lucide-panel-right-open" /> 展开详情
-        </button>
         <p
-          v-if="wideScreen"
-          class="cv-canvas-hint"
+          v-if="toast"
+          class="cg-toast"
         >
-          滚轮缩放 · 拖动平移 · 右下角可一键适应画布
+          {{ toast }}
         </p>
-
-        <!-- 手机端：画布换成列表（同一份数据、同一套操作） -->
-        <ul class="cv-list">
-          <li
-            v-for="s in shots"
-            :key="s.id"
-            :class="['cv-list-item', { 'is-active': s.id === selectedId }]"
-            @click="pickShot(s.id)"
-          >
-            <span class="cv-list-media">
-              <img
-                v-if="s.candidates.length"
-                class="media-fg"
-                :src="s.candidates[0]?.url"
-                alt=""
-              >
-            </span>
-            <span class="cv-list-body">
-              <span class="cv-list-top">
-                <b>{{ s.id }}</b>
-                <span
-                  class="cv-tag"
-                  :data-tone="SHOT_STATUS[s.status].tone"
-                >{{ SHOT_STATUS[s.status].label }}</span>
-              </span>
-              <span class="cv-list-sub">{{ s.shotSize }} · {{ framesToSeconds(s.frames) }}s · {{ s.renders }} 次渲染</span>
-            </span>
-            <span class="cv-list-cost">{{ s.costCredits ? creditsToYuan(s.costCredits) : '—' }}</span>
-          </li>
-        </ul>
       </section>
 
-      <!-- 右：单镜详情（窄屏是底部抽屉） -->
-      <div
-        v-if="selected && mobileDetailOpen && !wideScreen"
-        class="cv-sheet-mask"
-        @click="mobileDetailOpen = false"
-      />
+      <!-- 右栏：节点详情 -->
       <aside
-        v-if="selected && ((wideScreen && detailOpen) || (!wideScreen && mobileDetailOpen))"
-        class="cv-detail"
+        v-if="detailOpen"
+        class="cg-detail"
       >
-        <header class="cv-detail-head">
-          <div>
-            <p class="cv-detail-id">
-              {{ selected.id }}
-            </p>
-            <p class="cv-detail-sub">
-              {{ selected.shotSize }} · {{ selected.camera }} · {{ selected.frames }} 帧 /
-              {{ framesToSeconds(selected.frames) }}s
-            </p>
-          </div>
-          <div class="cv-detail-tags">
+        <template v-if="selected && selectedSpec">
+          <header class="cg-detail-head">
             <span
-              class="cv-tag"
-              :data-tone="SHOT_STATUS[selected.status].tone"
-            >{{ SHOT_STATUS[selected.status].label }}</span>
+              class="cg-detail-icon"
+              :style="{ color: groupMeta(selectedSpec.group).color }"
+            >
+              <i :class="selectedSpec.icon" />
+            </span>
+            <div class="cg-detail-title">
+              <b>{{ selected.title }}</b>
+              <i>{{ selectedSpec.subtitle }}</i>
+            </div>
             <button
               type="button"
-              class="cv-sheet-close"
-              aria-label="收起详情"
-              @click="mobileDetailOpen = false"
+              title="收起"
+              @click="detailOpen = false"
             >
-              <UIcon name="i-lucide-chevron-down" />
+              <i class="i-lucide-panel-right-close" />
             </button>
-            <button
-              type="button"
-              class="cv-panel-toggle"
-              :aria-label="detailOpen ? '收起详情（画布更宽）' : '展开详情'"
-              @click="detailOpen = !detailOpen"
+          </header>
+
+          <div class="cg-detail-scroll">
+            <!-- 状态与动作 -->
+            <div class="cg-detail-state">
+              <span
+                class="cg-pill"
+                :data-tone="NODE_STATE_META[stateOf(selected)].tone"
+              >{{ NODE_STATE_META[stateOf(selected)].label }}</span>
+              <span
+                v-if="selected.ref?.shotIdx"
+                class="cg-pill"
+              >第 {{ selected.ref.shotIdx }} 镜</span>
+              <button
+                v-if="selectedSpec.stage === 'ready' && selected.kind === 'shotlist' && selectedTableRows.length"
+                class="cg-mini"
+                type="button"
+                @click="expand(selected.id)"
+              >
+                生成节点（{{ selectedTableRows.length }} 镜）
+              </button>
+              <button
+                v-else-if="selectedSpec.stage === 'ready'"
+                class="cg-mini cg-mini--accent"
+                type="button"
+                :disabled="stateOf(selected) === 'running'"
+                @click="runNode(selected.id)"
+              >
+                <i class="i-lucide-play" /> 运行这个节点
+              </button>
+              <span
+                v-else
+                class="cg-pill"
+                data-tone="warn"
+              >本版未开放</span>
+            </div>
+
+            <!-- 输入 -->
+            <section
+              v-if="selectedSpec.inputs.length"
+              class="cg-block"
             >
-              <UIcon :name="detailOpen ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'" />
-            </button>
+              <p class="cg-block-title">
+                输入
+              </p>
+              <div
+                v-for="p in selectedSpec.inputs"
+                :key="p.slot"
+                class="cg-input-row"
+              >
+                <span
+                  class="cg-port-dot"
+                  :style="{ background: portMeta(p.type).color }"
+                />
+                <span class="cg-input-name">{{ p.label }}</span>
+                <span
+                  class="cg-input-val"
+                  :data-tone="selected.inputs[p.slot] ? 'ok' : 'muted'"
+                >
+                  {{ selected.inputs[p.slot] ? `v${selected.inputs[p.slot]!.version} 已接` : '未接' }}
+                </span>
+              </div>
+            </section>
+
+            <!-- 参数 -->
+            <section
+              v-if="selectedSpec.params.length"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                参数
+              </p>
+              <label
+                v-for="p in selectedSpec.params"
+                :key="p.key"
+                class="cg-field"
+              >
+                <span class="cg-field-label">{{ p.label }}</span>
+                <textarea
+                  v-if="p.kind === 'textarea'"
+                  class="cg-input cg-input--area"
+                  :value="paramValue(selected, p.key)"
+                  :placeholder="p.placeholder"
+                  @input="setParam(selected, p.key, ($event.target as HTMLTextAreaElement).value)"
+                />
+                <select
+                  v-else-if="p.kind === 'select'"
+                  class="cg-input"
+                  :value="paramValue(selected, p.key)"
+                  @change="setParam(selected, p.key, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option
+                    v-for="o in paramOptions(p)"
+                    :key="o.value"
+                    :value="o.value"
+                  >
+                    {{ o.label }}
+                  </option>
+                </select>
+                <select
+                  v-else-if="p.kind === 'frames'"
+                  class="cg-input"
+                  :value="paramValue(selected, p.key)"
+                  @change="setParam(selected, p.key, Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option
+                    v-for="f in graph.frameGrid"
+                    :key="f"
+                    :value="f"
+                  >
+                    {{ f }} 帧 · {{ framesToSeconds(f) }}s
+                  </option>
+                </select>
+                <input
+                  v-else-if="p.kind === 'number'"
+                  class="cg-input"
+                  type="number"
+                  min="1"
+                  :value="paramValue(selected, p.key)"
+                  @input="setParam(selected, p.key, Number(($event.target as HTMLInputElement).value))"
+                >
+                <input
+                  v-else
+                  class="cg-input"
+                  :value="paramValue(selected, p.key)"
+                  :placeholder="p.placeholder"
+                  @input="setParam(selected, p.key, ($event.target as HTMLInputElement).value)"
+                >
+                <span
+                  v-if="p.hint"
+                  class="cg-field-hint"
+                >{{ p.hint }}</span>
+              </label>
+            </section>
+
+            <!-- 产物版本 -->
+            <section class="cg-block">
+              <p class="cg-block-title">
+                产物 <span class="cg-block-sub">{{ nodeVersions.length }} 个版本</span>
+              </p>
+              <p
+                v-if="!nodeVersions.length"
+                class="cg-empty-line"
+              >
+                还没有产物
+              </p>
+              <div
+                v-for="a in nodeVersions"
+                :key="a.id"
+                class="cg-art"
+                :class="{ 'is-on': a.id === shownArtifact?.id }"
+              >
+                <div class="cg-art-head">
+                  <b>v{{ a.version }}</b>
+                  <span>{{ a.note }}</span>
+                  <span
+                    class="cg-pill cg-pill--sm"
+                    :data-tone="a.review === 'approved' ? 'ok' : a.review === 'rejected' ? 'bad' : 'warn'"
+                  >
+                    {{ a.review === 'approved' ? '已认可' : a.review === 'rejected' ? '已驳回' : '待确认' }}
+                  </span>
+                </div>
+                <div class="cg-art-actions">
+                  <button
+                    v-if="a.id !== shownArtifact?.id"
+                    class="cg-mini"
+                    type="button"
+                    @click="pick(selected.id, a.id)"
+                  >
+                    选用这份
+                  </button>
+                  <button
+                    v-else
+                    class="cg-mini"
+                    type="button"
+                    disabled
+                  >
+                    当前选用
+                  </button>
+                  <button
+                    class="cg-mini"
+                    type="button"
+                    @click="review(selected.id, a.id, 'approved')"
+                  >
+                    认可
+                  </button>
+                  <button
+                    class="cg-mini"
+                    type="button"
+                    @click="review(selected.id, a.id, 'rejected')"
+                  >
+                    驳回
+                  </button>
+                  <button
+                    v-if="a.url"
+                    class="cg-mini"
+                    type="button"
+                    @click="openArtifact(a)"
+                  >
+                    打开
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- 运行记录 -->
+            <section class="cg-block">
+              <p class="cg-block-title">
+                运行记录
+              </p>
+              <p
+                v-if="!nodeRuns.length"
+                class="cg-empty-line"
+              >
+                还没跑过
+              </p>
+              <div
+                v-for="r in nodeRuns"
+                :key="r.id"
+                class="cg-run"
+              >
+                <span
+                  class="cg-run-state"
+                  :data-tone="r.status === 'done' ? 'ok' : r.status === 'failed' ? 'bad' : 'run'"
+                >
+                  {{ r.status === 'done' ? '成功' : r.status === 'failed' ? '失败' : '运行中' }}
+                </span>
+                <span class="cg-run-cost">{{ r.costCredits ? creditsToYuan(r.costCredits) : '—' }}</span>
+                <span class="cg-run-hash">#{{ r.paramsHash }}</span>
+              </div>
+              <p
+                v-if="nodeRuns[0]?.error"
+                class="cg-run-error"
+              >
+                {{ nodeRuns[0].error }}
+              </p>
+            </section>
           </div>
-        </header>
+        </template>
 
         <div
-          class="cv-preview"
-          :class="{ 'is-empty': !activeCandidate }"
+          v-else
+          class="cg-detail-empty"
         >
-          <img
-            v-if="activeCandidate"
-            class="media-fg"
-            :src="activeCandidate.url"
-            alt=""
-          >
-          <span
-            v-else
-            class="cv-node-empty"
-          >
-            <UIcon name="i-lucide-image-plus" /> 还没有候选：先出关键帧，选一张作首帧后再渲染
-          </span>
+          <i class="i-lucide-mouse-pointer-click" />
+          <p>点一个节点看它的参数、产物版本和运行记录</p>
+          <p class="cg-detail-empty-sub">
+            共 {{ graph.nodes.length }} 个节点 · {{ graph.edges.length }} 条连线
+          </p>
         </div>
-
-        <div
-          v-if="selected.candidates.length"
-          class="cv-cands"
-        >
-          <button
-            v-for="c in selected.candidates"
-            :key="c.id"
-            type="button"
-            :class="['cv-cand', { 'is-active': c.id === activeCandidate?.id, 'is-picked': c.picked }]"
-            @click="activeCandidateId = c.id"
-          >
-            <img
-              class="media-fg"
-              :src="c.url"
-              alt=""
-            >
-            <span>{{ c.note }}</span>
-            <i
-              v-if="c.picked"
-              class="cv-cand-check"
-            ><UIcon name="i-lucide-check" /></i>
-          </button>
-        </div>
-
-        <label class="cv-model">
-          <span>模型</span>
-          <select v-model="pickedModel">
-            <option value="">
-              选择模型…
-            </option>
-            <option
-              v-for="m in selected.candidates.some(c => c.stage !== 'keyframe') ? videoModels : imageModels"
-              :key="m.id"
-              :value="m.id"
-            >{{ m.name }}</option>
-          </select>
-        </label>
-
-        <div class="cv-actions">
-          <button
-            type="button"
-            class="cv-btn"
-            :disabled="busy"
-            @click="rerollKeyframes"
-          >
-            <UIcon name="i-lucide-refresh-cw" /> 重出关键帧
-          </button>
-          <button
-            type="button"
-            class="cv-btn"
-            :class="{ 'is-on': tier === 'preview' }"
-            :disabled="busy"
-            @click="renderTier('preview')"
-          >
-            <UIcon name="i-lucide-play" /> 预览 ¥0.18
-          </button>
-          <button
-            type="button"
-            class="cv-btn cv-btn--primary"
-            :class="{ 'is-on': tier === 'final' }"
-            :disabled="busy"
-            @click="renderTier('final')"
-          >
-            <UIcon name="i-lucide-clapperboard" /> 定稿 ¥0.96
-          </button>
-        </div>
-
-        <!-- 审核行常驻：驳回/通过不需要先有候选（"这一批都不用" 本身就是一种审核结论），
-             只有"选为定稿"要求先选中一张。 -->
-        <div class="cv-actions cv-actions--review">
-          <button
-            type="button"
-            class="cv-btn"
-            :disabled="busy || !activeCandidate"
-            @click="activeCandidate && review('pick', activeCandidate.id)"
-          >
-            <UIcon name="i-lucide-check-check" /> 选为定稿
-          </button>
-          <button
-            type="button"
-            class="cv-btn"
-            :disabled="busy"
-            @click="review('reject')"
-          >
-            <UIcon name="i-lucide-x" /> 驳回重跑
-          </button>
-          <button
-            type="button"
-            class="cv-btn cv-btn--ghost"
-            :disabled="busy"
-            @click="review('approve')"
-          >
-            <UIcon name="i-lucide-arrow-right" /> 通过
-          </button>
-        </div>
-
-        <section class="cv-field">
-          <p class="cv-field-title">
-            帧数（H3 网格）
-          </p>
-          <div class="cv-frames">
-            <button
-              v-for="f in frameGrid"
-              :key="f"
-              type="button"
-              :class="['cv-frame', { 'is-active': draftFrames === f }]"
-              @click="draftFrames = f"
-            >
-              {{ f }}
-              <i>{{ framesToSeconds(f) }}s</i>
-            </button>
-          </div>
-          <p
-            v-if="!frameGrid.includes(draftFrames)"
-            class="cv-warn"
-          >
-            不在网格上的帧数会被上游静默吸附，务必从上面这 15 个值里选。
-          </p>
-        </section>
-
-        <section class="cv-field">
-          <p class="cv-field-title">
-            关键帧提示词
-          </p>
-          <p class="cv-field-body">
-            {{ selected.keyframePrompt }}
-          </p>
-        </section>
-
-        <section class="cv-field">
-          <p class="cv-field-title">
-            H3 提示词
-          </p>
-          <p class="cv-field-body">
-            <b>画面</b>{{ selected.h3Prompt.description }}
-          </p>
-          <p class="cv-field-body">
-            <b>环境音</b>{{ selected.h3Prompt.soundscape }}
-          </p>
-          <p class="cv-field-body">
-            <b>配乐</b>{{ selected.h3Prompt.music || '留空（整集在 S9 统一铺 BGM）' }}
-          </p>
-        </section>
-
-        <section class="cv-field">
-          <p class="cv-field-title">
-            台词与角色
-          </p>
-          <p
-            v-for="d in selected.dialogue"
-            :key="d.start"
-            class="cv-field-body"
-          >
-            <b>{{ d.speaker }}</b>{{ d.start }} · {{ d.line }}
-          </p>
-          <p class="cv-field-body">
-            <b>场景</b>{{ selected.scene }}
-          </p>
-        </section>
-
-        <footer class="cv-detail-foot">
-          <span>已花费 {{ creditsToYuan(selected.costCredits) }}</span>
-          <span>渲染 {{ selected.renders }} 次</span>
-          <span>{{ selected.updatedAt }}</span>
-        </footer>
       </aside>
-    </div>
 
-    <!-- 新建一集：给标题与镜头数生成空镜，或直接粘贴分镜 JSON 导入 -->
-    <div
-      v-if="newOpen"
-      class="cv-dialog-mask"
-      @click.self="newOpen = false"
-    >
-      <div class="cv-dialog">
-        <h3 class="cv-dialog-title">
-          新建一集
-        </h3>
-        <label class="cv-dialog-field">
-          <span>集标题</span>
-          <input
-            v-model="newTitle"
-            placeholder="留空则按「第 N 集」生成"
-          >
-        </label>
-        <div class="cv-dialog-row">
-          <label class="cv-dialog-field">
-            <span>镜头数</span>
-            <input
-              v-model.number="newCount"
-              type="number"
-              min="1"
-              max="60"
-            >
-          </label>
-          <label class="cv-dialog-field">
-            <span>默认帧数（H3 网格）</span>
-            <select v-model.number="newFrames">
-              <option
-                v-for="f in frameGrid"
-                :key="f"
-                :value="f"
-              >{{ f }} · {{ framesToSeconds(f) }}s</option>
-            </select>
-          </label>
-        </div>
-        <label class="cv-dialog-field">
-          <span>分镜 JSON（可选：填了就按分镜导入，忽略上面的镜头数）</span>
-          <textarea
-            v-model="newJSON"
-            rows="6"
-            placeholder="[{&quot;idx&quot;:1,&quot;frames&quot;:158,&quot;keyframePrompt&quot;:&quot;…&quot;}] 或 {&quot;shots&quot;:[…]}}"
-          />
-        </label>
-        <p class="cv-dialog-hint">
-          导入会先过校验器（帧数必须在 H3 网格上、台词不超过镜头时长、角色必须已在资产库），
-          有阻断问题会整批拒绝并列出原因。
-        </p>
-        <div class="cv-dialog-actions">
-          <button
-            type="button"
-            class="cv-btn"
-            @click="newOpen = false"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            class="cv-btn cv-btn--primary"
-            :disabled="newBusy"
-            @click="submitNewEpisode"
-          >
-            {{ newBusy ? '提交中…' : '创建' }}
-          </button>
-        </div>
-      </div>
+      <button
+        v-if="!detailOpen"
+        class="cg-detail-open"
+        type="button"
+        @click="detailOpen = true"
+      >
+        <i class="i-lucide-panel-right-open" />
+      </button>
     </div>
-
-    <p
-      v-if="toast"
-      class="cv-toast"
-    >
-      {{ toast }}
-    </p>
   </div>
 </template>
 
 <style scoped>
-/* 画布页占满内容区：外壳已按 isFullBleed 去掉页面内边距 */
-.canvas-page {
+.cg-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   background: var(--hg3-canvas);
+  color: var(--hg3-ink);
 }
 
-.cv-head {
+/* 顶栏 */
+.cg-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* 允许换行 + min-width:0：窄屏上这一行元素多，不换行会把它撑成很宽的最小宽度，
-     连带把外壳顶栏挤成竖排文字（真机截图上就是这样破的版）。 */
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 8px 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--hg3-line);
-  background: var(--hg3-well);
-}
-.cv-head-left,
-.cv-head-right {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  min-width: 0;
-}
-.cv-stat,
-.cv-episode,
-.cv-series {
-  white-space: nowrap;
-}
-.cv-series {
-  font-size: 12px;
-  color: var(--hg3-muted);
-}
-.cv-episode {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--hg3-ink);
-}
-.cv-mock {
-  padding: 3px 8px;
-  border: 1px dashed var(--hg3-line-strong);
-  border-radius: 999px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-pending {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border: 1px solid var(--hg3-accent-line);
-  border-radius: 999px;
-  background: var(--hg3-accent-soft);
-  color: var(--hg3-accent-hi);
-  font-size: 12px;
-}
-.cv-stat {
-  font-size: 12px;
-  color: var(--hg3-muted);
-}
-.cv-stat b {
-  color: var(--hg3-ink);
-  font-weight: 600;
-}
-
-.cv-body {
-  display: grid;
-  grid-template-columns: 224px minmax(0, 1fr) 336px;
-  flex: 1;
-  min-height: 0;
-}
-/* 收起详情：画布吃掉那 336px（1440 窗口下画布可见宽度从 ~600 涨到 ~940） */
-.cv-body.no-detail {
-  grid-template-columns: 224px minmax(0, 1fr);
-}
-
-/* 左栏 */
-.cv-side {
-  padding: 12px;
-  border-right: 1px solid var(--hg3-line);
-  background: var(--hg3-well);
-  overflow-y: auto;
-}
-.cv-side-title {
-  margin: 12px 0 8px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-}
-.cv-side-title:first-child {
-  margin-top: 0;
-}
-.cv-eps,
-.cv-costs {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.cv-ep {
-  cursor: pointer;
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--hg3-tile);
-  font-size: 12px;
-}
-.cv-ep.is-active {
-  border-color: var(--hg3-accent-line);
-  background: var(--hg3-accent-soft);
-}
-.cv-ep-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--hg3-faint);
-}
-.cv-ep-dot[data-status='running'] {
-  background: var(--hg3-run);
-}
-.cv-ep-dot[data-status='done'] {
-  background: var(--hg3-ok);
-}
-.cv-ep-name {
-  overflow: hidden;
-  color: var(--hg3-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cv-ep-state {
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-costs li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 8px;
-  font-size: 12px;
-  color: var(--hg3-muted);
-}
-.cv-cost-value {
-  color: var(--hg3-ink);
-}
-.cv-cost-value.is-zero {
-  color: var(--hg3-faint);
-}
-.cv-cost-bar {
-  grid-column: 1 / -1;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--hg3-rail);
-  overflow: hidden;
-}
-.cv-cost-bar i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--hg3-accent), var(--hg3-accent-hi));
-}
-.cv-hint {
-  margin-top: 14px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-/* 画布 */
-.cv-stage {
-  position: relative;
-  min-width: 0;
-  background: var(--hg3-canvas);
-}
-.cv-flow {
-  width: 100%;
-  height: 100%;
-}
-.cv-list {
-  display: none;
-}
-.cv-minimap {
-  background: var(--hg3-well) !important;
-}
-
-.cv-node {
-  width: 150px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 12px;
-  background: var(--hg3-card);
-  overflow: hidden;
-  font-family: inherit;
-}
-.cv-node--shot.is-active {
-  border-color: var(--hg3-accent);
-  box-shadow: 0 0 0 2px var(--hg3-accent-soft);
-}
-.cv-node-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 6px 8px;
-}
-.cv-node-id {
-  color: var(--hg3-ink);
-  font-size: 11px;
-  font-weight: 600;
-}
-.cv-node-media {
-  position: relative;
-  aspect-ratio: 9 / 16;
-  background: var(--hg3-card-soft);
-}
-.cv-node-media img {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left top;
-}
-.cv-node-empty {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 2px;
-  width: 100%;
-  height: 100%;
-  color: var(--hg3-faint);
-}
-/* 没有候选时给一个能认人的空态：大号镜号 + "待生成"，
-   比一个几乎看不见的图标有用得多（之前那版截图里整片都是灰的）。 */
-.cv-node-empty b {
-  color: var(--hg3-muted);
-  font-size: 20px;
-  font-weight: 700;
-  opacity: 0.55;
-}
-.cv-node-empty i {
-  font-size: 10px;
-  font-style: normal;
-}
-.cv-node-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  color: var(--hg3-muted);
-  font-size: 11px;
-}
-.cv-node-cost {
-  color: var(--hg3-ink);
-}
-.cv-node--stage {
-  width: 168px;
-  padding: 12px;
-}
-.cv-stage-title {
-  margin: 0 0 4px;
-  color: var(--hg3-ink);
-  font-size: 13px;
-  font-weight: 600;
-}
-.cv-stage-sub {
-  margin: 0 0 8px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-stage-value {
-  margin: 0;
-  font-size: 12px;
-  color: var(--hg3-muted);
-}
-.cv-stage-value[data-tone='ok'] {
-  color: var(--hg3-ok);
-}
-
-.cv-tag {
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.cv-tag[data-tone='muted'] {
-  background: var(--hg3-rail);
-  color: var(--hg3-muted);
-}
-.cv-tag[data-tone='run'] {
-  background: rgb(101 198 251 / 18%);
-  color: var(--hg3-run);
-}
-.cv-tag[data-tone='warn'] {
-  background: rgb(255 180 84 / 18%);
-  color: var(--hg3-warn);
-}
-.cv-tag[data-tone='ok'] {
-  background: rgb(46 223 154 / 16%);
-  color: var(--hg3-ok);
-}
-.cv-tag[data-tone='bad'] {
-  background: rgb(255 112 122 / 16%);
-  color: var(--hg3-i-coral);
-}
-
-/* 右栏详情 */
-.cv-detail {
-  display: flex;
-  flex-direction: column;
   gap: 12px;
-  /* 子项一律不参与收缩：flex 列里 aspect-ratio 定的高度会被 flex-shrink 压成 0
-     （预览区就是这么变成 0 高的），滚动交给容器自己。 */
-}
-.cv-detail > * {
+  height: var(--hg3-topbar-h);
   flex: none;
-  padding: 12px;
-  border-left: 1px solid var(--hg3-line);
-  background: var(--hg3-well);
-  overflow-y: auto;
-}
-.cv-sheet-mask,
-.cv-sheet-close {
-  display: none;
-}
-/* 宽屏用小按钮收起详情；窄屏用底部的下拉箭头（.cv-sheet-close） */
-.cv-panel-toggle {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  background: var(--hg3-tile);
-  color: var(--hg3-muted);
-  cursor: pointer;
-}
-.cv-panel-open {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  background: var(--hg3-well);
-  color: var(--hg3-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.cv-canvas-hint {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  z-index: 5;
-  margin: 0;
-  color: var(--hg3-faint);
-  font-size: 11px;
-  pointer-events: none;
-}
-.cv-detail-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.cv-sheet-close {
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 999px;
-  background: var(--hg3-tile);
-  color: var(--hg3-muted);
-  cursor: pointer;
-}
-.cv-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-.cv-detail-id {
-  margin: 0;
-  color: var(--hg3-ink);
-  font-size: 14px;
-  font-weight: 600;
-}
-.cv-detail-sub {
-  margin: 4px 0 0;
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-preview {
-  position: relative;
-  height: 320px;
-  transition: height 160ms ease;
-  border-radius: 12px;
-  background: var(--hg3-card-soft);
-  overflow: hidden;
-}
-/* 没有候选时不要占一块 320px 的灰：收成一条提示，把空间让给提示词与参数 */
-.cv-preview.is-empty {
-  height: 76px;
-}
-.cv-preview.is-empty .cv-node-empty {
-  font-size: 11px;
-  line-height: 1.6;
-  padding: 0 12px;
-  text-align: center;
-}
-.cv-preview img {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left top;
-}
-.cv-cands {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-.cv-cand {
-  position: relative;
-  display: grid;
-  gap: 4px;
-  padding: 0;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 10px;
-  background: var(--hg3-tile);
-  color: var(--hg3-muted);
-  font-size: 10px;
-  overflow: hidden;
-  cursor: pointer;
-}
-.cv-cand img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
-  object-position: left top;
-}
-.cv-cand span {
-  padding: 0 0 6px;
-}
-.cv-cand.is-active {
-  border-color: var(--hg3-accent);
-}
-.cv-cand-check {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--hg3-ok);
-  color: #06231a;
-  font-size: 10px;
-}
-.cv-model {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-model select {
-  flex: 1;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  background: var(--hg3-tile);
-  color: var(--hg3-ink);
-  font-size: 12px;
-}
-.cv-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.cv-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-.cv-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 10px;
-  background: var(--hg3-tile);
-  color: var(--hg3-ink);
-  font-size: 12px;
-  cursor: pointer;
-}
-.cv-btn:hover {
-  border-color: var(--hg3-accent-line);
-}
-.cv-btn--primary {
-  border-color: transparent;
-  background: linear-gradient(180deg, var(--hg3-accent-hi), var(--hg3-accent));
-  color: var(--hg3-accent-ink);
-  font-weight: 600;
-}
-.cv-btn--ghost {
-  background: transparent;
-}
-.cv-field-title {
-  margin: 0 0 6px;
-  color: var(--hg3-faint);
-  font-size: 11px;
-}
-.cv-field-body {
-  margin: 0 0 4px;
-  color: var(--hg3-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.cv-field-body b {
-  margin-right: 6px;
-  color: var(--hg3-ink);
-  font-weight: 600;
-}
-.cv-frames {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.cv-frame {
-  display: grid;
-  place-items: center;
-  min-width: 42px;
-  padding: 4px 6px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  background: var(--hg3-tile);
-  color: var(--hg3-ink);
-  font-size: 11px;
-  cursor: pointer;
-}
-.cv-frame i {
-  color: var(--hg3-faint);
-  font-size: 9px;
-  font-style: normal;
-}
-.cv-frame.is-active {
-  border-color: var(--hg3-accent);
-  background: var(--hg3-accent-soft);
-}
-.cv-warn {
-  margin: 6px 0 0;
-  color: var(--hg3-i-coral);
-  font-size: 11px;
-}
-.cv-detail-foot {
-  display: flex;
-  justify-content: space-between;
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid var(--hg3-line);
-  color: var(--hg3-faint);
-  font-size: 11px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--hg3-line);
+  background: var(--hg3-rail-active);
 }
 
-.cv-new {
+.cg-top-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.cg-brand { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; }
+
+.cg-tag {
+  padding: 2px 7px;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 6%);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.cg-demo {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--hg3-warn);
+  background: rgb(255 180 84 / 12%);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cg-top-mid { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.cg-metric { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--hg3-muted); white-space: nowrap; }
+.cg-metric[data-tone='warn'] { color: var(--hg3-warn); }
+
+.cg-top-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.cg-zoom {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--hg3-accent-line);
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 5%);
   border-radius: 999px;
-  background: var(--hg3-accent-soft);
-  color: var(--hg3-accent-hi);
+}
+
+.cg-zoom button { display: inline-flex; color: var(--hg3-muted); }
+.cg-zoom button:hover { color: var(--hg3-ink); }
+
+.cg-ghost,
+.cg-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
   font-size: 12px;
-  cursor: pointer;
+  border-radius: 999px;
 }
-.cv-dialog-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  background: rgb(8 9 11 / 62%);
-}
-.cv-dialog {
-  display: grid;
-  gap: 12px;
-  width: min(520px, 92vw);
-  padding: 18px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 16px;
-  background: var(--hg3-well);
-}
-.cv-dialog-title {
-  margin: 0;
-  color: var(--hg3-ink);
-  font-size: 15px;
-}
-.cv-dialog-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.cv-dialog-field {
-  display: grid;
-  gap: 6px;
-  color: var(--hg3-faint);
+
+.cg-ghost { color: var(--hg3-ink); background: rgb(255 255 255 / 7%); }
+.cg-ghost:hover { background: rgb(255 255 255 / 12%); }
+.cg-primary { font-weight: 600; color: var(--hg3-accent-ink); background: var(--hg3-accent); }
+.cg-primary:hover:not(:disabled) { background: var(--hg3-accent-hi); }
+.cg-primary:disabled { opacity: 0.6; cursor: progress; }
+
+/* 主体 */
+.cg-body { display: flex; flex: 1; min-height: 0; }
+
+.cg-stage { position: relative; flex: 1; min-width: 0; }
+
+.cg-flow { width: 100%; height: 100%; background: var(--hg3-canvas); }
+
+.cg-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  padding: 5px 12px;
   font-size: 11px;
+  color: var(--hg3-muted);
+  background: rgb(0 0 0 / 42%);
+  border: 1px solid var(--hg3-line);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
-.cv-dialog-field input,
-.cv-dialog-field select,
-.cv-dialog-field textarea {
-  padding: 8px;
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  background: var(--hg3-tile);
-  color: var(--hg3-ink);
-  font-size: 12px;
-  font-family: inherit;
-}
-.cv-dialog-field textarea {
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.cv-dialog-hint {
-  margin: 0;
-  color: var(--hg3-faint);
-  font-size: 11px;
-  line-height: 1.6;
-}
-.cv-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.cv-toast {
+
+.cg-toast {
   position: absolute;
   bottom: 20px;
   left: 50%;
-  margin: 0;
-  padding: 8px 14px;
-  border: 1px solid var(--hg3-accent-line);
-  border-radius: 999px;
-  background: var(--hg3-well);
-  color: var(--hg3-ink);
-  font-size: 12px;
+  z-index: 30;
   transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--hg3-ink);
+  background: rgb(0 0 0 / 72%);
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 999px;
 }
 
-/* 窄屏：画布换成列表，左右栏收起 */
-@media (max-width: 1100px) {
-  .cv-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .cv-side {
-    display: none;
-  }
-  .cv-detail {
-    border-left: 0;
-    border-top: 1px solid var(--hg3-line);
-  }
+.cg-narrow { padding: 12px; overflow-y: auto; height: 100%; }
+
+.cg-narrow-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--hg3-card);
+  border-radius: 12px;
 }
-@media (max-width: 760px) {
-  .cv-flow {
-    display: none;
-  }
-  .cv-list {
-    display: grid;
-    gap: 8px;
-    padding: 10px;
-    margin: 0;
-    list-style: none;
-  }
-  .cv-list-item {
-    display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    padding: 8px;
-    border: 1px solid var(--hg3-line);
-    border-radius: 12px;
-    background: var(--hg3-card);
-  }
-  .cv-list-item.is-active {
-    border-color: var(--hg3-accent);
-  }
-  .cv-list-media {
-    position: relative;
-    display: block;
-    width: 46px;
-    aspect-ratio: 9 / 16;
-    border-radius: 8px;
-    background: var(--hg3-card-soft);
-    overflow: hidden;
-  }
-  .cv-list-media img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: left top;
-  }
-  .cv-list-top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--hg3-ink);
-    font-size: 12px;
-  }
-  .cv-list-sub {
-    display: block;
-    margin-top: 2px;
-    color: var(--hg3-faint);
-    font-size: 11px;
-  }
-  .cv-list-cost {
-    color: var(--hg3-ink);
-    font-size: 12px;
-  }
-  /* 窄屏：详情做成底部抽屉 —— 列表有 15 条，把详情排在列表后面等于用户永远看不到 */
-  .cv-detail {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 41;
-    max-height: 82vh;
-    border-top: 1px solid var(--hg3-line-strong);
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -18px 40px rgb(0 0 0 / 45%);
-  }
-  .cv-sheet-mask {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    display: block;
-    background: rgb(8 9 11 / 62%);
-  }
-  .cv-sheet-close {
-    display: grid;
-  }
-  .cv-panel-toggle {
-    display: none;
-  }
+
+.cg-narrow-item.is-active { box-shadow: inset 0 0 0 1px var(--hg3-accent-line); }
+.cg-narrow-icon { font-size: 16px; }
+.cg-narrow-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cg-narrow-text b { font-size: 12.5px; }
+.cg-narrow-text i { font-size: 10.5px; font-style: normal; color: var(--hg3-faint); }
+
+.cg-narrow-state,
+.cg-pill {
+  padding: 2px 7px;
+  font-size: 10.5px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 6%);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cg-pill--sm { font-size: 9.5px; padding: 1px 6px; }
+.cg-pill[data-tone='ok'],
+.cg-narrow-state[data-tone='ok'] { color: var(--hg3-ok); background: rgb(46 223 154 / 12%); }
+.cg-pill[data-tone='run'],
+.cg-narrow-state[data-tone='run'] { color: var(--hg3-run); background: rgb(101 198 251 / 12%); }
+.cg-pill[data-tone='warn'],
+.cg-narrow-state[data-tone='warn'] { color: var(--hg3-warn); background: rgb(255 180 84 / 12%); }
+.cg-pill[data-tone='bad'],
+.cg-narrow-state[data-tone='bad'] { color: var(--hg3-i-coral); background: rgb(255 112 122 / 12%); }
+
+/* 右栏详情 */
+.cg-detail {
+  display: flex;
+  flex-direction: column;
+  width: 326px;
+  flex: none;
+  min-height: 0;
+  border-left: 1px solid var(--hg3-line);
+  background: var(--hg3-rail-active);
+}
+
+.cg-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 12px 11px;
+  border-bottom: 1px solid var(--hg3-line);
+}
+
+.cg-detail-icon { font-size: 17px; }
+.cg-detail-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cg-detail-title b { font-size: 13px; }
+.cg-detail-title i { font-size: 10.5px; font-style: normal; color: var(--hg3-faint); }
+.cg-detail-head button { color: var(--hg3-faint); }
+.cg-detail-head button:hover { color: var(--hg3-ink); }
+
+.cg-detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px 24px; }
+
+.cg-detail-state { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+.cg-block { padding: 10px 0; border-top: 1px solid var(--hg3-line); }
+.cg-block-title { margin: 0 0 8px; font-size: 11.5px; color: var(--hg3-muted); }
+.cg-block-sub { color: var(--hg3-faint); }
+
+.cg-input-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.cg-port-dot { width: 6px; height: 6px; border-radius: 50%; }
+.cg-input-name { font-size: 11.5px; color: var(--hg3-ink); }
+.cg-input-val { margin-left: auto; font-size: 10.5px; color: var(--hg3-faint); }
+.cg-input-val[data-tone='ok'] { color: var(--hg3-ok); }
+
+.cg-field { display: block; margin-bottom: 10px; }
+.cg-field-label { display: block; margin-bottom: 4px; font-size: 11px; color: var(--hg3-muted); }
+.cg-field-hint { display: block; margin-top: 3px; font-size: 10px; color: var(--hg3-faint); }
+
+.cg-input {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--hg3-ink);
+  background: var(--hg3-well);
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 8px;
+}
+
+.cg-input--area { min-height: 66px; resize: vertical; line-height: 1.5; }
+.cg-input:focus { outline: none; border-color: var(--hg3-accent-line); }
+
+.cg-art {
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  background: var(--hg3-card);
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.cg-art.is-on { border-color: var(--hg3-accent-line); }
+.cg-art-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--hg3-muted); }
+.cg-art-head b { color: var(--hg3-ink); }
+.cg-art-head .cg-pill { margin-left: auto; }
+.cg-art-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+
+.cg-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  font-size: 11px;
+  color: var(--hg3-ink);
+  background: rgb(255 255 255 / 7%);
+  border-radius: 999px;
+}
+
+.cg-mini:hover:not(:disabled) { background: rgb(255 255 255 / 13%); }
+.cg-mini:disabled { opacity: 0.5; cursor: default; }
+.cg-mini--accent { color: var(--hg3-accent-ink); background: var(--hg3-accent); }
+.cg-mini--accent:hover:not(:disabled) { background: var(--hg3-accent-hi); }
+
+.cg-empty-line { margin: 0; font-size: 11px; color: var(--hg3-faint); }
+
+.cg-run { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
+.cg-run-state[data-tone='ok'] { color: var(--hg3-ok); }
+.cg-run-state[data-tone='bad'] { color: var(--hg3-i-coral); }
+.cg-run-state[data-tone='run'] { color: var(--hg3-run); }
+.cg-run-cost { color: var(--hg3-muted); }
+.cg-run-hash { margin-left: auto; color: var(--hg3-faint); font-size: 10px; }
+.cg-run-error { margin: 4px 0 0; font-size: 10.5px; color: var(--hg3-i-coral); }
+
+.cg-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  padding: 30px;
+  text-align: center;
+  color: var(--hg3-faint);
+}
+
+.cg-detail-empty i { font-size: 22px; }
+.cg-detail-empty p { margin: 0; font-size: 12px; }
+.cg-detail-empty-sub { font-size: 11px; }
+
+.cg-detail-open {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--hg3-muted);
+  background: var(--hg3-rail);
+  border-radius: 8px;
+}
+
+@media (max-width: 1100px) {
+  .cg-top-mid { display: none; }
+}
+
+@media (max-width: 900px) {
+  .cg-detail { width: 100%; }
+  .cg-lib { display: none; }
 }
 </style>
