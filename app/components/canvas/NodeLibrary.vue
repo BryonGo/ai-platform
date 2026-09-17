@@ -78,4 +78,3 @@ function onDragStart(event: DragEvent, kind: CanvasNodeKind): void {
     </div>
   </aside>
 </template>
-

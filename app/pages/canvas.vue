@@ -36,9 +36,7 @@ import {
   createNode,
   dirtyNodes,
   disconnect,
-  artifactOfRef,
   buildExportManifest,
-  incomingEdges,
   expandShotlist,
   fragmentOrder,
   isDirty,
@@ -50,7 +48,6 @@ import {
   pendingReviewCount,
   removeNode,
   selectArtifact,
-  topoOrder,
   withItemPicked,
   withItemReview
 } from '~/data/canvas-graph'
@@ -821,7 +818,6 @@ function hydrateInputs(): void {
   }
 }
 
-
 /**
  * 方案 A：按分镜表批量生成「首帧 + 视频」节点。
  *
@@ -1143,7 +1139,6 @@ const shownArtifact = computed(() => {
   return list.find(a => a.id === picked?.artifactId) ?? list[0]
 })
 
-
 /** 剪辑合成要拼的片段顺序（默认按镜号；手动调过就按存的顺序）。 */
 const fragments = computed(() => {
   const node = selected.value
@@ -1210,7 +1205,6 @@ const {
 function setParam(node: CanvasNode, key: string, value: unknown): void {
   node.params = { ...node.params, [key]: value }
 }
-
 
 // ---------------------------------------------------------------- 生命周期
 
@@ -1573,4 +1567,3 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
     </div>
   </div>
 </template>
-

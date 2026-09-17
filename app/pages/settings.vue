@@ -102,17 +102,6 @@ onMounted(async () => {
   loadVersions()
 })
 
-async function toggleAdultMode(next: boolean) {
-  message.value = ''
-  errorText.value = ''
-  const ok = await gate.setAdultMode(next)
-  if (ok) {
-    message.value = next ? '已开启：显示成人内容' : '已关闭：隐藏成人内容'
-  } else {
-    errorText.value = gate.error.value || '设置失败'
-  }
-}
-
 async function resetGate() {
   message.value = ''
   errorText.value = ''
@@ -241,36 +230,13 @@ async function resetGate() {
       </button>
     </section>
 
-    <section class="settings-card">
-      <div class="settings-card__head">
-        <h2>显示成人内容</h2>
-        <span
-          class="settings-pill"
-          :class="{ on: gate.status.value.adultMode }"
-        >
-          {{ gate.status.value.adultMode ? '已开启' : '已关闭' }}
-        </span>
-      </div>
-      <p class="settings-card__hint">
-        开启（默认）：效果包选择器列出成人条目，作品流正常显示你标注为 r18 的作品。
-        关闭：成人条目不再出现，r18 作品默认遮罩（可在作品详情页临时查看）。
-      </p>
-      <p
-        v-if="!session.token.value"
-        class="settings-card__hint"
-      >
-        这是账号级偏好，请先登录。
-      </p>
-      <button
-        v-else
-        type="button"
-        class="settings-btn settings-btn--primary"
-        :disabled="gate.pending.value"
-        @click="toggleAdultMode(!gate.status.value.adultMode)"
-      >
-        {{ gate.status.value.adultMode ? '隐藏成人内容' : '显示成人内容' }}
-      </button>
-    </section>
+    <!-- 「显示成人内容」开关已移除（2026-09-17 产品决定）。
+         后端 AllowAdult 现在恒为 true：r18 作品与成人条目不再按站点开关或账号偏好收敛，
+         设置项留着只会是一个"点了不影响任何东西"的死开关，所以整块摘掉。
+         作品卡上的遮罩仍按服务端下发的 canUseAdult 现算（现在是恒 true），
+         因此这块 UI 的移除不影响 r18 作品的展示与遮罩逻辑。
+         想恢复收敛：改 go-sdk 的 internal/platform/agegate/service/agegate.go 的
+         AllowAdult（一处生效于 5 个内容面），再把这块 UI 加回来。 -->
 
     <p
       v-if="message"

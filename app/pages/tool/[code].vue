@@ -915,8 +915,8 @@ useMediaAutoRefresh(async () => {
               preload="none"
             />
             <HgCompareSlider
-            fit="contain"
               v-else-if="demo && demo.before"
+              fit="contain"
               :before="demo.before"
               :after="demo.after"
               :alt="demoAlt"

@@ -8,7 +8,11 @@
 import type { CanvasArtifact, CanvasNode, CanvasNodeState } from '~/data/canvas-graph'
 import type { CanvasNodeTypeSpec } from '~/data/canvas-nodes'
 
-const props = defineProps<{
+// 变量名带下划线：模板里用的是 bare 名（`spec.stage` / `state === 'running'`，
+// Vue SFC 编译后可用），script 段一次都没读过 `props.*`，所以这个绑定本身是多余的。
+// eslint 的 no-unused-vars 报的就是这个（**不是误报** —— 我起初以为是工具识别不了
+// 模板引用，实测确认 script 里 0 次 `props.`）。`_` 前缀是本仓 eslint 允许的写法。
+const _props = defineProps<{
   node: CanvasNode
   spec: CanvasNodeTypeSpec
   state: CanvasNodeState

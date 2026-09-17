@@ -112,4 +112,3 @@ function optionsOf(p: CanvasParamSpec): { value: string, label: string }[] {
     </label>
   </div>
 </template>
-

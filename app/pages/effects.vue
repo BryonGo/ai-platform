@@ -321,8 +321,8 @@ onMounted(() => {
                光看一张裸图说明不了这个工具做了什么，前后一拖就懂了（首页同一条交互）。
                fit=contain：卡片框是 3:4、素材是 2:3，cover 会把头顶和脚各裁掉约 5%。 -->
           <HgCompareSlider
-            fit="contain"
             v-else-if="tool.coverBefore && tool.cover"
+            fit="contain"
             :before="tool.coverBefore"
             :after="tool.cover"
             :alt="tool.name"

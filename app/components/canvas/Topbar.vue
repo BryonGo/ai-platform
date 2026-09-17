@@ -7,6 +7,7 @@
  * （就绪数、待重跑数、预估花费…这些口径要和节点卡、右键菜单一致，不能各算一份）。
  */
 import { creditsToYuan } from '~/data/canvas-nodes'
+
 defineProps<{
   /** 示例数据模式（顶部挂标记，免得把演示数据当真）。 */
   demo: boolean
