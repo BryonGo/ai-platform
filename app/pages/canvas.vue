@@ -1367,6 +1367,12 @@ function paramOptions(p: CanvasParamSpec, kind?: string): { value: string, label
 
 // ---------------------------------------------------------------- 生命周期
 
+/**
+ * 宽屏才挂画布：太窄时 Vue Flow 量不到尺寸，节点会叠成一团。
+ *
+ * 阈值取 720 而不是 900 —— 笔记本上把开发者工具往旁边一停，视口就只剩 800 出头，
+ * 900 的话画布会被整个卸载，人只会觉得"线没了"，还找不到原因。
+ */
 const wideScreen = ref(true)
 let mq: MediaQueryList | null = null
 function syncWide(event?: MediaQueryListEvent): void {
@@ -1374,7 +1380,7 @@ function syncWide(event?: MediaQueryListEvent): void {
 }
 
 onMounted(async () => {
-  mq = window.matchMedia('(min-width: 900px)')
+  mq = window.matchMedia('(min-width: 720px)')
   syncWide()
   mq.addEventListener('change', syncWide)
   window.addEventListener('keydown', onKeydown)
@@ -1622,6 +1628,10 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             v-else
             class="cg-narrow"
           >
+            <p class="cg-narrow-tip">
+              <i class="i-lucide-info" />
+              窗口太窄，画布换成了节点列表（拉宽窗口、或把开发者工具停到独立窗口就回到画布）
+            </p>
             <button
               v-for="n in graph.nodes"
               :key="n.id"
@@ -2447,6 +2457,19 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 }
 
 .cg-narrow { padding: 12px; overflow-y: auto; height: 100%; }
+
+.cg-narrow-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--hg3-warn);
+  background: rgb(255 180 84 / 10%);
+  border-radius: 9px;
+}
 
 .cg-narrow-item {
   display: flex;
