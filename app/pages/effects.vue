@@ -321,6 +321,7 @@ onMounted(() => {
                光看一张裸图说明不了这个工具做了什么，前后一拖就懂了（首页同一条交互）。
                fit=contain：卡片框是 3:4、素材是 2:3，cover 会把头顶和脚各裁掉约 5%。 -->
           <HgCompareSlider
+            fit="contain"
             v-else-if="tool.coverBefore && tool.cover"
             :before="tool.coverBefore"
             :after="tool.cover"
@@ -402,7 +403,9 @@ onMounted(() => {
 /* 缩略图 */
 .fx-thumb { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border: 1px solid var(--hg-line); border-radius: 12px; background: #141416; }
 .fx-thumb--sm { aspect-ratio: 4 / 5; }
-.fx-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 缩略图同样不裁：框高不变，素材等比完整显示（卡片视频是 736x1280，框是 3:4/4:5）。
+   左右留黑边好过把动作裁掉 —— 用户口径："高度一样，等比处理"。 */
+.fx-thumb img, .fx-thumb video { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .fx-thumb-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #141416 70%); color: var(--hg-muted); }
 .fx-thumb-fallback svg { width: 34px; height: 34px; }
 .fx-card:hover .fx-thumb { border-color: var(--hg-accent); }

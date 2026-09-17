@@ -915,6 +915,7 @@ useMediaAutoRefresh(async () => {
               preload="none"
             />
             <HgCompareSlider
+            fit="contain"
               v-else-if="demo && demo.before"
               :before="demo.before"
               :after="demo.after"
@@ -1020,7 +1021,7 @@ useMediaAutoRefresh(async () => {
 /* 效果示例：竖图为主，按高度定尺寸、宽度由比例推出来，上限内不撑破右栏。 */
 .result-demo { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
 .demo-media { position: relative; flex: 0 0 auto; height: min(560px, 64vh); aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: #141416; }
-.demo-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.demo-media img, .demo-media video { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .demo-actions { display: flex; align-items: center; gap: 12px; }
 .demo-tip { color: var(--hg-muted); font-size: 12px; opacity: 0.75; }
 .result-media { display: grid; place-items: center; background: #141416; border-radius: 10px; overflow: hidden; }

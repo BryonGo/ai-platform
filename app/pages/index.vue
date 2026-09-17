@@ -529,7 +529,7 @@ useMediaAutoRefresh(() => Promise.all([
           :to="tool.to"
           class="hg-card tool-card"
         >
-          <div class="hg-media r2x3">
+          <div class="hg-media r2x3 fit-contain">
             <!-- 后台配了循环预览视频就走视频：卡片进视口静音自动播，cover 当封面帧。
                  视频优先于对比滑块 —— 有视频时那张"效果图"就是它的封面。 -->
             <video
@@ -547,6 +547,7 @@ useMediaAutoRefresh(() => Promise.all([
                  只有一张就退回单图。 -->
             <HgCompareSlider
               v-else-if="tool.coverBefore && tool.cover"
+              fit="contain"
               :before="tool.coverBefore"
               :after="tool.cover"
               :alt="tool.label"

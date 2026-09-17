@@ -500,9 +500,20 @@ video.media-fg {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: left top;
+  /* 视频**不裁**：卡片框的比例（2:3 / 3:4 / 4:5）和后端产出的画幅（736x1280 ≈ 9:16）
+     对不上，用 cover 会按宽度铺满后把下方约 1/4 裁掉 —— 而动作恰好在下半身。
+     改成 contain：框高不变（一排卡片仍然等高），视频等比缩到完整可见，左右留黑边。 */
+  object-fit: contain;
+  object-position: center;
   background: #0b0c0e;
+}
+
+/* 工具卡的封面图同理：封面是同一支视频的某一帧/末帧，也是 736x1280，
+   用 cover 一样会把动作裁掉。加 .fit-contain 的卡片走等比完整显示。
+   （作品流那种用户自己的图仍走 cover —— 那里裁切是想要的。） */
+.hg-media.fit-contain img.media-fg {
+  object-fit: contain;
+  object-position: center;
 }
 
 .hg-badge {
