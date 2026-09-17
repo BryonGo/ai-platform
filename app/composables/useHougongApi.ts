@@ -263,41 +263,6 @@ export interface Catalog {
   rates?: CatalogRates
 }
 
-/** 画布（织幕一期）总览。字段与 go-sdk `api/v1/hougong/canvas.go` 一一对应。 */
-export interface CanvasOverview {
-  series: {
-    id: string
-    title: string
-    logline: string
-    episodes: { id: string, title: string, status: 'todo' | 'running' | 'done', index: number }[]
-  }
-  episode: { id: string, title: string, status: string, index: number, budgetCredits: number }
-  shots: {
-    id: string
-    index: number
-    shotSize: string
-    camera: string
-    frames: number
-    resolution: string
-    scene: string
-    characters: { speaker: string, asset: string, views: string[] }[]
-    dialogue: { speaker: string, lang: string, start: string, line: string }[]
-    keyframePrompt: string
-    h3Prompt: { description: string, soundscape: string, music: string }
-    status: 'draft' | 'keyframe_ready' | 'preview_rendered' | 'approved' | 'rejected'
-    candidates: { id: string, stage: 'keyframe' | 'preview' | 'final', url: string, note: string, picked: boolean }[]
-    costCredits: number
-    renders: number
-    updatedAt: string
-    selectedAssetId: string
-  }[]
-  costs: { stage: string, credits: number }[]
-  /** H3 合法帧数，由服务端下发（校验器/工作流/界面共用同一份网格） */
-  frameGrid: number[]
-  /** 该账号还没有画布数据：前端据此退回本地示例数据 */
-  empty: boolean
-}
-
 export interface HougongTask {
   id: number | string
   type: string
@@ -1292,93 +1257,8 @@ export function useHougongApi() {
     return () => es.close()
   }
 
-  /**
-   * 新建一集：给标题与镜头数就生成空镜，给 shots 就按分镜导入。
-   *
-   * 导入会先在服务端过 §4.1 校验器（帧数网格、台词时长、角色引用…），
-   * **有阻断级问题整批拒绝**，返回的 issues 是非阻断提醒（如逐镜配乐）。
-   */
-  function createCanvasEpisode(input: {
-    storyId?: string
-    seriesTitle?: string
-    title?: string
-    shotCount?: number
-    frames?: number
-    shots?: Record<string, unknown>[]
-  }) {
-    return apiRequest<{
-      storyId: string
-      episodeId: string
-      title: string
-      index: number
-      shotIds: string[]
-      issues: string[] | null
-    }>('/hougong/canvas/episode', { method: 'POST', body: input })
-  }
-
-  /** 保存镜头（编辑器用）：不存在就按「集 + 镜号」创建。 */
-  function saveCanvasShot(input: {
-    episodeId: string
-    idx: number
-    shotSize?: string
-    camera?: string
-    frames?: number
-    resolution?: string
-    scene?: string
-    keyframePrompt?: string
-    h3Prompt?: { description: string, soundscape: string, music: string }
-  }) {
-    return apiRequest<{ id: string, status: string }>('/hougong/canvas/shot', { method: 'POST', body: input })
-  }
-
-  /** 逐镜审核：pick=选为定稿 / approve=通过 / reject=驳回重跑。 */
-  function reviewCanvasShot(input: { episodeId: string, idx: number, action: 'pick' | 'approve' | 'reject', assetId?: string }) {
-    return apiRequest<{ status: string, selectedAssetId: string }>('/hougong/canvas/shot/review', { method: 'POST', body: input })
-  }
-
-  /**
-   * 提交渲染：keyframe=出候选关键帧 / preview=预览 / final=定稿。
-   *
-   * 返回的是**平台任务**（进度与产物都走任务链路）。注意 count 会被服务端按模型能力夹住：
-   * 一次只出一张的模型（nano-banana-2、grok 这类）传 3 也只会出 1，响应里的 count 是实际张数。
-   */
-  function renderCanvasShot(input: {
-    episodeId: string
-    idx: number
-    stage: 'keyframe' | 'preview' | 'final'
-    modelId: string
-    count?: number
-    clientKey?: string
-  }) {
-    return apiRequest<{ taskId: string, status: string, reservedCredits: number, count: number }>(
-      '/hougong/canvas/shot/render',
-      { method: 'POST', body: input }
-    )
-  }
-
-  /**
-   * 画布总览。storyId/episodeId 传 0 取该账号最近的系列与第一集。
-   *
-   * 后端先落读模型（候选产物与花费都从平台任务账推导），写侧随后补；
-   * `empty=true` 表示该账号还没有画布数据，前端用示例数据兜底。
-   */
-  function getCanvasOverview(storyId: string | number = '', episodeId: string | number = '') {
-    // **id 全程按字符串传**：集/镜的 id 是雪花 id（19 位），超过 JS 的安全整数，
-    // 中间只要过一次 Number() 就会被舍入，后端拿到的就是另一个 id（表现为"切集切不过去"）。
-    const qs = new URLSearchParams()
-    if (storyId) qs.set('storyId', String(storyId))
-    if (episodeId) qs.set('episodeId', String(episodeId))
-    const query = qs.toString()
-    return apiRequest<CanvasOverview>(`/hougong/canvas/overview${query ? `?${query}` : ''}`)
-  }
-
   return {
     login,
-    getCanvasOverview,
-    saveCanvasShot,
-    createCanvasEpisode,
-    reviewCanvasShot,
-    renderCanvasShot,
     register,
     getProfile,
     updateUsername,
