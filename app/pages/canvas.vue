@@ -55,7 +55,7 @@ import {
   withItemReview
 } from '~/data/canvas-graph'
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
-import type { CanvasNodeKind, CanvasParamSpec, CanvasPortSpec } from '~/data/canvas-nodes'
+import type { CanvasNodeKind, CanvasPortSpec } from '~/data/canvas-nodes'
 import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
 import type { CanvasTemplateInfo } from '~/data/canvas-templates'
 import {
@@ -821,17 +821,6 @@ function hydrateInputs(): void {
   }
 }
 
-/** 某个输入槽接了几条、其中几条已确认（详情面板显示用）。 */
-function inputSummary(node: CanvasNode, slot: string): string {
-  const edges = incomingEdges(graph.value, node.id, [slot])
-  if (!edges.length) return '未接'
-  const ok = edges.filter((e) => {
-    const up = graph.value.nodes.find(n => n.id === e.from.node)
-    const ref = up?.outputs[e.from.slot]
-    return ref ? artifacts.value.find(a => a.id === ref.artifactId)?.review === 'approved' : false
-  }).length
-  return `${edges.length} 条 · ${ok} 条已确认`
-}
 
 /**
  * 方案 A：按分镜表批量生成「首帧 + 视频」节点。
@@ -1154,18 +1143,6 @@ const shownArtifact = computed(() => {
   return list.find(a => a.id === picked?.artifactId) ?? list[0]
 })
 
-const nodeVersions = computed(() => {
-  const node = selected.value
-  if (!node || !selectedSpec.value) return []
-  const slot = selectedSpec.value.outputs[0]?.slot
-  return slot ? artifactsOf(artifacts.value, node.id, slot) : []
-})
-
-const nodeRuns = computed(() => {
-  const node = selected.value
-  if (!node) return []
-  return [...runs.value].filter(r => r.nodeId === node.id).reverse().slice(0, 4)
-})
 
 /** 剪辑合成要拼的片段顺序（默认按镜号；手动调过就按存的顺序）。 */
 const fragments = computed(() => {
@@ -1234,18 +1211,6 @@ function setParam(node: CanvasNode, key: string, value: unknown): void {
   node.params = { ...node.params, [key]: value }
 }
 
-function paramValue(node: CanvasNode, key: string): string {
-  const v = node.params[key]
-  return v === undefined || v === null ? '' : String(v)
-}
-
-function paramOptions(p: CanvasParamSpec, kind?: string): { value: string, label: string }[] {
-  if (p.key === 'modelId') {
-    const list = modelOptions.value[kind ?? ''] ?? []
-    return list.length ? list : [{ value: '', label: '服务端默认' }]
-  }
-  return p.options ?? []
-}
 
 // ---------------------------------------------------------------- 生命周期
 
@@ -1649,461 +1614,36 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
       </section>
 
       <!-- 右栏：节点详情 -->
-      <aside
+      <CanvasDetailPanel
         v-if="detailOpen"
-        class="cg-detail"
-      >
-        <template v-if="selected && selectedSpec">
-          <header class="cg-detail-head">
-            <span
-              class="cg-detail-icon"
-              :style="{ color: groupMeta(selectedSpec.group).color }"
-            >
-              <i :class="selectedSpec.icon" />
-            </span>
-            <div class="cg-detail-title">
-              <b>{{ selected.title }}</b>
-              <i>{{ selectedSpec.subtitle }}</i>
-            </div>
-            <button
-              type="button"
-              title="收起"
-              @click="detailOpen = false"
-            >
-              <i class="i-lucide-panel-right-close" />
-            </button>
-          </header>
-
-          <div class="cg-detail-scroll">
-            <!-- 状态与动作 -->
-            <div class="cg-detail-state">
-              <span
-                class="cg-pill"
-                :data-tone="NODE_STATE_META[stateOf(selected)].tone"
-              >{{ NODE_STATE_META[stateOf(selected)].label }}</span>
-              <span
-                v-if="selected.ref?.shotIdx"
-                class="cg-pill"
-              >第 {{ selected.ref.shotIdx }} 镜</span>
-              <button
-                v-if="selectedSpec.stage === 'ready' && selected.kind === 'shotlist' && selectedTableRows.length"
-                class="cg-mini"
-                type="button"
-                @click="expand(selected.id)"
-              >
-                生成节点（{{ selectedTableRows.length }} 镜）
-              </button>
-              <button
-                v-else-if="selectedSpec.stage === 'ready'"
-                class="cg-mini cg-mini--accent"
-                type="button"
-                :disabled="stateOf(selected) === 'running'"
-                @click="runNode(selected.id)"
-              >
-                <i class="i-lucide-play" /> 运行这个节点{{ estimateOf(selected) ? ` · 约 ${creditsToYuan(estimateOf(selected))}` : '' }}
-              </button>
-              <span
-                v-else
-                class="cg-pill"
-                data-tone="warn"
-              >本版未开放</span>
-            </div>
-
-            <!-- 输入 -->
-            <section
-              v-if="selectedSpec.inputs.length"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                输入
-              </p>
-              <div
-                v-for="p in selectedSpec.inputs"
-                :key="p.slot"
-                class="cg-input-row"
-              >
-                <span
-                  class="cg-port-dot"
-                  :style="{ background: portMeta(p.type).color }"
-                />
-                <span class="cg-input-name">{{ p.label }}</span>
-                <span
-                  class="cg-input-val"
-                  :data-tone="incomingEdges(graph, selected.id, [p.slot]).length ? 'ok' : 'muted'"
-                >
-                  {{ inputSummary(selected, p.slot) }}
-                </span>
-              </div>
-            </section>
-
-            <!-- 参数（与卡片上的是同一个组件，取值与候选必须一致） -->
-            <section
-              v-if="selectedSpec.params.length"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                参数
-              </p>
-              <CanvasParamFields
-                :node="selected!"
-                :spec="selectedSpec"
-                :frame-grid="graph.frameGrid"
-                :model-options="modelOptions"
-                @update="(key: string, value: unknown) => setParam(selected!, key, value)"
-              />
-            </section>
-
-            <!-- 分镜表：逐行可改，改的是草稿，存成新版本 -->
-            <section
-              v-if="selected.kind === 'shotlist' && tableRowsOf(selected).length"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                分镜表 <span class="cg-block-sub">v{{ shownArtifact?.version }} · 改完存新版本，老版本不动</span>
-              </p>
-              <div
-                v-for="(row, i) in tableRowsOf(selected)"
-                :key="i"
-                class="cg-row"
-              >
-                <div class="cg-row-head">
-                  <b>S{{ String(row.idx).padStart(2, '0') }}</b>
-                  <input
-                    class="cg-input cg-input--tiny"
-                    :value="row.shotSize"
-                    placeholder="景别"
-                    @input="updateRow(selected.id, i, 'shotSize', ($event.target as HTMLInputElement).value)"
-                  >
-                  <input
-                    class="cg-input cg-input--tiny"
-                    :value="row.camera"
-                    placeholder="运镜"
-                    @input="updateRow(selected.id, i, 'camera', ($event.target as HTMLInputElement).value)"
-                  >
-                  <select
-                    class="cg-input cg-input--tiny"
-                    :value="row.frames"
-                    @change="updateRow(selected.id, i, 'frames', Number(($event.target as HTMLSelectElement).value))"
-                  >
-                    <option
-                      v-for="f in graph.frameGrid"
-                      :key="f"
-                      :value="f"
-                    >
-                      {{ f }}f
-                    </option>
-                  </select>
-                </div>
-                <input
-                  class="cg-input cg-input--tiny"
-                  :value="row.keyframePrompt"
-                  placeholder="关键帧提示词"
-                  @input="updateRow(selected.id, i, 'keyframePrompt', ($event.target as HTMLInputElement).value)"
-                >
-                <input
-                  class="cg-input cg-input--tiny"
-                  :value="row.line ?? ''"
-                  placeholder="台词"
-                  @input="updateRow(selected.id, i, 'line', ($event.target as HTMLInputElement).value)"
-                >
-              </div>
-              <div class="cg-row-actions">
-                <button
-                  class="cg-mini cg-mini--accent"
-                  type="button"
-                  :disabled="!rowsDirty(selected.id)"
-                  @click="saveRowsAsVersion(selected.id)"
-                >
-                  <i class="i-lucide-save" /> 保存为新版本
-                </button>
-                <button
-                  class="cg-mini"
-                  type="button"
-                  :disabled="!rowsDirty(selected.id)"
-                  @click="discardRows(selected.id)"
-                >
-                  放弃修改
-                </button>
-              </div>
-            </section>
-
-            <!-- 当前选用产物的正文（剧本/大纲要能整段读） -->
-            <section
-              v-if="shownArtifact?.text"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                当前选用 · v{{ shownArtifact.version }} 正文
-              </p>
-              <pre class="cg-fulltext">{{ shownArtifact.text }}</pre>
-            </section>
-
-            <!-- 片段顺序：视频在排序才是成片 -->
-            <section
-              v-if="selected.kind === 'compose' && fragments.length"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                片段顺序 <span class="cg-block-sub">默认按镜号，可手动调</span>
-              </p>
-              <div
-                v-for="(f, i) in fragments"
-                :key="f.upstreamId"
-                class="cg-frag"
-              >
-                <span class="cg-frag-no">{{ i + 1 }}</span>
-                <img
-                  v-if="f.artifact?.url"
-                  :src="f.artifact.url"
-                  alt=""
-                  class="cg-frag-thumb"
-                >
-                <span class="cg-frag-text">
-                  <b>{{ f.label }}</b>
-                  <i>{{ f.artifact?.note ?? '还没产出' }} · {{ f.artifact?.review === 'approved' ? '已确认' : '待确认' }}</i>
-                </span>
-                <button
-                  class="cg-tiny cg-frag-move"
-                  type="button"
-                  :disabled="i === 0"
-                  title="上移"
-                  @click="moveFragment(i, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  class="cg-tiny cg-frag-move"
-                  type="button"
-                  :disabled="i === fragments.length - 1"
-                  title="下移"
-                  @click="moveFragment(i, 1)"
-                >
-                  ↓
-                </button>
-              </div>
-            </section>
-
-            <!-- 导出清单：已导出 / 未导出（原因）/ 参数不一致 -->
-            <section
-              v-if="shownArtifact?.manifest"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                导出清单
-              </p>
-              <p class="cg-mani-group">
-                已导出 <b>{{ shownArtifact.manifest.exported.length }}</b>
-              </p>
-              <div
-                v-for="x in shownArtifact.manifest.exported"
-                :key="`ok-${x.label}`"
-                class="cg-mani-row"
-              >
-                <i class="i-lucide-check" /> {{ x.label }} <span>{{ x.note }}</span>
-              </div>
-              <p class="cg-mani-group">
-                未导出 <b>{{ shownArtifact.manifest.skipped.length }}</b>
-              </p>
-              <div
-                v-for="x in shownArtifact.manifest.skipped"
-                :key="`skip-${x.label}`"
-                class="cg-mani-row cg-mani-row--warn"
-              >
-                <i class="i-lucide-minus" /> {{ x.label }} <span>{{ x.reason }}</span>
-              </div>
-              <p
-                v-if="shownArtifact.manifest.mismatch.length"
-                class="cg-mani-group"
-              >
-                参数不一致 <b>{{ shownArtifact.manifest.mismatch.length }}</b>
-              </p>
-              <div
-                v-for="x in shownArtifact.manifest.mismatch"
-                :key="`mm-${x.label}`"
-                class="cg-mani-row cg-mani-row--bad"
-              >
-                <i class="i-lucide-triangle-alert" /> {{ x.label }} <span>{{ x.detail }}</span>
-              </div>
-            </section>
-
-            <!-- 产物版本 -->
-            <section class="cg-block">
-              <p class="cg-block-title">
-                产物 <span class="cg-block-sub">{{ nodeVersions.length }} 个版本</span>
-              </p>
-              <p
-                v-if="!nodeVersions.length"
-                class="cg-empty-line"
-              >
-                还没有产物
-              </p>
-              <div
-                v-for="a in nodeVersions"
-                :key="a.id"
-                class="cg-art"
-                :class="{ 'is-on': a.id === shownArtifact?.id }"
-              >
-                <div class="cg-art-head">
-                  <b>v{{ a.version }}</b>
-                  <span>{{ a.note }}</span>
-                  <span
-                    class="cg-pill cg-pill--sm"
-                    :data-tone="a.review === 'approved' ? 'ok' : a.review === 'rejected' ? 'bad' : 'warn'"
-                  >
-                    {{ a.review === 'approved' ? '已认可' : a.review === 'rejected' ? '已驳回' : '待确认' }}
-                  </span>
-                </div>
-                <div
-                  v-if="a.items?.length"
-                  class="cg-art-thumbs"
-                >
-                  <div
-                    v-for="(it, i) in a.items"
-                    :key="i"
-                    class="cg-art-thumb"
-                    :class="{ 'is-picked': it.picked, 'is-rejected': it.review === 'rejected' }"
-                  >
-                    <img
-                      :src="it.url"
-                      alt=""
-                    >
-                    <span class="cg-art-thumb-name">{{ it.label ?? `候选 ${i + 1}` }}</span>
-                    <div class="cg-art-thumb-actions">
-                      <button
-                        class="cg-tiny"
-                        type="button"
-                        :disabled="it.picked"
-                        @click="pickItem(selected.id, a.id, i)"
-                      >
-                        {{ it.picked ? '已选用' : '选用' }}
-                      </button>
-                      <button
-                        class="cg-tiny"
-                        type="button"
-                        @click="reviewItem(selected.id, a.id, i, it.review === 'rejected' ? 'approved' : 'rejected')"
-                      >
-                        {{ it.review === 'rejected' ? '恢复' : '驳回' }}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="cg-art-actions">
-                  <button
-                    v-if="a.id !== shownArtifact?.id"
-                    class="cg-mini"
-                    type="button"
-                    @click="pick(selected.id, a.id)"
-                  >
-                    选用这一版
-                  </button>
-                  <button
-                    v-else
-                    class="cg-mini"
-                    type="button"
-                    disabled
-                  >
-                    当前选用
-                  </button>
-                  <button
-                    class="cg-mini"
-                    type="button"
-                    @click="review(selected.id, a.id, 'approved')"
-                  >
-                    认可
-                  </button>
-                  <button
-                    class="cg-mini"
-                    type="button"
-                    @click="review(selected.id, a.id, 'rejected')"
-                  >
-                    驳回
-                  </button>
-                  <button
-                    v-if="a.url"
-                    class="cg-mini"
-                    type="button"
-                    @click="openArtifact(a)"
-                  >
-                    打开
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <!-- 继续补充：带着选中的这一版接着改 -->
-            <section
-              v-if="shownArtifact && selectedSpec.stage === 'ready'"
-              class="cg-block"
-            >
-              <p class="cg-block-title">
-                继续补充 <span class="cg-block-sub">在第 {{ shownArtifact.version }} 版上改</span>
-              </p>
-              <textarea
-                v-model="followUp"
-                class="cg-input cg-input--area"
-                placeholder="还要改什么？例如：第 2 场太拖，压到 20 秒内"
-              />
-              <button
-                class="cg-mini cg-mini--accent cg-follow"
-                type="button"
-                :disabled="!!runningCount"
-                @click="continueFrom(selected.id)"
-              >
-                <i class="i-lucide-sparkles" /> 带补充再生成一版
-              </button>
-            </section>
-
-            <!-- 运行记录 -->
-            <section class="cg-block">
-              <p class="cg-block-title">
-                运行记录
-              </p>
-              <p
-                v-if="!nodeRuns.length"
-                class="cg-empty-line"
-              >
-                还没跑过
-              </p>
-              <div
-                v-for="r in nodeRuns"
-                :key="r.id"
-                class="cg-run"
-              >
-                <span
-                  class="cg-run-state"
-                  :data-tone="r.status === 'done' ? 'ok' : r.status === 'failed' ? 'bad' : 'run'"
-                >
-                  {{ r.status === 'done' ? '成功' : r.status === 'failed' ? '失败' : '运行中' }}
-                </span>
-                <span class="cg-run-cost">{{ r.costCredits ? creditsToYuan(r.costCredits) : '—' }}</span>
-                <span
-                  v-if="r.baseArtifactId"
-                  class="cg-run-base"
-                >改自 v{{ nodeVersions.find(a => a.id === r.baseArtifactId)?.version ?? '?' }}</span>
-                <span class="cg-run-hash">#{{ r.paramsHash }}</span>
-              </div>
-              <p
-                v-if="nodeRuns[0]?.error"
-                class="cg-run-error"
-              >
-                {{ nodeRuns[0].error }}
-              </p>
-            </section>
-          </div>
-        </template>
-
-        <div
-          v-else
-          class="cg-detail-empty"
-        >
-          <i class="i-lucide-mouse-pointer-click" />
-          <p>点一个节点看它的参数、产物版本和运行记录</p>
-          <p class="cg-detail-empty-sub">
-            共 {{ graph.nodes.length }} 个节点 · {{ graph.edges.length }} 条连线
-          </p>
-        </div>
-      </aside>
+        :graph="graph"
+        :node="selected"
+        :spec="selectedSpec"
+        :state="selected ? stateOf(selected) : 'idle'"
+        :artifacts="artifacts"
+        :runs="runs"
+        :frame-grid="graph.frameGrid"
+        :model-options="modelOptions"
+        :table-rows="selected ? tableRowsOf(selected) : []"
+        :table-dirty="selected ? rowsDirty(selected.id) : false"
+        :follow-up="followUp"
+        :busy="!!runningCount"
+        @close="detailOpen = false"
+        @run="runNode"
+        @expand="expand"
+        @param="(id: string, key: string, value: unknown) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
+        @row-update="updateRow"
+        @rows-save="saveRowsAsVersion"
+        @rows-discard="discardRows"
+        @pick="pick"
+        @pick-item="pickItem"
+        @review="review"
+        @review-item="reviewItem"
+        @open-artifact="openArtifact"
+        @update:follow-up="followUp = $event"
+        @continue="continueFrom"
+        @move-fragment="moveFragment"
+      />
 
       <button
         v-if="!detailOpen"

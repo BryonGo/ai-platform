@@ -549,8 +549,13 @@ export function inputRefs(node: CanvasNode, slot: string): CanvasInputRef[] {
   return node.inputs[slot] ?? []
 }
 
-/** 一条入边对应的产物（找不到就是上游还没产出）。 */
-export function artifactOfRef(artifacts: CanvasArtifact[], ref: CanvasInputRef): CanvasArtifact | undefined {
+/**
+ * 一条引用对应的产物（找不到就是上游还没产出）。
+ *
+ * 只要求带 artifactId —— 因为输入引用（CanvasInputRef）和节点的输出指针
+ * （CanvasArtifactRef）都拿它来查，两者结构不同但查法一样。
+ */
+export function artifactOfRef(artifacts: CanvasArtifact[], ref: { artifactId: string }): CanvasArtifact | undefined {
   return artifacts.find(a => a.id === ref.artifactId)
 }
 
