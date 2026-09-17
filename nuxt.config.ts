@@ -36,7 +36,7 @@ export default defineNuxtConfig({
     enabled: true
   },
 
-  css: ['~/assets/css/main.css', '~/assets/css/hougong3.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/hougong3.css', '~/assets/css/canvas.css'],
 
   runtimeConfig: {
     // 私有项：只在服务端可见，不会下发浏览器。

@@ -113,30 +113,3 @@ function optionsOf(p: CanvasParamSpec): { value: string, label: string }[] {
   </div>
 </template>
 
-<style scoped>
-.cg-params { display: flex; flex-direction: column; gap: 9px; }
-.cg-param { display: block; }
-.cg-param-label { display: block; margin-bottom: 4px; font-size: 11px; color: var(--hg3-muted); }
-.cg-param-hint { display: block; margin-top: 3px; font-size: 10px; color: var(--hg3-faint); }
-
-.cg-input {
-  width: 100%;
-  min-height: 30px;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--hg3-ink);
-  background: var(--hg3-well);
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-}
-
-.cg-input--area { min-height: 62px; resize: vertical; line-height: 1.5; }
-.cg-input:focus { outline: none; border-color: var(--hg3-accent-line); }
-
-/* 卡片里的小一号 */
-.cg-params.is-dense { gap: 6px; }
-.cg-params.is-dense .cg-param-label { font-size: 10px; margin-bottom: 2px; }
-.cg-params.is-dense .cg-input { min-height: 24px; padding: 2px 6px; font-size: 10.5px; border-radius: 6px; }
-.cg-params.is-dense .cg-input--area { min-height: 46px; }
-.cg-params.is-dense .cg-param-hint { display: none; }
-</style>
