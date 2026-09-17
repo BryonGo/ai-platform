@@ -40,6 +40,7 @@ import {
   incomingEdges,
   expandShotlist,
   fragmentOrder,
+  isDirty,
   inputRefs,
   makeEdge,
   nextVersion,
@@ -53,8 +54,8 @@ import {
   withItemReview
 } from '~/data/canvas-graph'
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
-import type { CanvasNodeKind, CanvasParamSpec } from '~/data/canvas-nodes'
-import { CANVAS_GROUPS, CANVAS_NODE_TYPES, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import type { CanvasNodeKind, CanvasParamSpec, CanvasPortSpec } from '~/data/canvas-nodes'
+import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
 import { createHistory } from '~/data/canvas-history'
 import { buildCanvasSample } from '~/data/canvas-sample'
 
@@ -78,7 +79,7 @@ const streaming = ref<Record<string, string>>({})
 /** 「继续补充」的输入：在这一版基础上还想改什么。 */
 const followUp = ref('')
 /** 右键菜单：点到了什么 + 屏幕坐标。 */
-const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge' | 'selection', nodeId?: string, edgeId?: string } | null>(null)
+const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge' | 'selection' | 'connect', nodeId?: string, edgeId?: string } | null>(null)
 // ---------------------------------------------------------------- 撤销 / 重做
 //
 // 做法：整图快照（graph + artifacts 的 JSON），深监听变化后压栈，上限 50 步。
@@ -158,6 +159,9 @@ function redo(): void {
   applySnapshot(next)
   showToast('已重做')
 }
+
+/** 拖线落地那一刻的出发端口（菜单按它算候选；拖拽过程中的变量会被清空）。 */
+const connectFromSnapshot = ref<{ nodeId: string, slot: string, type: 'source' | 'target' } | null>(null)
 
 /** 画布内部的剪贴板（不碰系统剪贴板）：复制一个节点，右键空白粘贴。 */
 const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<string, unknown> } | null>(null)
@@ -251,6 +255,7 @@ const flowNodes = computed<Node[]>(() =>
       node: n,
       spec: nodeTypeSpec(n.kind),
       state: stateOf(n),
+      dirty: isDirty(n, runs.value),
       artifacts: artifacts.value.filter(a => a.nodeId === n.id),
       modelLabel: modelLabelOf(n),
       streaming: streaming.value[n.id]
@@ -280,7 +285,54 @@ const flowEdges = computed<Edge[]>(() => {
   return list
 })
 
+/**
+ * 拖线时的即时校验：类型不对的端口根本连不上（不用等松手才报错）。
+ *
+ * 与 connectNodes() 里的校验同一套规则，这里只是提前到"拖的时候"。
+ */
+function isValidConnection(connection: { source?: string | null, target?: string | null, sourceHandle?: string | null, targetHandle?: string | null }): boolean {
+  if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return false
+  const from = graph.value.nodes.find(n => n.id === connection.source)
+  const to = graph.value.nodes.find(n => n.id === connection.target)
+  if (!from || !to || from.id === to.id) return false
+  const outPort = nodeTypeSpec(from.kind).outputs.find(p => p.slot === connection.sourceHandle)
+  const inPort = nodeTypeSpec(to.kind).inputs.find(p => p.slot === connection.targetHandle)
+  if (!outPort || !inPort) return false
+  if (!canConnect(outPort.type, inPort.type)) return false
+  if (!inPort.multiple && (to.inputs[inPort.slot] ?? []).length > 0) return false
+  return true
+}
+
+// ---------------------------------------------------------------- 连线拖到空白处 → 建节点并自动接上
+
+/** 这次拖线是从哪个端口出发的（松手时若没接上任何端口，就用来挑一个新节点）。 */
+let connectFrom: { nodeId: string, slot: string, type: 'source' | 'target' } | null = null
+let connectMade = false
+
+function onConnectStart(payload: { nodeId?: string, handleId: string | null, handleType?: 'source' | 'target' }): void {
+  connectMade = false
+  connectFrom = payload.nodeId && payload.handleId && payload.handleType
+    ? { nodeId: payload.nodeId, slot: payload.handleId, type: payload.handleType }
+    : null
+}
+
+/**
+ * 拖到空白处松手：弹出节点选择，选完自动建节点并连上。
+ *
+ * 这是画布上最顺手的建节点路径 —— 不用先建再连，也不用从节点库里找。
+ */
+function onConnectEnd(event?: MouseEvent | TouchEvent): void {
+  if (connectMade || !connectFrom || !event) return
+  const from = connectFrom
+  connectFrom = null
+  const { x, y } = pointOf(event)
+  connectFromSnapshot.value = from
+  menu.value = { x, y, kind: 'connect', nodeId: from.nodeId }
+}
+
 function onConnect(connection: { source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null }): void {
+  connectMade = true
+  connectFrom = null
   if (!connection.sourceHandle || !connection.targetHandle) return
   const res = connectNodes(
     graph.value,
@@ -387,6 +439,37 @@ const paneMenuItems = computed<ContextMenuItem[]>(() => [
   { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined }
 ])
 
+/**
+ * 拖线到空白处松手后的候选节点：**能接上的排前面并可用，接不上的置灰**。
+ *
+ * 判据是端口类型：从输出端口拖出来，就找有新节点里能吃这个类型的输入端口。
+ */
+const connectMenuItems = computed<ContextMenuItem[]>(() => {
+  const fromId = menu.value?.nodeId
+  const from = graph.value.nodes.find(n => n.id === fromId)
+  const snap = connectFromSnapshot.value
+  if (!from || !snap) return []
+  const fromPort = snap.type === 'source'
+    ? nodeTypeSpec(from.kind).outputs.find(p => p.slot === snap.slot)
+    : nodeTypeSpec(from.kind).inputs.find(p => p.slot === snap.slot)
+  if (!fromPort) return []
+
+  const usable = (kind: CanvasNodeKind): CanvasPortSpec | undefined => {
+    const spec = nodeTypeSpec(kind)
+    const ports = snap.type === 'source' ? spec.inputs : spec.outputs
+    return ports.find(p => canConnect(fromPort.type, p.type))
+  }
+
+  const all = CANVAS_NODE_TYPES.map(t => ({
+    key: `connect:${t.kind}`,
+    label: t.label,
+    icon: t.icon,
+    hint: usable(t.kind) ? t.subtitle : '类型接不上',
+    disabled: !usable(t.kind) || t.stage === 'planned'
+  }))
+  return [...all.filter(i => !i.disabled), ...all.filter(i => i.disabled)]
+})
+
 /** 框选/多选之后右键，给的是批量动作。 */
 const selectionMenuItems = computed<ContextMenuItem[]>(() => [
   { key: 'run-selected', label: `运行所选 ${selectedCount.value} 个`, icon: 'i-lucide-play' },
@@ -419,6 +502,41 @@ function pasteNode(at?: { x: number, y: number }): void {
   showToast(`已粘贴「${node.title}」`)
 }
 
+/**
+ * 从拖线落地处建节点并接上。
+ *
+ * 方向自动判：从输出端口拖出来 → 新节点吃它（找新节点里同类型的输入端口）；
+ * 从输入端口拖出来 → 新节点喂它（找新节点里同类型的输出端口）。
+ */
+function connectNewNode(kind: CanvasNodeKind, spot: { x: number, y: number }): void {
+  const snap = connectFromSnapshot.value
+  const node = createNode(kind, spot)
+  addNode(graph.value, node)
+
+  if (snap) {
+    const src = graph.value.nodes.find(n => n.id === snap.nodeId)
+    if (src) {
+      const srcSpec = nodeTypeSpec(src.kind)
+      const fromPort = snap.type === 'source'
+        ? srcSpec.outputs.find(p => p.slot === snap.slot)
+        : srcSpec.inputs.find(p => p.slot === snap.slot)
+      const newSpec = nodeTypeSpec(kind)
+      const ports = snap.type === 'source' ? newSpec.inputs : newSpec.outputs
+      const hit = fromPort ? ports.find(p => canConnect(fromPort.type, p.type)) : undefined
+      if (fromPort && hit) {
+        const res = snap.type === 'source'
+          ? connectNodes(graph.value, { node: src.id, slot: snap.slot }, { node: node.id, slot: hit.slot })
+          : connectNodes(graph.value, { node: node.id, slot: hit.slot }, { node: src.id, slot: snap.slot })
+        if (res.ok) hydrateInputs()
+        else showToast(res.reason)
+      }
+    }
+  }
+
+  selectedId.value = node.id
+  connectFromSnapshot.value = null
+}
+
 /** 断开一个节点的全部连线（含它下游的输入引用）。 */
 function detachNode(nodeId: string): void {
   const edges = graph.value.edges.filter(e => e.from.node === nodeId || e.to.node === nodeId)
@@ -431,6 +549,12 @@ function onMenuPick(key: string): void {
   const target = menu.value
   const at = target ? screenToFlowCoordinate({ x: target.x, y: target.y }) : undefined
   closeMenu()
+
+  if (key.startsWith('connect:')) {
+    const kind = key.slice(8) as CanvasNodeKind
+    connectNewNode(kind, at ? { x: Math.round(at.x), y: Math.round(at.y) } : freeSpot())
+    return
+  }
 
   if (key.startsWith('add:')) {
     const value = key.slice(4)
@@ -1276,6 +1400,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             :default-viewport="{ x: 40, y: 40, zoom: 0.6 }"
             :nodes-connectable="true"
             :nodes-draggable="true"
+            :is-valid-connection="isValidConnection"
             :elements-selectable="true"
             :selection-mode="SelectionMode.Full"
             :selection-key-code="'Shift'"
@@ -1283,6 +1408,8 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             :delete-key-code="null"
             class="cg-flow"
             @connect="onConnect"
+            @connect-start="onConnectStart"
+            @connect-end="onConnectEnd"
             @node-drag-stop="onNodeDragStop"
             @edges-change="onEdgesChange"
             @pane-click="selectedId = ''"
@@ -1391,9 +1518,9 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
           v-if="menu"
           :x="menu.x"
           :y="menu.y"
-          :title="menu.kind === 'node' ? graph.nodes.find(n => n.id === menu?.nodeId)?.title : menu.kind === 'edge' ? '连线' : menu.kind === 'selection' ? `已选 ${selectedCount} 个节点` : '画布'"
-          :subtitle="menu.kind === 'node' ? nodeTypeSpec(graph.nodes.find(n => n.id === menu?.nodeId)?.kind ?? 'script_in').subtitle : menu.kind === 'edge' ? '连线可以断开后重连' : menu.kind === 'selection' ? '可批量运行、折叠或删除' : '在空白处可以新建节点'"
-          :items="menu.kind === 'node' ? nodeMenuItems : menu.kind === 'edge' ? edgeMenuItems : menu.kind === 'selection' ? selectionMenuItems : paneMenuItems"
+          :title="menu.kind === 'node' ? graph.nodes.find(n => n.id === menu?.nodeId)?.title : menu.kind === 'edge' ? '连线' : menu.kind === 'selection' ? `已选 ${selectedCount} 个节点` : menu.kind === 'connect' ? '接一个节点' : '画布'"
+          :subtitle="menu.kind === 'node' ? nodeTypeSpec(graph.nodes.find(n => n.id === menu?.nodeId)?.kind ?? 'script_in').subtitle : menu.kind === 'edge' ? '连线可以断开后重连' : menu.kind === 'selection' ? '可批量运行、折叠或删除' : menu.kind === 'connect' ? '能接上的排前面' : '在空白处可以新建节点'"
+          :items="menu.kind === 'node' ? nodeMenuItems : menu.kind === 'edge' ? edgeMenuItems : menu.kind === 'selection' ? selectionMenuItems : menu.kind === 'connect' ? connectMenuItems : paneMenuItems"
           @pick="onMenuPick"
           @close="closeMenu"
         />

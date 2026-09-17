@@ -19,6 +19,8 @@ const props = defineProps<{
     node: CanvasNode
     spec: CanvasNodeTypeSpec
     state: CanvasNodeState
+    /** 参数或输入变了、还没重跑（界面给个"待重跑"的提示）。 */
+    dirty?: boolean
     artifacts: CanvasArtifact[]
     /** 这一步用的模型名（每一步不一样，显示出来才知道在烧哪个模型的钱）。 */
     modelLabel?: string
@@ -101,6 +103,29 @@ const promptSpec = computed(() => spec.value.params.find(p => p.key === spec.val
 const promptValue = computed(() => String(node.value.params[spec.value.promptKey ?? ''] ?? ''))
 
 const tableRows = computed(() => shown.value?.rows ?? [])
+
+/**
+ * 多输出槽节点的产出摘要（剧本拆解这种：人物 / 场景 / 分镜各一口）。
+ *
+ * 早先卡片只看 outputs[0]，于是"拆解出来的人物和场景"在图上看不见 ——
+ * 而它们恰恰是下游首帧要的输入。
+ */
+const slotSummaries = computed(() =>
+  spec.value.outputs.map((port) => {
+    const picked = node.value.outputs[port.slot]
+    const artifact = picked
+      ? props.data.artifacts.find(a => a.id === picked.artifactId)
+      : artifactsOf(props.data.artifacts, node.value.id, port.slot)[0]
+    let note = '未产出'
+    if (artifact) {
+      if (artifact.rows?.length) note = `${artifact.rows.length} 镜`
+      else if (artifact.items?.length) note = `${artifact.items.length} 张`
+      else if (artifact.text) note = artifact.text.replace(/\s+/g, ' ').slice(0, 16) + (artifact.text.length > 16 ? '…' : '')
+      else note = artifact.note ?? '已产出'
+    }
+    return { slot: port.slot, label: port.label, type: port.type, note, artifact }
+  })
+)
 const textPreview = computed(() => {
   const t = shown.value?.text ?? String(node.value.params.text ?? '')
   return t.replace(/\s+/g, ' ').trim()
@@ -140,6 +165,11 @@ const textPreview = computed(() => {
         v-if="pendingCount"
         class="cg-node-dot"
         :title="`${pendingCount} 份产物等你确认`"
+      />
+      <span
+        v-else-if="props.data.dirty && state !== 'running'"
+        class="cg-node-dot cg-node-dot--dirty"
+        :title="state === 'failed' ? '上次失败，需要重跑' : '参数或上游产物变了，需要重跑'"
       />
       <button
         class="cg-node-menu-btn"
@@ -236,9 +266,31 @@ const textPreview = computed(() => {
       v-show="!node.collapsed"
       class="cg-node-body"
     >
+      <!-- 有多个输出槽的节点（剧本拆解）：逐口列产出，下游要的就是这几口 -->
+      <div
+        v-if="spec.outputs.length > 1"
+        class="cg-slots"
+      >
+        <div
+          v-for="s in slotSummaries"
+          :key="s.slot"
+          class="cg-slot"
+        >
+          <span
+            class="cg-port-dot"
+            :style="{ background: portMeta(s.type).color }"
+          />
+          <span class="cg-slot-label">{{ s.label }}</span>
+          <span
+            class="cg-slot-note"
+            :data-tone="s.artifact ? 'ok' : 'muted'"
+          >{{ s.note }}</span>
+        </div>
+      </div>
+
       <!-- 文字 / 大纲：上面是「这一步要它干什么」的输入框，下面是结果 -->
       <div
-        v-if="spec.outputs[0]?.type === 'text' || spec.outputs[0]?.type === 'outline'"
+        v-else-if="spec.outputs[0]?.type === 'text' || spec.outputs[0]?.type === 'outline'"
         class="cg-textblock"
       >
         <textarea
@@ -436,7 +488,7 @@ const textPreview = computed(() => {
         @click.stop="emit('run', node.id)"
       >
         <i :class="state === 'running' ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
-        {{ state === 'running' ? '运行中' : '运行' }}
+        {{ state === 'running' ? '运行中' : props.data.dirty ? '重跑' : '运行' }}
       </button>
 
       <span
@@ -553,6 +605,17 @@ const textPreview = computed(() => {
 .cg-node-state[data-tone='run'] { color: var(--hg3-run); background: rgb(101 198 251 / 12%); }
 .cg-node-state[data-tone='warn'] { color: var(--hg3-warn); background: rgb(255 180 84 / 12%); }
 .cg-node-state[data-tone='bad'] { color: var(--hg3-i-coral); background: rgb(255 112 122 / 12%); }
+
+.cg-node-dot--dirty {
+  background: var(--hg3-warn);
+  box-shadow: 0 0 6px var(--hg3-warn);
+}
+
+.cg-slots { display: flex; flex-direction: column; gap: 5px; }
+.cg-slot { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.cg-slot-label { color: var(--hg3-ink); }
+.cg-slot-note { margin-left: auto; color: var(--hg3-muted); font-size: 10.5px; }
+.cg-slot-note[data-tone='muted'] { color: var(--hg3-faint); }
 
 .cg-node-dot {
   width: 7px;
