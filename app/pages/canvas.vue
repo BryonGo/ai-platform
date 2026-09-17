@@ -242,7 +242,8 @@ const {
   screenToFlowCoordinate,
   nodes: flowGraphNodes,
   addSelectedNodes,
-  removeSelectedNodes
+  removeSelectedNodes,
+  findEdge
 } = useVueFlow()
 
 /** 当前选中的节点数（框选、Cmd+click、Cmd+A 都算）。 */
@@ -351,10 +352,12 @@ const flowEdges = computed<Edge[]>(() => {
       target: e.to.node,
       sourceHandle: e.from.slot,
       targetHandle: e.to.slot,
-      type: 'cg',
+      type: 'smoothstep',
       animated: stateOf(from) === 'running',
-      style: { stroke: color, strokeWidth: 1.6 },
-      data: { color },
+      // 悬停时加粗发亮：靠重算 style 实现，不用自定义边组件
+      style: hoveredEdge.value === e.id
+        ? { stroke: color, strokeWidth: 2.8, filter: 'drop-shadow(0 0 4px rgb(233 150 84 / 55%))' }
+        : { stroke: color, strokeWidth: 1.6 },
       markerEnd: MarkerType.ArrowClosed
     })
   }
@@ -431,12 +434,50 @@ function onNodeDragStop(): void {
   }
 }
 
-/** 鼠标停在哪条线上（两端节点跟着轻微高亮，看清"这条线连的是谁"）。 */
+/** 鼠标停在哪条线上（两端节点跟着轻微高亮，线本身也加粗发亮）。 */
 const hoveredEdge = ref<string | null>(null)
+/** 指针停在"断开"按钮上时不要因为离开线而把按钮收走。 */
+const edgeBtnHover = ref(false)
+let edgeLeaveTimer: number | undefined
+
+function onEdgeHover(edgeId: string): void {
+  window.clearTimeout(edgeLeaveTimer)
+  hoveredEdge.value = edgeId
+}
+
+function onEdgeLeave(): void {
+  window.clearTimeout(edgeLeaveTimer)
+  edgeLeaveTimer = window.setTimeout(() => {
+    if (!edgeBtnHover.value) hoveredEdge.value = null
+  }, 140)
+}
+
+/**
+ * 悬停那条线的中点（屏幕坐标）。
+ *
+ * Vue Flow 会把两端句柄的坐标写回边对象（sourceX/sourceY/targetX/targetY），
+ * 拿它算中点、再按视口缩放平移换算成屏幕坐标 —— 于是 ⊗ 正好压在线的中间。
+ * 这样做的好处是不用自定义 SVG 边：线还是内置的（稳定），按钮是普通 DOM。
+ */
+const edgeButtonPos = computed(() => {
+  const id = hoveredEdge.value
+  if (!id) return null
+  const edge = findEdge(id) as unknown as { sourceX?: number, sourceY?: number, targetX?: number, targetY?: number } | undefined
+  if (!edge || edge.sourceX === undefined || edge.sourceY === undefined
+    || edge.targetX === undefined || edge.targetY === undefined) return null
+  const zoom = viewport.value?.zoom ?? 1
+  const vx = viewport.value?.x ?? 0
+  const vy = viewport.value?.y ?? 0
+  return {
+    x: ((edge.sourceX + edge.targetX) / 2) * zoom + vx,
+    y: ((edge.sourceY + edge.targetY) / 2) * zoom + vy
+  }
+})
 
 function removeEdge(edgeId: string): void {
   disconnect(graph.value, edgeId)
   hoveredEdge.value = null
+  edgeBtnHover.value = false
 }
 
 function onEdgesChange(changes: { type: string, id?: string }[]): void {
@@ -1522,6 +1563,8 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             @connect="onConnect"
             @connect-start="onConnectStart"
             @connect-end="onConnectEnd"
+            @edge-mouse-enter="(payload: { edge: { id: string } }) => onEdgeHover(payload.edge.id)"
+            @edge-mouse-leave="onEdgeLeave"
             @node-drag-stop="onNodeDragStop"
             @edges-change="onEdgesChange"
             @pane-click="selectedId = ''"
@@ -1550,14 +1593,6 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @review="review"
                 @param="(id: string, key: string, value: string) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
                 @open="selectedId = $event"
-              />
-            </template>
-
-            <template #edge-cg="edgeProps">
-              <CanvasEdgeLine
-                v-bind="edgeProps"
-                @hover="hoveredEdge = $event"
-                @remove="removeEdge"
               />
             </template>
 
@@ -1603,6 +1638,20 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             </button>
           </div>
         </ClientOnly>
+
+        <!-- 悬停连线时压在线中间的"断开"按钮 -->
+        <button
+          v-if="edgeButtonPos && hoveredEdge"
+          class="cg-edge-cut"
+          type="button"
+          title="断开这条连线"
+          :style="{ left: `${edgeButtonPos.x}px`, top: `${edgeButtonPos.y}px` }"
+          @mouseenter="edgeBtnHover = true"
+          @mouseleave="edgeBtnHover = false"
+          @click="removeEdge(hoveredEdge)"
+        >
+          <i class="i-lucide-scissors" />
+        </button>
 
         <!-- 空画布引导：没有任何节点时告诉人从哪儿开始 -->
         <div
@@ -2230,6 +2279,25 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 
 .cg-icon:hover:not(:disabled) { color: var(--hg3-ink); background: rgb(255 255 255 / 11%); }
 .cg-icon:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.cg-edge-cut {
+  position: absolute;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  font-size: 11px;
+  color: var(--hg3-ink);
+  background: rgb(20 21 24 / 94%);
+  border: 1px solid var(--hg3-i-coral);
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 50%);
+}
+
+.cg-edge-cut:hover { color: #fff; background: var(--hg3-i-coral); }
 
 .cg-blank {
   position: absolute;
