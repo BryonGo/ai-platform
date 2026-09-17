@@ -187,6 +187,14 @@ watch(
   [graph, artifacts],
   () => {
     if (applyingHistory) return
+
+    // 连线是按"句柄坐标"画的：节点内容一变（出图、参数展开、表格多一行、流式变长），
+    // 句柄位置就变了。不重新测量的话，连线会按过期的坐标画 —— 表现就是"线没了"。
+    // 这一步不影响数据，纯粹让画布自己对齐。
+    nextTick(() => {
+      updateNodeInternals()
+    })
+
     window.clearTimeout(historyTimer)
     historyTimer = window.setTimeout(() => {
       history.push(snapshotNow())
@@ -243,7 +251,8 @@ const {
   nodes: flowGraphNodes,
   addSelectedNodes,
   removeSelectedNodes,
-  findEdge
+  findEdge,
+  updateNodeInternals
 } = useVueFlow()
 
 /** 当前选中的节点数（框选、Cmd+click、Cmd+A 都算）。 */
