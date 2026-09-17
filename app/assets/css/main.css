@@ -1,6 +1,42 @@
 @import 'tailwindcss';
 @import '@nuxt/ui';
 
+/**
+ * 图标：让 class="i-lucide-xxx" 这种写法也能画出图形。
+ *
+ * 为什么需要：Nuxt UI 的 <UIcon> 渲染的是 class="iconify i-lucide:xxx"（冒号），
+ * 而画布把节点类型、端口、菜单的图标名写在数据表里，用的是 "i-lucide-xxx"（连字符）——
+ * 没有这个插件时，连字符类名没有任何 CSS 匹配，界面上就是一个个空方块。
+ * 有了它，两种写法都能用，写在 .ts 数据表里的图标名也会被扫描到。
+ */
+@plugin "@iconify/tailwind4" {
+  prefixes: lucide, simple-icons;
+  /* 插件默认选择器是 .{prefix}--{name}（.lucide--scissors）。我们的写法是
+     .i-lucide-scissors（Nuxt UI / Tailwind 的习惯），所以显式指定。 */
+  iconSelector: '.i-{prefix}-{name}';
+}
+
+/**
+ * 上面那个插件只给每个图标生成 `--svg`（图形数据），**画出来还需要遮罩与尺寸**。
+ * 插件本来会为 .iconify 生成那部分，但 Tailwind v4 会把它当"没人用的组件"摇掉
+ * （实测生成的 CSS 里有 --svg、没有 mask-image），而我们的元素又没有 .iconify 类。
+ * 所以这里自己补上这几行 —— 与 Iconify 官方 CSS 模式一致：
+ * 用遮罩把图形盖成背景，背景色取 currentColor，于是图标自动跟随文字颜色。
+ */
+[class*='i-lucide-'] {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask-image: var(--svg);
+  mask-image: var(--svg);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
 @theme static {
   --font-sans: 'MiSans', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
   --font-display: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', serif;
