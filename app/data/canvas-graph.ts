@@ -59,7 +59,7 @@ export interface CanvasGraph {
 // ---------------------------------------------------------------- 运行与产物（建表）
 
 /** 运行态：由 canvas_run 派生，不存在节点行上。 */
-export type CanvasNodeState = 'idle' | 'running' | 'ready' | 'failed' | 'blocked'
+export type CanvasNodeState = 'idle' | 'running' | 'ready' | 'failed' | 'blocked' | 'awaiting'
 
 /** 审核态：挂在**产物**上，不在节点上。 */
 export type CanvasReview = 'pending' | 'approved' | 'rejected'
@@ -276,19 +276,38 @@ function lastRun(runs: CanvasRun[], nodeId: string): CanvasRun | undefined {
   return [...runs].reverse().find(r => r.nodeId === nodeId)
 }
 
-/** 节点运行态：running > failed > 有产物 = ready > 必填输入没到 = blocked > idle。 */
-export function nodeState(graph: CanvasGraph, node: CanvasNode, runs: CanvasRun[]): CanvasNodeState {
+/**
+ * 节点运行态：running > failed > 有产物 = ready > 必填输入没接 = blocked
+ *            > 上游产物还没人确认 = awaiting > idle。
+ *
+ * **awaiting 就是"先确认再下一步"这条规矩**：上游产物 review 还是 pending 时，
+ * 下游一律跑不了 —— 每一步都花钱、每步用的是不同模型，没确认就往下跑等于把钱花在错的东西上。
+ */
+export function nodeState(
+  graph: CanvasGraph,
+  node: CanvasNode,
+  runs: CanvasRun[],
+  artifacts: CanvasArtifact[] = []
+): CanvasNodeState {
   const last = lastRun(runs, node.id)
   if (last?.status === 'running') return 'running'
   if (last?.status === 'failed') return 'failed'
   if (Object.keys(node.outputs).length > 0) return 'ready'
+
   for (const port of nodeTypeSpec(node.kind).inputs) {
-    if (port.required && !node.inputs[port.slot]) return 'blocked'
+    if (!port.required) continue
+    const ref = node.inputs[port.slot]
+    if (!ref) return 'blocked'
+    if (artifacts.length) {
+      const artifact = artifacts.find(a => a.id === ref.artifactId)
+      if (artifact && artifact.review !== 'approved') return 'awaiting'
+    }
   }
+
   for (const parentId of parentsOf(graph, node.id)) {
     const parent = graph.nodes.find(n => n.id === parentId)
     if (!parent) continue
-    if (nodeState(graph, parent, runs) !== 'ready') return 'blocked'
+    if (nodeState(graph, parent, runs, artifacts) !== 'ready') return 'blocked'
   }
   return 'idle'
 }
@@ -298,7 +317,8 @@ export const NODE_STATE_META: Record<CanvasNodeState, { label: string, tone: 'mu
   running: { label: '运行中', tone: 'run' },
   ready: { label: '已就绪', tone: 'ok' },
   failed: { label: '失败', tone: 'bad' },
-  blocked: { label: '等待上游', tone: 'warn' }
+  blocked: { label: '等待上游', tone: 'warn' },
+  awaiting: { label: '等待确认', tone: 'warn' }
 }
 
 /** 脏节点：从没成功跑过 / 参数变了 / 输入换了版本。 */

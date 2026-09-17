@@ -44,23 +44,26 @@ export function buildCanvasSample(): CanvasSample {
   const runs: CanvasRun[] = []
 
   const script = createNode('script_in', { x: 40, y: 300 }, '剧本输入')
-  const split = createNode('script_split', { x: 320, y: 300 }, '剧本拆解')
-  const castA = createNode('character', { x: 600, y: 20 }, '角色设定 · 林知遥')
-  const castB = createNode('character', { x: 600, y: 230 }, '角色设定 · 陆青')
-  const sceneA = createNode('scene', { x: 600, y: 440 }, '场景设定 · 破庙')
-  const sceneB = createNode('scene', { x: 600, y: 650 }, '场景设定 · 灵堂')
-  const board = createNode('shotlist', { x: 920, y: 330 }, '分镜生成')
-  const kf1 = createNode('keyframe', { x: 1240, y: 40 }, 'S01 首帧', 1)
-  const kf2 = createNode('keyframe', { x: 1240, y: 300 }, 'S02 首帧', 2)
-  const kf3 = createNode('keyframe', { x: 1240, y: 560 }, 'S03 首帧', 3)
-  const vd1 = createNode('i2v', { x: 1560, y: 40 }, 'S01 视频', 1)
-  const vd2 = createNode('i2v', { x: 1560, y: 300 }, 'S02 视频', 2)
-  const vd3 = createNode('i2v', { x: 1560, y: 560 }, 'S03 视频', 3)
-  const audio = createNode('audio', { x: 1240, y: 830 }, '配音配乐')
-  const compose = createNode('compose', { x: 1880, y: 300 }, '剪辑合成 · 按镜号')
-  const exp = createNode('export', { x: 2200, y: 300 }, '成片导出')
+  const write = createNode('script_gen', { x: 320, y: 300 }, '剧本生成')
+  const split = createNode('script_split', { x: 600, y: 300 }, '剧本拆解')
+  const castA = createNode('character', { x: 880, y: 20 }, '角色设定 · 林知遥')
+  const castB = createNode('character', { x: 880, y: 230 }, '角色设定 · 陆青')
+  const sceneA = createNode('scene', { x: 880, y: 440 }, '场景设定 · 破庙')
+  const sceneB = createNode('scene', { x: 880, y: 650 }, '场景设定 · 灵堂')
+  const board = createNode('shotlist', { x: 1200, y: 330 }, '分镜生成')
+  const kf1 = createNode('keyframe', { x: 1520, y: 40 }, 'S01 首帧', 1)
+  const kf2 = createNode('keyframe', { x: 1520, y: 300 }, 'S02 首帧', 2)
+  const kf3 = createNode('keyframe', { x: 1520, y: 560 }, 'S03 首帧', 3)
+  const vd1 = createNode('i2v', { x: 1840, y: 40 }, 'S01 视频', 1)
+  const vd2 = createNode('i2v', { x: 1840, y: 300 }, 'S02 视频', 2)
+  const vd3 = createNode('i2v', { x: 1840, y: 560 }, 'S03 视频', 3)
+  const audio = createNode('audio', { x: 1520, y: 830 }, '配音配乐')
+  const compose = createNode('compose', { x: 2160, y: 300 }, '剪辑合成 · 按镜号')
+  const exp = createNode('export', { x: 2480, y: 300 }, '成片导出')
 
-  script.params.text = '第 1 集 · 回魂夜\n\n破庙。暴雨敲着残破的屋脊。她睁开眼，坐在自己的灵堂里——七天了，没有人来收尸。'
+  script.params.text = '一句话梗概：她在自己婚礼的夜里死去，七天后又在同一座破庙里醒来。\n要求：民国悬疑、竖屏、少对白。'
+  write.params.tone = '民国悬疑、冷冽、少对白'
+  write.params.length = '180'
   castA.params.name = '林知遥'
   castA.params.appearance = '红衣、长发、左眉一道旧疤；眼神克制，笑的时候只看嘴角'
   castB.params.name = '陆青'
@@ -77,10 +80,11 @@ export function buildCanvasSample(): CanvasSample {
   compose.params.merge = 'list'
   exp.params.nameRule = 'E01-S{镜号}.mp4'
 
-  nodes.push(script, split, castA, castB, sceneA, sceneB, board, kf1, kf2, kf3, vd1, vd2, vd3, audio, compose, exp)
+  nodes.push(script, write, split, castA, castB, sceneA, sceneB, board, kf1, kf2, kf3, vd1, vd2, vd3, audio, compose, exp)
   edges.push(
-    // 剧本 → 拆解
-    makeEdge(script.id, 'text', split.id, 'text'),
+    // 素材 → 生成剧本（调文本模型）→ 拆解（换另一个文本模型）
+    makeEdge(script.id, 'text', write.id, 'material'),
+    makeEdge(write.id, 'text', split.id, 'text'),
     // 拆解一次拆出三样：人物 / 场景 / 分镜
     makeEdge(split.id, 'characters', castA.id, 'characters'),
     makeEdge(split.id, 'characters', castB.id, 'characters'),
@@ -123,7 +127,8 @@ export function buildCanvasSample(): CanvasSample {
     return artifact
   }
 
-  push({ id: 'a_script', nodeId: script.id, slot: 'text', type: 'text', version: 1, review: 'approved', note: '剧本 · 118 字', text: String(script.params.text) })
+  push({ id: 'a_script', nodeId: script.id, slot: 'text', type: 'text', version: 1, review: 'approved', note: '原始素材 · 1 段梗概', text: String(script.params.text) })
+  push({ id: 'a_draft', nodeId: write.id, slot: 'text', type: 'text', version: 1, review: 'approved', note: '剧本定稿 · 1.2k 字', text: '第 1 集 · 回魂夜\n\n破庙。暴雨敲着残破的屋脊。她睁开眼，坐在自己的灵堂里——七天了，没有人来收尸。' })
   push({ id: 'a_chars', nodeId: split.id, slot: 'characters', type: 'outline', version: 1, review: 'approved', note: '2 个人物', text: '林知遥（女主）· 陆青（男主）' })
   push({ id: 'a_scenes', nodeId: split.id, slot: 'scenes', type: 'outline', version: 1, review: 'approved', note: '2 个场景', text: '破庙 · 夜（暴雨）· 灵堂 · 夜（白幡）' })
   push({ id: 'a_shots', nodeId: split.id, slot: 'shots', type: 'outline', version: 1, review: 'approved', note: '3 镜大纲', text: '场 1 破庙外 / 暴雨 · 场 2 灵堂 / 回头 · 场 3 特写 / 七日' })
@@ -150,14 +155,15 @@ export function buildCanvasSample(): CanvasSample {
     })
   }
   done(script, 0, 2)
-  done(split, 5, 3)
-  done(castA, 24, 4)
-  done(castB, 22, 5)
-  done(sceneA, 18, 6)
-  done(sceneB, 17, 7)
-  done(board, 8, 8)
-  done(kf2, 36, 10)
-  done(vd2, 96, 12)
+  done(write, 15, 3)
+  done(split, 5, 4)
+  done(castA, 24, 5)
+  done(castB, 22, 6)
+  done(sceneA, 18, 7)
+  done(sceneB, 17, 8)
+  done(board, 8, 9)
+  done(kf2, 36, 11)
+  done(vd2, 96, 13)
 
   runs.push({ id: `r_${kf1.id}`, nodeId: kf1.id, paramsHash: paramsHash(kf1), status: 'running', startedAt: at(13) })
   runs.push({

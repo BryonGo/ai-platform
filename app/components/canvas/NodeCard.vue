@@ -20,6 +20,8 @@ const props = defineProps<{
     spec: CanvasNodeTypeSpec
     state: CanvasNodeState
     artifacts: CanvasArtifact[]
+    /** 这一步用的模型名（每一步不一样，显示出来才知道在烧哪个模型的钱）。 */
+    modelLabel?: string
   }
   selected?: boolean
 }>()
@@ -394,6 +396,14 @@ const textPreview = computed(() => {
       </span>
 
       <span
+        v-if="props.data.modelLabel"
+        class="cg-model"
+        :title="`这一步用的是 ${props.data.modelLabel}`"
+      >
+        <i class="i-lucide-cpu" />{{ props.data.modelLabel }}
+      </span>
+
+      <span
         v-if="failed || shown?.note"
         class="cg-foot-note"
       >{{ shown?.note ?? '' }}</span>
@@ -729,5 +739,21 @@ const textPreview = computed(() => {
 }
 
 .cg-ver.is-on { color: var(--hg3-ink); background: var(--hg3-accent-soft); box-shadow: inset 0 0 0 1px var(--hg3-accent-line); }
+.cg-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  max-width: 118px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 6%);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cg-foot-note { margin-left: auto; font-size: 10px; color: var(--hg3-faint); white-space: nowrap; }
 </style>

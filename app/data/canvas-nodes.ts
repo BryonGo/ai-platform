@@ -3,9 +3,11 @@
  *
  * 这份文件是**前后端共用的契约**，照界面原型《织幕 PROTOTYPE · AI 影剧无界画布》的节点库落成，
  * 并按最短闭环补齐原型上缺的一环（**场景设定**）与三条输入：
- *   剧本（剧本输入 / 剧本拆解）→ 角色与场景（角色设定 / 场景设定）→ 分镜（分镜生成）
- *   → 生成（首帧生成）→ 视频（图生视频）→ 音频（配音配乐）→ 输出（剪辑合成 / 成片导出）
- * 共 7 组 10 类。
+ *   剧本（剧本输入 / 剧本生成 / 剧本拆解）→ 角色与场景（角色设定 / 场景设定）
+ *   → 分镜（分镜生成）→ 生成（首帧生成）→ 视频（图生视频）→ 音频（配音配乐）
+ *   → 输出（剪辑合成 / 成片导出）
+ * 共 7 组 11 类。每步调用的模型不一样（写剧本用文本模型、首帧用图像模型、视频用视频模型），
+ * 所以每个调模型的节点都带一个「模型」参数，按 modelKind 筛目录。
  *
  * 最要紧的一条依赖（不要改动它的形状）：
  *   首帧图 = **人物 + 场景 + 这一镜的分镜**，三样缺一不出图；
@@ -84,6 +86,7 @@ export function groupMeta(key: CanvasGroupKey): CanvasGroupMeta {
 
 export type CanvasNodeKind
   = | 'script_in'
+    | 'script_gen'
     | 'script_split'
     | 'character'
     | 'scene'
@@ -127,6 +130,12 @@ export interface CanvasNodeTypeSpec {
   outputs: CanvasPortSpec[]
   params: CanvasParamSpec[]
   /**
+   * 这一步要用哪一类模型（每步模型都不一样）。参数里的 `modelId` 按它筛目录：
+   * text = 写剧本/拆解/分镜，image = 出图，video = 出视频，audio = 配音配乐。
+   * 不写表示这一步不调模型（如剧本输入、剪辑合成）。
+   */
+  modelKind?: 'text' | 'image' | 'video' | 'audio'
+  /**
    * ready  —— 第一轮真跑（会建任务、会花钱）
    * planned —— 只立类型与端口，第一轮不实现执行，点了提示"本版未开放"
    */
@@ -153,7 +162,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'script_in',
     group: 'script',
     label: '剧本输入',
-    subtitle: '导入或粘贴剧本文字',
+    subtitle: '导入或粘贴剧本文字 / 梗概',
     icon: 'i-lucide-scroll-text',
     width: 236,
     inputs: [],
@@ -165,12 +174,32 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     estimateCredits: 0
   },
   {
+    // 剧本输入只是素材；"写出一份能拍的剧本"这一步要调文本模型，所以单独一个节点
+    kind: 'script_gen',
+    group: 'script',
+    label: '剧本生成',
+    subtitle: '用文本模型写出可拍剧本',
+    icon: 'i-lucide-pen-line',
+    width: 236,
+    modelKind: 'text',
+    inputs: [{ slot: 'material', type: 'text', label: '原始素材', required: true }],
+    outputs: [{ slot: 'text', type: 'text', label: '剧本定稿' }],
+    params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '每一步各用一个模型，互不影响' },
+      { key: 'length', label: '目标时长', kind: 'select', options: [{ value: '60', label: '1 分钟竖屏' }, { value: '180', label: '3 分钟短剧' }] },
+      { key: 'tone', label: '风格', kind: 'text', placeholder: '例如：民国悬疑、冷冽、少对白' }
+    ],
+    stage: 'ready',
+    estimateCredits: 15
+  },
+  {
     kind: 'script_split',
     group: 'script',
     label: '剧本拆解',
     subtitle: '拆出人物、场景与分镜',
     icon: 'i-lucide-split',
     width: 236,
+    modelKind: 'text',
     inputs: [{ slot: 'text', type: 'text', label: '剧本文本', required: true }],
     // 一次拆出三样：人物、场景、分镜。三条线各接各的下游（一个人物/场景一个节点）
     outputs: [
@@ -179,6 +208,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       { slot: 'shots', type: 'outline', label: '分镜大纲' }
     ],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'granularity', label: '拆解粒度', kind: 'select', options: [{ value: 'shot', label: '按镜头（默认）' }, { value: 'scene', label: '按场次' }] },
       { key: 'note', label: '补充要求', kind: 'text', placeholder: '例如：每镜不超过 6 秒' }
     ],
@@ -192,9 +222,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '三视图角色参考',
     icon: 'i-lucide-user-round',
     width: 236,
+    modelKind: 'image',
     inputs: [{ slot: 'characters', type: 'outline', label: '人物列表', required: true }],
     outputs: [{ slot: 'image', type: 'image', label: '三视图' }],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'name', label: '角色名', kind: 'text', placeholder: '例如：林知遥' },
       { key: 'appearance', label: '外观锚点', kind: 'textarea', placeholder: '红衣、长发、左眉有疤——写清可复用的外观特征' },
       { key: 'views', label: '出图视角', kind: 'select', options: [{ value: '3', label: '正 / 侧 / 背 三视图' }, { value: '1', label: '只出正面' }] }
@@ -210,9 +242,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '场景环境参考图',
     icon: 'i-lucide-mountain-snow',
     width: 236,
+    modelKind: 'image',
     inputs: [{ slot: 'scenes', type: 'outline', label: '场景列表', required: true }],
     outputs: [{ slot: 'image', type: 'image', label: '场景参考图' }],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'name', label: '场景名', kind: 'text', placeholder: '例如：破庙 · 夜' },
       { key: 'appearance', label: '环境锚点', kind: 'textarea', placeholder: '空间、光源、色调、天气——写清可复用的环境特征' },
       { key: 'angles', label: '出图张数', kind: 'select', options: [{ value: '1', label: '1 张（默认）' }, { value: '3', label: '3 个机位' }] }
@@ -227,9 +261,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '生成镜头列表',
     icon: 'i-lucide-list-video',
     width: 268,
+    modelKind: 'text',
     inputs: [{ slot: 'shots', type: 'outline', label: '分镜大纲', required: true }],
     outputs: [{ slot: 'table', type: 'table', label: '分镜表' }],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'shotsPerScene', label: '每场镜头数', kind: 'number', hint: '默认 5，多了图会挤' },
       { key: 'frames', label: '默认帧数', kind: 'frames', hint: '单镜可按需在表格里改' }
     ],
@@ -243,6 +279,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '人物 + 场景 + 分镜出首帧图',
     icon: 'i-lucide-image-plus',
     width: 248,
+    modelKind: 'image',
     inputs: [
       { slot: 'person', type: 'image', label: '人物参考', required: true },
       { slot: 'scene', type: 'image', label: '场景参考', required: true },
@@ -264,12 +301,14 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '首帧 + 关键词生成视频',
     icon: 'i-lucide-clapperboard',
     width: 248,
+    modelKind: 'video',
     inputs: [
       { slot: 'firstFrame', type: 'image', label: '首帧图', required: true },
       { slot: 'shot', type: 'table', label: '这一镜的关键词' }
     ],
     outputs: [{ slot: 'video', type: 'video', label: '视频片段' }],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'tier', label: '档位', kind: 'select', options: [{ value: 'preview', label: '预览 · 432x768 · 便宜十倍' }, { value: 'final', label: '定稿 · 768x1344 · 交付档' }] },
       { key: 'frames', label: '帧数', kind: 'frames' },
       { key: 'h3Prompt', label: '运动描述', kind: 'textarea', placeholder: '不接分镜时用这里；接了就以分镜为准' }
@@ -284,12 +323,14 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     subtitle: '配音与背景音乐',
     icon: 'i-lucide-audio-lines',
     width: 236,
+    modelKind: 'audio',
     inputs: [
       { slot: 'table', type: 'table', label: '分镜表' },
       { slot: 'video', type: 'video', label: '视频片段', multiple: true }
     ],
     outputs: [{ slot: 'audio', type: 'audio', label: '配音与配乐' }],
     params: [
+      { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'voice', label: '音色', kind: 'select', options: [{ value: 'warm', label: '温和女声' }, { value: 'cold', label: '冷冽女声' }, { value: 'deep', label: '低沉男声' }] },
       { key: 'bgm', label: '背景音乐', kind: 'text', placeholder: '整集统一铺，逐镜不铺' }
     ],

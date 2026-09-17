@@ -63,7 +63,8 @@ const selectedId = ref('')
 const toast = ref('')
 const detailOpen = ref(true)
 const runningIds = ref<string[]>([])
-const modelOptions = ref<{ value: string, label: string }[]>([])
+/** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
+const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
 const hgApi = useHougongApi()
 
@@ -77,11 +78,19 @@ const runningCount = computed(() => runs.value.filter(r => r.status === 'running
 const readyCount = computed(() =>
   graph.value.nodes.filter(n => nodeState(graph.value, n, runs.value) === 'ready').length
 )
+/**
+ * 「待重跑」= 现在真的能跑、且需要跑的节点数。
+ *
+ * 未开放的（planned）不算；等待上游、等待确认的也不算 —— 它们不是"脏"，
+ * 是卡在别的东西上，混进来只会让人以为点一下「运行全部」就能推下去。
+ */
 const dirtyCount = computed(() =>
   dirtyNodes(graph.value, runs.value).filter((id) => {
     const node = graph.value.nodes.find(n => n.id === id)
-    // 未开放的节点不算"待重跑"：它跑不了，挂个数字只会让人以为图是脏的
-    return node ? nodeTypeSpec(node.kind).stage === 'ready' : false
+    if (!node) return false
+    if (nodeTypeSpec(node.kind).stage !== 'ready') return false
+    const st = stateOf(node)
+    return st !== 'blocked' && st !== 'awaiting' && st !== 'running'
   }).length
 )
 
@@ -93,7 +102,16 @@ function showToast(text: string): void {
 }
 
 function stateOf(node: CanvasNode): CanvasNodeState {
-  return nodeState(graph.value, node, runs.value)
+  return nodeState(graph.value, node, runs.value, artifacts.value)
+}
+
+/** 这一步用的模型名（没选就写"默认模型"）。每一步的模型各不相同。 */
+function modelLabelOf(node: CanvasNode): string {
+  const spec = nodeTypeSpec(node.kind)
+  if (!spec.modelKind) return ''
+  const id = String(node.params.modelId ?? '')
+  const list = modelOptions.value[spec.modelKind] ?? []
+  return list.find(o => o.value === id)?.label ?? (id || '默认模型')
 }
 
 // ---------------------------------------------------------------- Vue Flow 节点与边
@@ -107,7 +125,8 @@ const flowNodes = computed<Node[]>(() =>
       node: n,
       spec: nodeTypeSpec(n.kind),
       state: stateOf(n),
-      artifacts: artifacts.value.filter(a => a.nodeId === n.id)
+      artifacts: artifacts.value.filter(a => a.nodeId === n.id),
+      modelLabel: modelLabelOf(n)
     }
   }))
 )
@@ -273,6 +292,10 @@ async function runNode(nodeId: string, opts: { silent?: boolean } = {}): Promise
     if (!opts.silent) showToast('上游还没就绪，先跑上游节点')
     return
   }
+  if (state === 'awaiting') {
+    if (!opts.silent) showToast('上游产物还没确认 —— 先在上游节点里点「认可」，再跑这一步')
+    return
+  }
   if (state === 'running') return
 
   runningIds.value = [...runningIds.value, nodeId]
@@ -370,7 +393,11 @@ function artifactNote(node: CanvasNode, type: string): string {
 async function runAll(): Promise<void> {
   const queue = dirtyNodes(graph.value, runs.value).filter((id) => {
     const node = graph.value.nodes.find(n => n.id === id)
-    return node ? nodeTypeSpec(node.kind).stage === 'ready' && stateOf(node) !== 'blocked' : false
+    if (!node) return false
+    if (nodeTypeSpec(node.kind).stage !== 'ready') return false
+    // 等待上游 / 等待确认的都不跑：不是"脏"，是"卡在人的确认上"
+    const st = stateOf(node)
+    return st !== 'blocked' && st !== 'awaiting'
   })
   if (!queue.length) {
     showToast('没有需要重跑的节点（参数和输入都没变）')
@@ -379,7 +406,9 @@ async function runAll(): Promise<void> {
   showToast(`开始运行 ${queue.length} 个节点`)
   for (const id of queue) {
     const node = graph.value.nodes.find(n => n.id === id)
-    if (!node || stateOf(node) === 'blocked') continue
+    if (!node) continue
+    const st = stateOf(node)
+    if (st === 'blocked' || st === 'awaiting') continue
     await runNode(id, { silent: true })
   }
   showToast(`运行完成：${queue.length} 个节点`)
@@ -445,8 +474,11 @@ function paramValue(node: CanvasNode, key: string): string {
   return v === undefined || v === null ? '' : String(v)
 }
 
-function paramOptions(p: CanvasParamSpec): { value: string, label: string }[] {
-  if (p.key === 'modelId' && modelOptions.value.length) return modelOptions.value
+function paramOptions(p: CanvasParamSpec, kind?: string): { value: string, label: string }[] {
+  if (p.key === 'modelId') {
+    const list = modelOptions.value[kind ?? ''] ?? []
+    return list.length ? list : [{ value: '', label: '服务端默认' }]
+  }
   return p.options ?? []
 }
 
@@ -466,13 +498,23 @@ onMounted(async () => {
   window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
   // 示例里预置的"运行中"落地，让状态机动起来
   settleSeededRuns()
-  // 关键帧节点的模型下拉：有目录就用真目录，没有就留一句"服务端默认"
+  // 每一步的模型下拉：按模态取目录。目录里还没有文本/音频那两类，
+  // 取不到就留一句"服务端默认"，等后端在 catalog 里补上（见 R2 文档 0.7）。
+  const fallback = { value: '', label: '服务端默认（目录未接通）' }
   try {
     const catalog = await hgApi.getCatalog()
-    const list = (catalog.cloudModels ?? []).map(m => ({ value: m.id, label: m.name }))
-    modelOptions.value = list.length ? list : [{ value: '', label: '服务端默认' }]
+    const image = (catalog.cloudModels ?? []).map(m => ({ value: m.id, label: m.name }))
+    const video = (catalog.videoModels ?? [])
+      .filter(m => m.available !== false)
+      .map(m => ({ value: m.id, label: m.name }))
+    modelOptions.value = {
+      text: [],
+      audio: [],
+      image: image.length ? image : [fallback],
+      video: video.length ? video : [fallback]
+    }
   } catch {
-    modelOptions.value = [{ value: '', label: '服务端默认（目录未接通）' }]
+    modelOptions.value = { text: [], audio: [], image: [fallback], video: [fallback] }
   }
 })
 
@@ -788,7 +830,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                   @change="setParam(selected, p.key, ($event.target as HTMLSelectElement).value)"
                 >
                   <option
-                    v-for="o in paramOptions(p)"
+                    v-for="o in paramOptions(p, selectedSpec.modelKind)"
                     :key="o.value"
                     :value="o.value"
                   >
