@@ -52,8 +52,9 @@ import {
   withItemPicked,
   withItemReview
 } from '~/data/canvas-graph'
+import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasParamSpec } from '~/data/canvas-nodes'
-import { creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import { CANVAS_GROUPS, CANVAS_NODE_TYPES, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
 import { buildCanvasSample } from '~/data/canvas-sample'
 
 useHead({ title: '画布 · 织幕' })
@@ -75,6 +76,10 @@ const runningIds = ref<string[]>([])
 const streaming = ref<Record<string, string>>({})
 /** 「继续补充」的输入：在这一版基础上还想改什么。 */
 const followUp = ref('')
+/** 右键菜单：点到了什么 + 屏幕坐标。 */
+const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge', nodeId?: string, edgeId?: string } | null>(null)
+/** 画布内部的剪贴板（不碰系统剪贴板）：复制一个节点，右键空白粘贴。 */
+const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<string, unknown> } | null>(null)
 /** 每次运行带进来的临时输入（补充要求），按 runId 存，模拟用。 */
 const runInputs = new Map<string, { followUp?: string }>()
 /** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
@@ -186,6 +191,172 @@ function onNodeDragStop(event: { node: { id: string, position: { x: number, y: n
 function onEdgesChange(changes: { type: string, id?: string }[]): void {
   for (const c of changes) {
     if (c.type === 'remove' && c.id) disconnect(graph.value, c.id)
+  }
+}
+
+// ---------------------------------------------------------------- 右键菜单
+
+/** 右键位置：鼠标与触摸两种事件都取一下（触屏长按也会走这里）。 */
+function pointOf(event: MouseEvent | TouchEvent): { x: number, y: number } {
+  if ('clientX' in event) return { x: event.clientX, y: event.clientY }
+  const touch = event.touches[0] ?? event.changedTouches[0]
+  return { x: touch?.clientX ?? 0, y: touch?.clientY ?? 0 }
+}
+
+function openNodeMenu(payload: { event: MouseEvent | TouchEvent, node: { id: string } }): void {
+  const { x, y } = pointOf(payload.event)
+  selectedId.value = payload.node.id
+  menu.value = { x, y, kind: 'node', nodeId: payload.node.id }
+}
+
+function openPaneMenu(event: MouseEvent): void {
+  menu.value = { x: event.clientX, y: event.clientY, kind: 'pane' }
+}
+
+function openEdgeMenu(payload: { event: MouseEvent | TouchEvent, edge: { id: string } }): void {
+  const { x, y } = pointOf(payload.event)
+  menu.value = { x, y, kind: 'edge', edgeId: payload.edge.id }
+}
+
+function closeMenu(): void {
+  menu.value = null
+}
+
+/** 右键菜单里的"新增节点"：按分组列出全部节点类型。 */
+const addNodeItems = computed<ContextMenuItem[]>(() =>
+  CANVAS_GROUPS.map(g => ({
+    key: `add:${g.key}`,
+    label: g.label,
+    icon: 'i-lucide-folder',
+    children: CANVAS_NODE_TYPES.filter(t => t.group === g.key).map(t => ({
+      key: `add:${t.kind}`,
+      label: t.label,
+      icon: t.icon,
+      hint: t.stage === 'planned' ? '未开放' : undefined
+    }))
+  })).filter(g => (g.children?.length ?? 0) > 0)
+)
+
+const nodeMenuItems = computed<ContextMenuItem[]>(() => {
+  const node = graph.value.nodes.find(n => n.id === menu.value?.nodeId)
+  if (!node) return []
+  const spec = nodeTypeSpec(node.kind)
+  const cost = estimateOf(node)
+  return [
+    { key: 'edit', label: '编辑 / 详情', icon: 'i-lucide-sliders-horizontal' },
+    { key: 'rename', label: '重命名', icon: 'i-lucide-pen-line' },
+    { key: 'duplicate', label: '复制节点', icon: 'i-lucide-copy', hint: '⌘C' },
+    { key: 'copy', label: '复制到剪贴板', icon: 'i-lucide-clipboard-copy' },
+    { key: 'run', label: '运行这个节点', icon: 'i-lucide-play', hint: cost ? `约 ${creditsToYuan(cost)}` : undefined, disabled: spec.stage !== 'ready' || stateOf(node) === 'blocked' || stateOf(node) === 'awaiting' },
+    { key: 'detach', label: '断开全部连线', icon: 'i-lucide-unlink', disabled: !graph.value.edges.some(e => e.from.node === node.id || e.to.node === node.id) },
+    { key: 'remove', label: '删除节点', icon: 'i-lucide-trash-2', danger: true, hint: '⌫' }
+  ]
+})
+
+const paneMenuItems = computed<ContextMenuItem[]>(() => [
+  ...addNodeItems.value,
+  { key: 'paste', label: '粘贴节点', icon: 'i-lucide-clipboard-paste', hint: clipboard.value ? clipboard.value.title : undefined, disabled: !clipboard.value },
+  { key: 'fit', label: '适应画布', icon: 'i-lucide-maximize' },
+  { key: 'reset', label: '重置示例', icon: 'i-lucide-rotate-ccw' },
+  { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined },
+  { key: 'deselect', label: '取消选择', icon: 'i-lucide-mouse-pointer-click', disabled: !selectedId.value }
+])
+
+const edgeMenuItems = computed<ContextMenuItem[]>(() => [
+  { key: 'disconnect', label: '断开这条连线', icon: 'i-lucide-scissors', danger: true }
+])
+
+/** 复制到画布剪贴板（参数一起带走，连线不带）。 */
+function copyNode(nodeId: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  clipboard.value = { kind: node.kind, title: node.title, params: { ...node.params } }
+  showToast(`已复制「${node.title}」，右键空白处粘贴`)
+}
+
+function pasteNode(at?: { x: number, y: number }): void {
+  const clip = clipboard.value
+  if (!clip) return
+  const spot = at ?? freeSpot()
+  const node = createNode(clip.kind, spot, clip.title)
+  node.params = { ...clip.params }
+  addNode(graph.value, node)
+  selectedId.value = node.id
+  showToast(`已粘贴「${node.title}」`)
+}
+
+/** 断开一个节点的全部连线（含它下游的输入引用）。 */
+function detachNode(nodeId: string): void {
+  const edges = graph.value.edges.filter(e => e.from.node === nodeId || e.to.node === nodeId)
+  for (const e of edges) disconnect(graph.value, e.id)
+  showToast(`已断开 ${edges.length} 条连线`)
+}
+
+/** 菜单选中后执行。 */
+function onMenuPick(key: string): void {
+  const target = menu.value
+  const at = target ? screenToFlowCoordinate({ x: target.x, y: target.y }) : undefined
+  closeMenu()
+
+  if (key.startsWith('add:')) {
+    const value = key.slice(4)
+    const type = CANVAS_NODE_TYPES.find(t => t.kind === value)
+    if (type) add(type.kind, at ? { x: Math.round(at.x), y: Math.round(at.y) } : undefined)
+    return
+  }
+
+  const nodeId = target?.nodeId
+  switch (key) {
+    case 'edit': detailOpen.value = true; break
+    case 'rename': if (nodeId) renameInline(nodeId); break
+    case 'duplicate': if (nodeId) duplicate(nodeId); break
+    case 'copy': if (nodeId) copyNode(nodeId); break
+    case 'run': if (nodeId) void runNode(nodeId); break
+    case 'detach': if (nodeId) detachNode(nodeId); break
+    case 'remove': if (nodeId) drop(nodeId); break
+    case 'paste': pasteNode(at ? { x: Math.round(at.x), y: Math.round(at.y) } : undefined); break
+    case 'fit': fit(); break
+    case 'reset': resetSample(); break
+    case 'run-all': void runAll(); break
+    case 'deselect': selectedId.value = ''; break
+    case 'disconnect': if (target?.edgeId) disconnect(graph.value, target.edgeId); break
+  }
+}
+
+/** 重命名：把名字送给节点卡，让它进入输入态（简单起见用 prompt 之外的方式：直接改）。 */
+function renameInline(nodeId: string): void {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  selectedId.value = nodeId
+  detailOpen.value = true
+  // 卡片上的 ⋯ 菜单里有重命名输入框；这里直接聚焦详情面板的名字字段
+  showToast('在右侧详情里改，或点节点右上的 ⋯ → 重命名')
+}
+
+// ---------------------------------------------------------------- 键盘快捷键（复制 / 粘贴 / 删除 / Esc）
+
+function onKeydown(event: KeyboardEvent): void {
+  const el = event.target as HTMLElement | null
+  const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+  if (typing) return
+
+  const mod = event.metaKey || event.ctrlKey
+  if (mod && event.key.toLowerCase() === 'c' && selectedId.value) {
+    copyNode(selectedId.value)
+    return
+  }
+  if (mod && event.key.toLowerCase() === 'v') {
+    pasteNode()
+    return
+  }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId.value) {
+    event.preventDefault()
+    drop(selectedId.value)
+    return
+  }
+  if (event.key === 'Escape') {
+    closeMenu()
+    selectedId.value = ''
   }
 }
 
@@ -725,6 +896,7 @@ onMounted(async () => {
   mq = window.matchMedia('(min-width: 900px)')
   syncWide()
   mq.addEventListener('change', syncWide)
+  window.addEventListener('keydown', onKeydown)
   // 首屏适应一次，保证一进来就看得到整条产线
   window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
   // 示例里预置的"运行中"落地，让状态机动起来
@@ -749,7 +921,10 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => mq?.removeEventListener('change', syncWide))
+onBeforeUnmount(() => {
+  mq?.removeEventListener('change', syncWide)
+  window.removeEventListener('keydown', onKeydown)
+})
 
 function fit(): void {
   fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 })
@@ -882,6 +1057,10 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             @node-drag-stop="onNodeDragStop"
             @edges-change="onEdgesChange"
             @pane-click="selectedId = ''"
+            @node-context-menu="openNodeMenu"
+            @pane-context-menu="openPaneMenu"
+            @edge-context-menu="openEdgeMenu"
+            @contextmenu.prevent
           >
             <template #node-cg="{ id, data, selected: isSelected }">
               <CanvasNodeCard
@@ -943,6 +1122,17 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
             </button>
           </div>
         </ClientOnly>
+
+        <CanvasContextMenu
+          v-if="menu"
+          :x="menu.x"
+          :y="menu.y"
+          :title="menu.kind === 'node' ? graph.nodes.find(n => n.id === menu?.nodeId)?.title : menu.kind === 'edge' ? '连线' : '画布'"
+          :subtitle="menu.kind === 'node' ? nodeTypeSpec(graph.nodes.find(n => n.id === menu?.nodeId)?.kind ?? 'script_in').subtitle : menu.kind === 'edge' ? '连线可以断开后重连' : '在空白处可以新建节点'"
+          :items="menu.kind === 'node' ? nodeMenuItems : menu.kind === 'edge' ? edgeMenuItems : paneMenuItems"
+          @pick="onMenuPick"
+          @close="closeMenu"
+        />
 
         <p
           v-if="toast"
