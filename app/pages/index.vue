@@ -7,7 +7,7 @@ import {
   type ExploreCategory,
   type ExploreWork
 } from '~/data/hougong-home'
-import type { PublicationWork, WorkItem } from '~/composables/useHougongApi'
+import type { HougongTask, PublicationWork, WorkItem } from '~/composables/useHougongApi'
 import { looksLikeVideoUrl, vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
 
 const hgApi = useHougongApi()
@@ -152,12 +152,30 @@ function relativeTime(ts: number) {
   return `${Math.floor(diff / (24 * 60 * minute))} 天前`
 }
 
+/**
+ * 任务状态 → 卡片文案（后端契约 9 态，见 `internal/platform/task/data/task.go`）。
+ *
+ * ⚠️ 这张表当前**取不到值**，不是笔误：作品只在任务**成功之后**才入库
+ * （`useChatStudio` 里 `createWork` 唯一一次调用就在 `status === 'succeeded'` 分支上），
+ * 而 `/hougong/works` 的响应里也没有 status 字段。所以作品卡片的实际文案一律走
+ * `?? '最近编辑'` 兜底 —— 对「继续创作」这个列表来说，那正是想要的文案
+ * （列的是已完成的产物，不是进行中的活儿）。写成全集是为了后端哪天补了字段时
+ * 每个状态都有正确文案，而不是静默落到兜底上。
+ */
 const STATUS_TEXT: Record<string, { status: ContinueItem['status'], text: string }> = {
   succeeded: { status: 'done', text: '已完成' },
-  running: { status: 'running', text: '生成中' },
   queued: { status: 'running', text: '排队中' },
-  failed: { status: 'edited', text: '已失败' }
+  submitting: { status: 'running', text: '提交中' },
+  running: { status: 'running', text: '生成中' },
+  saving: { status: 'running', text: '保存中' },
+  reconciling: { status: 'running', text: '核对中' },
+  cancel_requested: { status: 'running', text: '取消中' },
+  failed: { status: 'edited', text: '已失败' },
+  cancelled: { status: 'edited', text: '已取消' }
 }
+
+/** 任务终态集合（与后端 Status.Terminal() 一致）。非终态 = 还在跑。 */
+const TASK_TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
 /**
  * 提交（首页侧）：不建任务，把这次输入交成草稿并跳到创作页。
@@ -223,9 +241,17 @@ async function loadContinue() {
   runningWorks.value = 0
   try {
     const works: WorkItem[] = await hgApi.listWorks()
-    runningWorks.value = works.filter(work => work.status === 'running' || work.status === 'queued').length
+    // 角标「任务 (N)」数的是**在飞的任务**，所以必须去任务接口取数。
+    // 以前这里筛的是作品（`works.filter(w => w.status === 'running' || 'queued')`），
+    // 而作品只在任务成功后才入库（见 STATUS_TEXT 的说明）→ 恒为 0 →
+    // 这个角标实际上永远不会出现。在飞状态只存在于任务接口。
+    // 取数失败按 0 处理：角标是锦上添花，不该把整块「继续创作」拖成空。
+    const tasks: HougongTask[] = await hgApi.listTasks().catch(() => [])
+    runningWorks.value = tasks.filter(task => !TASK_TERMINAL_STATUSES.has(task.status)).length
     continueItems.value = works.slice(0, 3).map((work) => {
-      const meta = STATUS_TEXT[work.status] ?? { status: 'edited' as const, text: '最近编辑' }
+      // work.status 目前后端不下发（见 WorkItem.status 的说明），所以这里必然走兜底；
+      // 保留查表是为了后端哪天补字段时能直接生效。
+      const meta = STATUS_TEXT[work.status ?? ''] ?? { status: 'edited' as const, text: '最近编辑' }
       // 视频作品没有封面图：后端只给 videoUrl（imageUrl 为空），卡片按 kind 走
       // <video> 分支。以前这里取 imageUrl，视频作品就是一张坏图。
       const isVideo = work.kind === 'video'

@@ -65,7 +65,14 @@ export interface WorkItem {
   /** 视频作品的播放地址（kind === 'video' 时才有）。 */
   videoUrl?: string
   kind: string
-  status: string
+  /**
+   * 作品的**任务状态**，`/hougong/works` 目前不下发这个字段（标记可选就是为了如实反映这一点）。
+   *
+   * 作品只在任务成功之后才入库（`useChatStudio` 里 `createWork` 唯一一次调用就在
+   * `status === 'succeeded'` 分支上），所以就算后端补上，作品列表里也只会是终态。
+   * 想拿「进行中」要看任务接口（`listTasks()` / `HougongTask.status`）。
+   */
+  status?: string
   favorite: boolean
   /** 内容分级 sfw/r15/r18（语义见服务端 internal/platform/rating）。 */
   contentRating?: string
