@@ -1,17 +1,20 @@
 <script setup lang="ts">
 /**
- * 画布节点卡：节点在图上的样子。
+ * 画布节点卡：把标题栏、端口、内容、参数区、底栏装配起来。
  *
- * 结构照原型：标题栏（图标 + 名称 + 状态 + ⋯）、左入端口、右出端口（带标签、按类型着色）、
- * 中间内容预览（文字 / 三视图 / 分镜表 / 视频 / 音频）、底部（版本切换 + 运行）。
+ * 对外接口（props/emits）与拆分前完全一致 —— 页面不用改。
+ * 具体的显示逻辑都在子组件里：
+ *   NodeHead       标题栏（图标/名字/状态/折叠/菜单）
+ *   NodePorts      左入右出端口与连线手柄
+ *   NodePreview    按节点类型显示内容（文字/表格/候选图/视频/音频）
+ *   NodeTableEditor 分镜表就地编辑
+ *   NodeFoot       运行、版本切换、参数开关、模型
  *
  * 这里**不做业务判断**：能不能跑、跑成什么样由页面决定，卡片只负责显示和把动作抛上去。
  */
-import { Handle, Position } from '@vue-flow/core'
 import type { CanvasArtifact, CanvasNode, CanvasNodeState, CanvasShotRow } from '~/data/canvas-graph'
 import type { CanvasNodeTypeSpec } from '~/data/canvas-nodes'
-import { NODE_STATE_META, artifactsOf } from '~/data/canvas-graph'
-import { framesToSeconds, groupMeta, portMeta } from '~/data/canvas-nodes'
+import { artifactsOf } from '~/data/canvas-graph'
 
 const props = defineProps<{
   id: string
@@ -55,27 +58,9 @@ const emit = defineEmits<{
   (e: 'rows-discard', nodeId: string): void
 }>()
 
-const HEADER_H = 38
-const PORT_H = 24
-
 const node = computed(() => props.data.node)
 const spec = computed(() => props.data.spec)
 const state = computed(() => props.data.state)
-const stateMeta = computed(() => NODE_STATE_META[state.value])
-const group = computed(() => groupMeta(spec.value.group))
-
-/** 每个输出槽当前选定的产物。 */
-const shown = computed<CanvasArtifact | undefined>(() => {
-  const slot = spec.value.outputs[0]?.slot
-  if (!slot) return undefined
-  const list = artifactsOf(props.data.artifacts, node.value.id, slot)
-  const picked = node.value.outputs[slot]
-  if (picked) {
-    const hit = list.find(a => a.id === picked.artifactId)
-    if (hit) return hit
-  }
-  return list[0]
-})
 
 /** 该槽位的全部版本（版本切换用；新的在前）。 */
 const versions = computed<CanvasArtifact[]>(() => {
@@ -83,69 +68,24 @@ const versions = computed<CanvasArtifact[]>(() => {
   return slot ? artifactsOf(props.data.artifacts, node.value.id, slot) : []
 })
 
+/** 当前选用的产物（底栏要它的备注）。 */
+const shown = computed<CanvasArtifact | undefined>(() => {
+  const slot = spec.value.outputs[0]?.slot
+  if (!slot) return undefined
+  const picked = node.value.outputs[slot]
+  return picked
+    ? versions.value.find(a => a.id === picked.artifactId) ?? versions.value[0]
+    : versions.value[0]
+})
+
 const pendingCount = computed(() => versions.value.filter(a => a.review === 'pending').length)
 const failed = computed(() => state.value === 'failed')
 
-/** 端口圆点的纵坐标：与端口标签行对齐，第 i 行中心 = 标题栏 + i*行高 + 半个行高。 */
-function portTop(index: number): string {
-  return `${HEADER_H + index * PORT_H + PORT_H / 2}px`
-}
-
-const menuOpen = ref(false)
 /** 卡片内的参数区是否展开（就地改参数，不用开右栏）。 */
 const paramsOpen = ref(false)
 const editableParams = computed(() => spec.value.params.filter(p => p.key !== spec.value.promptKey))
-function closeMenu(): void {
-  menuOpen.value = false
-}
 
-const renaming = ref(false)
-const renameText = ref('')
-function startRename(): void {
-  closeMenu()
-  renameText.value = node.value.title
-  renaming.value = true
-}
-function commitRename(): void {
-  renaming.value = false
-  const next = renameText.value.trim()
-  if (next && next !== node.value.title) emit('rename', node.value.id, next)
-}
-
-/** 这一步的「指令」输入框（有 promptKey 的节点才有）。 */
-const promptSpec = computed(() => spec.value.params.find(p => p.key === spec.value.promptKey))
-const promptValue = computed(() => String(node.value.params[spec.value.promptKey ?? ''] ?? ''))
-
-const tableRows = computed(() => props.data.tableRows ?? shown.value?.rows ?? [])
-/** 分镜表节点：行就地可改（点景别打字、点帧数弹下拉），改完存新版本。 */
-const editableTable = computed(() => node.value.kind === 'shotlist' && tableRows.value.length > 0)
-
-/**
- * 多输出槽节点的产出摘要（剧本拆解这种：人物 / 场景 / 分镜各一口）。
- *
- * 早先卡片只看 outputs[0]，于是"拆解出来的人物和场景"在图上看不见 ——
- * 而它们恰恰是下游首帧要的输入。
- */
-const slotSummaries = computed(() =>
-  spec.value.outputs.map((port) => {
-    const picked = node.value.outputs[port.slot]
-    const artifact = picked
-      ? props.data.artifacts.find(a => a.id === picked.artifactId)
-      : artifactsOf(props.data.artifacts, node.value.id, port.slot)[0]
-    let note = '未产出'
-    if (artifact) {
-      if (artifact.rows?.length) note = `${artifact.rows.length} 镜`
-      else if (artifact.items?.length) note = `${artifact.items.length} 张`
-      else if (artifact.text) note = artifact.text.replace(/\s+/g, ' ').slice(0, 16) + (artifact.text.length > 16 ? '…' : '')
-      else note = artifact.note ?? '已产出'
-    }
-    return { slot: port.slot, label: port.label, type: port.type, note, artifact }
-  })
-)
-const textPreview = computed(() => {
-  const t = shown.value?.text ?? String(node.value.params.text ?? '')
-  return t.replace(/\s+/g, ' ').trim()
-})
+const tableRowCount = computed(() => (props.data.tableRows ?? shown.value?.rows ?? []).length)
 </script>
 
 <template>
@@ -154,376 +94,39 @@ const textPreview = computed(() => {
     :style="{ width: `${spec.width}px` }"
     @click="emit('open', node.id)"
   >
-    <header class="cg-node-head">
-      <span
-        class="cg-node-icon"
-        :style="{ color: group.color }"
-      >
-        <i :class="spec.icon" />
-      </span>
-      <input
-        v-if="renaming"
-        v-model="renameText"
-        class="cg-node-rename"
-        @keydown.enter="commitRename"
-        @keydown.esc="renaming = false"
-        @blur="commitRename"
-      >
-      <span
-        v-else
-        class="cg-node-title"
-      >{{ node.title }}</span>
-      <span
-        class="cg-node-state"
-        :data-tone="stateMeta.tone"
-      >{{ stateMeta.label }}</span>
-      <span
-        v-if="pendingCount"
-        class="cg-node-dot"
-        :title="`${pendingCount} 份产物等你确认`"
-      />
-      <span
-        v-else-if="props.data.dirty && state !== 'running'"
-        class="cg-node-dot cg-node-dot--dirty"
-        :title="state === 'failed' ? '上次失败，需要重跑' : '参数或上游产物变了，需要重跑'"
-      />
-      <button
-        class="cg-node-menu-btn"
-        type="button"
-        :title="node.collapsed ? '展开' : '折叠'"
-        @click.stop="emit('collapse', node.id, !node.collapsed)"
-      >
-        <i :class="node.collapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" />
-      </button>
-      <button
-        class="cg-node-menu-btn"
-        type="button"
-        title="更多"
-        @click.stop="menuOpen = !menuOpen"
-      >
-        <i class="i-lucide-ellipsis" />
-      </button>
-      <div
-        v-if="menuOpen"
-        class="cg-node-menu"
-        @click.stop
-      >
-        <button
-          type="button"
-          @click="startRename"
-        >
-          重命名
-        </button>
-        <button
-          type="button"
-          @click="closeMenu(); emit('duplicate', node.id)"
-        >
-          复制节点
-        </button>
-        <button
-          type="button"
-          class="is-danger"
-          @click="closeMenu(); emit('remove', node.id)"
-        >
-          删除节点
-        </button>
-      </div>
-    </header>
+    <CanvasNodeHead
+      :node="node"
+      :spec="spec"
+      :state="state"
+      :pending-count="pendingCount"
+      :dirty="props.data.dirty"
+      @rename="(id, title) => emit('rename', id, title)"
+      @duplicate="emit('duplicate', $event)"
+      @remove="emit('remove', $event)"
+      @collapse="(id, collapsed) => emit('collapse', id, collapsed)"
+    />
 
-    <!-- 端口：左入右出，标签与圆点对齐（折叠时藏起来） -->
-    <div
+    <CanvasNodePorts
       v-show="!node.collapsed"
-      class="cg-node-ports"
-    >
-      <div class="cg-port-col cg-port-col--in">
-        <div
-          v-for="p in spec.inputs"
-          :key="`in-${p.slot}`"
-          class="cg-port"
-        >
-          <Handle
-            :id="p.slot"
-            type="target"
-            :position="Position.Left"
-            :connectable="true"
-            :style="{ top: portTop(spec.inputs.indexOf(p)), background: portMeta(p.type).color }"
-          />
-          <span
-            class="cg-port-dot"
-            :style="{ background: portMeta(p.type).color }"
-          />
-          <span class="cg-port-label">{{ p.label }}</span>
-        </div>
-      </div>
-      <div class="cg-port-col cg-port-col--out">
-        <div
-          v-for="p in spec.outputs"
-          :key="`out-${p.slot}`"
-          class="cg-port"
-        >
-          <span class="cg-port-label">{{ p.label }}</span>
-          <span
-            class="cg-port-dot"
-            :style="{ background: portMeta(p.type).color }"
-          />
-          <Handle
-            :id="p.slot"
-            type="source"
-            :position="Position.Right"
-            :connectable="true"
-            :style="{ top: portTop(spec.outputs.indexOf(p)), background: portMeta(p.type).color }"
-          />
-        </div>
-      </div>
-    </div>
+      :spec="spec"
+    />
 
-    <!-- 内容预览 -->
-    <div
+    <CanvasNodePreview
       v-show="!node.collapsed"
-      class="cg-node-body"
-    >
-      <!-- 有多个输出槽的节点（剧本拆解）：逐口列产出，下游要的就是这几口 -->
-      <div
-        v-if="spec.outputs.length > 1"
-        class="cg-slots"
-      >
-        <div
-          v-for="s in slotSummaries"
-          :key="s.slot"
-          class="cg-slot"
-        >
-          <span
-            class="cg-port-dot"
-            :style="{ background: portMeta(s.type).color }"
-          />
-          <span class="cg-slot-label">{{ s.label }}</span>
-          <span
-            class="cg-slot-note"
-            :data-tone="s.artifact ? 'ok' : 'muted'"
-          >{{ s.note }}</span>
-        </div>
-      </div>
-
-      <!-- 文字 / 大纲：上面是「这一步要它干什么」的输入框，下面是结果 -->
-      <div
-        v-else-if="spec.outputs[0]?.type === 'text' || spec.outputs[0]?.type === 'outline'"
-        class="cg-textblock"
-      >
-        <textarea
-          v-if="promptSpec && state !== 'running'"
-          class="cg-prompt"
-          rows="2"
-          :value="promptValue"
-          :placeholder="promptSpec.placeholder ?? '这一步要它做什么？'"
-          @click.stop
-          @input="emit('param', node.id, spec.promptKey!, ($event.target as HTMLTextAreaElement).value)"
-        />
-        <p
-          v-if="props.data.streaming"
-          class="cg-text cg-text--live"
-        >
-          {{ props.data.streaming }}<span class="cg-caret" />
-        </p>
-        <p
-          v-else-if="textPreview"
-          class="cg-text"
-        >
-          {{ textPreview }}
-        </p>
-        <p
-          v-else
-          class="cg-prompt-hint"
-        >
-          写完点下面的运行
-        </p>
-      </div>
-
-      <!-- 分镜表 -->
-      <div
-        v-else-if="spec.outputs[0]?.type === 'table'"
-        class="cg-table"
-      >
-        <div
-          v-if="!tableRows.length"
-          class="cg-empty"
-        >
-          还没生成镜头
-        </div>
-        <template v-else>
-          <div class="cg-table-head">
-            <span>镜</span><span>景别</span><span>帧</span><span>秒</span>
-          </div>
-          <div
-            v-for="(r, i) in tableRows.slice(0, 6)"
-            :key="i"
-            class="cg-table-row"
-          >
-            <span>{{ String(r.idx).padStart(2, '0') }}</span>
-            <input
-              v-if="editableTable"
-              class="cg-cell"
-              :value="r.shotSize"
-              placeholder="景别"
-              @click.stop
-              @input="emit('row-update', node.id, i, 'shotSize', ($event.target as HTMLInputElement).value)"
-            >
-            <span v-else>{{ r.shotSize }}</span>
-            <select
-              v-if="editableTable"
-              class="cg-cell cg-cell--num"
-              :value="r.frames"
-              @click.stop
-              @change="emit('row-update', node.id, i, 'frames', Number(($event.target as HTMLSelectElement).value))"
-            >
-              <option
-                v-for="f in (props.data.frameGrid ?? [r.frames])"
-                :key="f"
-                :value="f"
-              >
-                {{ f }}
-              </option>
-            </select>
-            <span v-else>{{ r.frames }}</span>
-            <span>{{ framesToSeconds(r.frames) }}</span>
-          </div>
-          <p
-            v-if="tableRows.length > 6"
-            class="cg-table-more"
-          >
-            还有 {{ tableRows.length - 6 }} 镜
-          </p>
-          <div
-            v-if="editableTable && props.data.tableDirty"
-            class="cg-row-actions"
-          >
-            <button
-              class="cg-btn"
-              type="button"
-              @click.stop="emit('rows-save', node.id)"
-            >
-              <i class="i-lucide-save" /> 保存为新版本
-            </button>
-            <button
-              class="cg-btn cg-btn--ghost"
-              type="button"
-              @click.stop="emit('rows-discard', node.id)"
-            >
-              放弃
-            </button>
-          </div>
-          <p
-            v-else-if="editableTable"
-            class="cg-table-more"
-          >
-            格子里能直接改，改完存新版本
-          </p>
-        </template>
-      </div>
-
-      <!-- 图片：一组候选，点哪张就选用哪张（三视图 / 首帧候选） -->
-      <div
-        v-else-if="spec.outputs[0]?.type === 'image'"
-        class="cg-images"
-      >
-        <template v-if="shown?.items?.length">
-          <button
-            v-for="(it, i) in shown.items"
-            :key="i"
-            type="button"
-            :class="['cg-image-btn', { 'is-picked': it.picked, 'is-rejected': it.review === 'rejected' }]"
-            :title="`${it.label ?? `候选 ${i + 1}`}${it.review === 'rejected' ? '（已驳回）' : ''} —— 点一下就是选用这张`"
-            @click.stop="emit('pick-item', node.id, shown.id, i)"
-          >
-            <img
-              :src="it.url"
-              alt=""
-              class="cg-image"
-            >
-            <span
-              v-if="it.picked"
-              class="cg-image-badge"
-            ><i class="i-lucide-check" /> 选用</span>
-            <span
-              v-else-if="it.review === 'rejected'"
-              class="cg-image-badge cg-image-badge--bad"
-            >已驳回</span>
-            <span
-              v-else
-              class="cg-image-label"
-            >{{ it.label }}</span>
-          </button>
-        </template>
-        <div
-          v-else-if="shown?.url"
-          class="cg-image-single"
-        >
-          <img
-            :src="shown.url"
-            alt=""
-            class="cg-image"
-          >
-        </div>
-        <div
-          v-else
-          class="cg-empty"
-        >
-          <i class="i-lucide-image" />
-          <span>{{ state === 'running' ? '出图中…' : '待生成' }}</span>
-        </div>
-      </div>
-
-      <!-- 视频 -->
-      <div
-        v-else-if="spec.outputs[0]?.type === 'video'"
-        class="cg-video"
-      >
-        <template v-if="shown?.url">
-          <img
-            :src="shown.url"
-            alt=""
-            class="cg-video-poster"
-          >
-          <span class="cg-video-play"><i class="i-lucide-play" /></span>
-          <span class="cg-video-badge">{{ shown.note }}</span>
-        </template>
-        <div
-          v-else
-          class="cg-empty"
-        >
-          <i class="i-lucide-film" />
-          <span>{{ state === 'running' ? '渲染中…' : '待渲染' }}</span>
-        </div>
-      </div>
-
-      <!-- 音频 -->
-      <div
-        v-else-if="spec.outputs[0]?.type === 'audio'"
-        class="cg-audio"
-      >
-        <span
-          v-for="i in 22"
-          :key="i"
-          class="cg-audio-bar"
-          :style="{ height: `${18 + ((i * 7) % 26)}%` }"
-        />
-      </div>
-
-      <!-- 成片 / 压缩包 -->
-      <div
-        v-else
-        class="cg-empty"
-      >
-        <i :class="spec.outputs[0]?.type === 'zip' ? 'i-lucide-package' : 'i-lucide-clapperboard'" />
-        <span>{{ shown?.note || '待产出' }}</span>
-      </div>
-
-      <p
-        v-if="state === 'failed'"
-        class="cg-fail"
-      >
-        {{ props.data.artifacts.length ? '上一次运行失败，点运行重试' : '运行失败，点运行重试' }}
-      </p>
-    </div>
+      :node="node"
+      :spec="spec"
+      :state="state"
+      :artifacts="props.data.artifacts"
+      :streaming="props.data.streaming"
+      :table-rows="props.data.tableRows"
+      :table-dirty="props.data.tableDirty"
+      :frame-grid="props.data.frameGrid"
+      @param="(key, value) => emit('param', node.id, key, value)"
+      @pick-item="(artifactId, index) => emit('pick-item', node.id, artifactId, index)"
+      @row-update="(index, key, value) => emit('row-update', node.id, index, key, value)"
+      @rows-save="emit('rows-save', node.id)"
+      @rows-discard="emit('rows-discard', node.id)"
+    />
 
     <div
       v-if="paramsOpen && editableParams.length"
@@ -540,560 +143,23 @@ const textPreview = computed(() => {
       />
     </div>
 
-    <footer class="cg-node-foot">
-      <button
-        v-if="spec.stage === 'planned'"
-        class="cg-btn cg-btn--ghost"
-        type="button"
-        title="本版未开放"
-        disabled
-      >
-        本版未开放
-      </button>
-      <button
-        v-else-if="node.kind === 'shotlist' && tableRows.length"
-        class="cg-btn cg-btn--ghost"
-        type="button"
-        title="按分镜表批量生成关键帧与视频节点"
-        @click.stop="emit('expand', node.id)"
-      >
-        生成节点
-      </button>
-      <button
-        v-else
-        class="cg-btn"
-        type="button"
-        :disabled="state === 'running' || state === 'blocked'"
-        @click.stop="emit('run', node.id)"
-      >
-        <i :class="state === 'running' ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
-        {{ state === 'running' ? '运行中' : props.data.dirty ? '重跑' : '运行' }}
-      </button>
-
-      <span
-        v-if="versions.length > 1"
-        class="cg-versions"
-      >
-        <button
-          v-for="v in versions.slice(0, 3)"
-          :key="v.id"
-          type="button"
-          :class="['cg-ver', { 'is-on': v.id === shown?.id }]"
-          :title="`v${v.version} · ${v.note ?? ''} · ${v.review === 'approved' ? '已认可' : v.review === 'rejected' ? '已驳回' : '待确认'}`"
-          @click.stop="emit('pick', node.id, v.id)"
-        >
-          <i
-            v-if="v.review === 'approved'"
-            class="i-lucide-check"
-          />
-          <i
-            v-else-if="v.review === 'rejected'"
-            class="i-lucide-x"
-          />
-          <template v-else>v{{ v.version }}</template>
-        </button>
-      </span>
-
-      <button
-        v-if="editableParams.length"
-        class="cg-foot-toggle"
-        type="button"
-        :class="{ 'is-on': paramsOpen }"
-        :title="paramsOpen ? '收起参数' : '在卡片上改参数'"
-        @click.stop="paramsOpen = !paramsOpen"
-      >
-        <i :class="paramsOpen ? 'i-lucide-chevron-up' : 'i-lucide-sliders-horizontal'" />
-        参数
-      </button>
-
-      <span
-        v-if="props.data.modelLabel"
-        class="cg-model"
-        :title="`这一步用的是 ${props.data.modelLabel}`"
-      >
-        <i class="i-lucide-cpu" />{{ props.data.modelLabel }}
-      </span>
-
-      <span
-        v-if="failed || shown?.note"
-        class="cg-foot-note"
-      >{{ shown?.note ?? '' }}</span>
-    </footer>
+    <CanvasNodeFoot
+      :node="node"
+      :spec="spec"
+      :state="state"
+      :versions="versions"
+      :shown-id="shown?.id"
+      :shown-note="shown?.note"
+      :failed="failed"
+      :dirty="props.data.dirty"
+      :model-label="props.data.modelLabel"
+      :has-params="editableParams.length > 0"
+      :params-open="paramsOpen"
+      :can-expand="node.kind === 'shotlist' && tableRowCount > 0"
+      @run="emit('run', node.id)"
+      @expand="emit('expand', node.id)"
+      @pick="(artifactId) => emit('pick', node.id, artifactId)"
+      @toggle-params="paramsOpen = !paramsOpen"
+    />
   </div>
 </template>
-
-<style scoped>
-.cg-node {
-  display: flex;
-  flex-direction: column;
-  background: var(--hg3-card);
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: var(--hg3-radius-card);
-  box-shadow: 0 10px 26px rgb(0 0 0 / 34%);
-  color: var(--hg3-ink);
-  overflow: visible;
-  transition: border-color 0.14s, box-shadow 0.14s;
-}
-
-.cg-node.is-active {
-  border-color: var(--hg3-accent-line);
-  box-shadow: 0 0 0 1px var(--hg3-accent-line), 0 14px 32px rgb(0 0 0 / 42%);
-}
-
-.cg-node.is-running {
-  border-color: var(--hg3-run);
-}
-
-.cg-node.is-linked {
-  border-color: var(--hg3-accent-line);
-  box-shadow: 0 0 0 3px rgb(217 131 77 / 12%), 0 10px 26px rgb(0 0 0 / 34%);
-}
-
-.cg-node-head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 8px 0 10px;
-  border-bottom: 1px solid var(--hg3-line);
-  background: var(--hg3-card-soft);
-  border-radius: var(--hg3-radius-card) var(--hg3-radius-card) 0 0;
-}
-
-.cg-node-icon {
-  display: inline-flex;
-  font-size: 15px;
-}
-
-.cg-node-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cg-node-rename {
-  flex: 1;
-  min-width: 0;
-  height: 22px;
-  padding: 0 6px;
-  font-size: 12.5px;
-  color: var(--hg3-ink);
-  background: var(--hg3-well);
-  border: 1px solid var(--hg3-accent-line);
-  border-radius: 6px;
-}
-
-.cg-node-state {
-  flex: none;
-  padding: 1px 6px;
-  font-size: 10.5px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 6%);
-  color: var(--hg3-muted);
-}
-
-.cg-node-state[data-tone='ok'] { color: var(--hg3-ok); background: rgb(46 223 154 / 12%); }
-.cg-node-state[data-tone='run'] { color: var(--hg3-run); background: rgb(101 198 251 / 12%); }
-.cg-node-state[data-tone='warn'] { color: var(--hg3-warn); background: rgb(255 180 84 / 12%); }
-.cg-node-state[data-tone='bad'] { color: var(--hg3-i-coral); background: rgb(255 112 122 / 12%); }
-
-.cg-node-dot--dirty {
-  background: var(--hg3-warn);
-  box-shadow: 0 0 6px var(--hg3-warn);
-}
-
-.cg-slots { display: flex; flex-direction: column; gap: 5px; }
-.cg-slot { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.cg-slot-label { color: var(--hg3-ink); }
-.cg-slot-note { margin-left: auto; color: var(--hg3-muted); font-size: 10.5px; }
-.cg-slot-note[data-tone='muted'] { color: var(--hg3-faint); }
-
-.cg-node-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--hg3-warn);
-  box-shadow: 0 0 6px var(--hg3-warn);
-}
-
-.cg-node-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--hg3-faint);
-  border-radius: 6px;
-}
-
-.cg-node-menu-btn:hover {
-  color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
-}
-
-.cg-node-menu {
-  position: absolute;
-  top: 34px;
-  right: 6px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  min-width: 108px;
-  padding: 4px;
-  background: var(--hg3-well);
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px rgb(0 0 0 / 46%);
-}
-
-.cg-node-menu button {
-  padding: 6px 8px;
-  font-size: 12px;
-  color: var(--hg3-ink);
-  text-align: left;
-  border-radius: 6px;
-}
-
-.cg-node-menu button:hover { background: rgb(255 255 255 / 8%); }
-.cg-node-menu button.is-danger { color: var(--hg3-i-coral); }
-
-.cg-node-ports {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 10px 2px;
-}
-
-.cg-port-col { display: flex; flex-direction: column; gap: 0; }
-.cg-port-col--out { align-items: flex-end; }
-
-.cg-port {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-}
-
-.cg-port-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  opacity: 0.9;
-}
-
-.cg-port-label {
-  font-size: 10.5px;
-  color: var(--hg3-muted);
-  white-space: nowrap;
-}
-
-.cg-node-ports :deep(.vue-flow__handle) {
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--hg3-card);
-  border-radius: 50%;
-}
-
-.cg-node-ports :deep(.vue-flow__handle-left) { left: -14px; }
-.cg-node-ports :deep(.vue-flow__handle-right) { right: -14px; }
-
-.cg-node-body {
-  padding: 8px 10px 10px;
-  border-top: 1px solid var(--hg3-line);
-}
-
-.cg-textblock { display: flex; flex-direction: column; gap: 6px; }
-
-.cg-prompt {
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--hg3-ink);
-  background: var(--hg3-well);
-  border: 1px solid var(--hg3-line-strong);
-  border-radius: 8px;
-  resize: vertical;
-}
-
-.cg-prompt:focus { outline: none; border-color: var(--hg3-accent-line); }
-.cg-prompt-hint { margin: 0; font-size: 10.5px; color: var(--hg3-faint); }
-
-.cg-text--live { color: var(--hg3-ink); }
-
-.cg-caret {
-  display: inline-block;
-  width: 6px;
-  height: 11px;
-  margin-left: 2px;
-  vertical-align: -1px;
-  background: var(--hg3-accent-hi);
-  animation: cg-blink 1s steps(2, start) infinite;
-}
-
-@keyframes cg-blink {
-  to { opacity: 0; }
-}
-
-.cg-empty-line { margin: 0; font-size: 10.5px; color: var(--hg3-faint); }
-
-.cg-text {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--hg3-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.cg-table { display: flex; flex-direction: column; gap: 3px; }
-
-.cg-table-head,
-.cg-table-row {
-  display: grid;
-  grid-template-columns: 26px 1fr 34px 34px;
-  gap: 4px;
-  font-size: 10.5px;
-  color: var(--hg3-muted);
-}
-
-.cg-table-head { color: var(--hg3-faint); }
-.cg-table-row span:first-child { color: var(--hg3-ink); }
-.cg-table-more { margin: 2px 0 0; font-size: 10px; color: var(--hg3-faint); }
-
-.cg-cell {
-  width: 100%;
-  min-width: 0;
-  height: 20px;
-  padding: 0 4px;
-  font-size: 10.5px;
-  color: var(--hg3-ink);
-  background: var(--hg3-well);
-  border: 1px solid var(--hg3-line);
-  border-radius: 4px;
-}
-
-.cg-cell:focus { outline: none; border-color: var(--hg3-accent-line); }
-.cg-cell--num { padding: 0 2px; }
-.cg-row-actions { display: flex; gap: 5px; margin-top: 6px; }
-
-.cg-images { display: flex; gap: 5px; }
-
-.cg-image-btn {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px var(--hg3-line-strong);
-}
-
-.cg-image-btn.is-picked { box-shadow: inset 0 0 0 2px var(--hg3-ok); }
-.cg-image-btn.is-rejected { opacity: 0.42; }
-.cg-image-single { display: flex; width: 100%; }
-
-.cg-image-badge {
-  position: absolute;
-  left: 4px;
-  bottom: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 1px 5px;
-  font-size: 9px;
-  color: var(--hg3-ok);
-  background: rgb(0 0 0 / 62%);
-  border-radius: 999px;
-}
-
-.cg-image-badge--bad { color: var(--hg3-i-coral); }
-
-.cg-image-label {
-  position: absolute;
-  left: 4px;
-  bottom: 4px;
-  padding: 1px 5px;
-  font-size: 9px;
-  color: var(--hg3-ink);
-  background: rgb(0 0 0 / 52%);
-  border-radius: 999px;
-}
-.cg-image {
-  width: 100%;
-  height: 76px;
-  object-fit: cover;
-  border-radius: 8px;
-  background: var(--hg3-well);
-}
-
-.cg-image--side { width: 46px; flex: none; }
-.cg-image--flip { transform: scaleX(-1); opacity: 0.85; }
-
-.cg-video {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 96px;
-  background: var(--hg3-well);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.cg-video-poster {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: saturate(0.9) brightness(0.72);
-}
-
-.cg-video-play {
-  position: absolute;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  font-size: 13px;
-  color: var(--hg3-ink);
-  background: rgb(0 0 0 / 46%);
-  border-radius: 50%;
-}
-
-.cg-video-badge {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 1px 6px;
-  font-size: 10px;
-  color: var(--hg3-ink);
-  background: rgb(0 0 0 / 56%);
-  border-radius: 999px;
-}
-
-.cg-audio {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 56px;
-  padding: 0 2px;
-}
-
-.cg-audio-bar {
-  flex: 1;
-  min-height: 6px;
-  background: linear-gradient(180deg, var(--hg3-i-green), rgb(34 221 163 / 34%));
-  border-radius: 2px;
-}
-
-.cg-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 56px;
-  font-size: 11px;
-  color: var(--hg3-faint);
-  border: 1px dashed var(--hg3-line-strong);
-  border-radius: 10px;
-}
-
-.cg-empty i { font-size: 16px; }
-
-.cg-fail {
-  margin: 6px 0 0;
-  font-size: 10.5px;
-  color: var(--hg3-i-coral);
-}
-
-.cg-node-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px 9px;
-  border-top: 1px solid var(--hg3-line);
-}
-
-.cg-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--hg3-accent-ink);
-  background: var(--hg3-accent);
-  border-radius: 999px;
-}
-
-.cg-btn:hover:not(:disabled) { background: var(--hg3-accent-hi); }
-.cg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.cg-btn--ghost {
-  color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
-}
-
-.cg-versions { display: inline-flex; gap: 3px; margin-left: auto; }
-
-.cg-ver {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 4px;
-  font-size: 10px;
-  color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
-  border-radius: 6px;
-}
-
-.cg-ver.is-on { color: var(--hg3-ink); background: var(--hg3-accent-soft); box-shadow: inset 0 0 0 1px var(--hg3-accent-line); }
-.cg-node-params {
-  padding: 8px 10px 9px;
-  border-top: 1px solid var(--hg3-line);
-  background: var(--hg3-well);
-}
-
-.cg-foot-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 22px;
-  padding: 0 8px;
-  font-size: 10.5px;
-  color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
-  border-radius: 999px;
-}
-
-.cg-foot-toggle:hover { color: var(--hg3-ink); background: rgb(255 255 255 / 12%); }
-.cg-foot-toggle.is-on { color: var(--hg3-ink); background: var(--hg3-accent-soft); }
-
-.cg-model {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-  max-width: 118px;
-  padding: 1px 6px;
-  font-size: 10px;
-  color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
-  border-radius: 999px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cg-foot-note { margin-left: auto; font-size: 10px; color: var(--hg3-faint); white-space: nowrap; }
-</style>
