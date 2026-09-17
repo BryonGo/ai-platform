@@ -32,6 +32,7 @@ import {
   addNode,
   artifactsOf,
   connectNodes,
+  connectionAllowed,
   createNode,
   dirtyNodes,
   disconnect,
@@ -380,15 +381,16 @@ const flowEdges = computed<Edge[]>(() => {
  */
 function isValidConnection(connection: { source?: string | null, target?: string | null, sourceHandle?: string | null, targetHandle?: string | null }): boolean {
   if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return false
-  const from = graph.value.nodes.find(n => n.id === connection.source)
-  const to = graph.value.nodes.find(n => n.id === connection.target)
-  if (!from || !to || from.id === to.id) return false
-  const outPort = nodeTypeSpec(from.kind).outputs.find(p => p.slot === connection.sourceHandle)
-  const inPort = nodeTypeSpec(to.kind).inputs.find(p => p.slot === connection.targetHandle)
-  if (!outPort || !inPort) return false
-  if (!canConnect(outPort.type, inPort.type)) return false
-  if (!inPort.multiple && (to.inputs[inPort.slot] ?? []).length > 0) return false
-  return true
+  const toSpec = graph.value.nodes.find(n => n.id === connection.target)
+  if (!toSpec) return false
+  const inPort = nodeTypeSpec(toSpec.kind).inputs.find(p => p.slot === connection.targetHandle)
+  if (!inPort) return false
+  return connectionAllowed(
+    graph.value,
+    { node: connection.source, slot: connection.sourceHandle },
+    { node: connection.target, slot: connection.targetHandle },
+    inPort
+  )
 }
 
 // ---------------------------------------------------------------- 连线拖到空白处 → 建节点并自动接上

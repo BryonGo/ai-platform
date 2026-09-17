@@ -495,6 +495,39 @@ export function withItemReview(
 }
 
 /**
+ * 这条连线能不能接 —— 拖线时的即时校验，也是 Vue Flow 校验**已存在边**时用的函数。
+ *
+ * 有一处反直觉但必须遵守的规矩：**已经存在的那条边本身必须判为合法**。
+ * Vue Flow 在每次重算边的时候都会拿这个函数过一遍已有的边，判非法就直接丢掉，
+ * 表现为"连线凭空消失"。所以"单一输入槽不重复接"这条要排除掉"就是它自己"的情况。
+ */
+export function connectionAllowed(
+  graph: CanvasGraph,
+  from: { node: string, slot: string },
+  to: { node: string, slot: string },
+  inPort: { multiple?: boolean }
+): boolean {
+  const fromNode = graph.nodes.find(n => n.id === from.node)
+  const toNode = graph.nodes.find(n => n.id === to.node)
+  if (!fromNode || !toNode || fromNode.id === toNode.id) return false
+
+  const outPort = nodeTypeSpec(fromNode.kind).outputs.find(p => p.slot === from.slot)
+  const targetPort = nodeTypeSpec(toNode.kind).inputs.find(p => p.slot === to.slot)
+  if (!outPort || !targetPort) return false
+  if (!canConnect(outPort.type, targetPort.type)) return false
+
+  if (!inPort.multiple) {
+    // 同一槽位已经有别的上游接着：不允许。但"这一条边自己"不算冲突。
+    const conflict = graph.edges.some(e =>
+      e.to.node === to.node && e.to.slot === to.slot
+      && !(e.from.node === from.node && e.from.slot === from.slot)
+    )
+    if (conflict) return false
+  }
+  return true
+}
+
+/**
  * 指向这个节点的入边（可限定槽位）。
  *
  * **清单与排序都按边算，不按已记录的引用算** —— 上游还没跑过、没产出的时候，

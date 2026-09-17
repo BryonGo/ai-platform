@@ -16,8 +16,8 @@
  */
 
 import type { CanvasArtifact, CanvasGraph, CanvasNode, CanvasRun, CanvasSample } from './canvas-graph'
-import { createNode, makeEdge, paramsHash, selectArtifact, topoOrder } from './canvas-graph'
-import { FRAME_GRID } from './canvas-nodes'
+import { connectionAllowed, createNode, makeEdge, paramsHash, selectArtifact, topoOrder } from './canvas-graph'
+import { FRAME_GRID, nodeTypeSpec } from './canvas-nodes'
 
 const IMG = [
   '/mock/home/explore-01.png',
@@ -239,6 +239,19 @@ export function buildCanvasSample(): CanvasSample {
   // 拓扑序排一遍，保证示例图本身是合法的（有环会被下面的断言在开发期抓出来）
   const order = topoOrder(graph)
   if (order.length !== nodes.length) throw new Error('示例图数据有问题：节点数与拓扑序不一致')
+
+  // 自检：每条边都要能通过连线校验。
+  //
+  // 这道断言是被一次事故换来的：Vue Flow 会拿 isValidConnection **校验已存在的每一条边**，
+  // 判非法就直接把边丢掉 —— 于是"单一输入槽不重复接"这条规则把 22/31 条已经连好的线
+  // 全判成非法，画布上的线凭空消失（只有多条入边的槽活了下来）。
+  for (const e of edges) {
+    const target = nodes.find(n => n.id === e.to.node)
+    const port = target ? nodeTypeSpec(target.kind).inputs.find(p => p.slot === e.to.slot) : undefined
+    if (!target || !port || !connectionAllowed(graph, e.from, e.to, port)) {
+      throw new Error(`示例图连线不合法（会被 Vue Flow 丢掉）：${e.from.node}.${e.from.slot} → ${e.to.node}.${e.to.slot}`)
+    }
+  }
 
   return { graph, artifacts, runs }
 }
