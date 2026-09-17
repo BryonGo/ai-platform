@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: 'duplicate', nodeId: string): void
   (e: 'rename', nodeId: string, title: string): void
   (e: 'pick', nodeId: string, artifactId: string): void
+  (e: 'pick-item', nodeId: string, artifactId: string, index: number): void
   (e: 'review', nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void
   (e: 'open', nodeId: string): void
   (e: 'param', nodeId: string, key: string, value: string): void
@@ -288,30 +289,49 @@ const textPreview = computed(() => {
         </template>
       </div>
 
-      <!-- 图片（三视图 / 关键帧候选） -->
+      <!-- 图片：一组候选，点哪张就选用哪张（三视图 / 首帧候选） -->
       <div
         v-else-if="spec.outputs[0]?.type === 'image'"
         class="cg-images"
       >
-        <template v-if="shown?.url">
+        <template v-if="shown?.items?.length">
+          <button
+            v-for="(it, i) in shown.items"
+            :key="i"
+            type="button"
+            :class="['cg-image-btn', { 'is-picked': it.picked, 'is-rejected': it.review === 'rejected' }]"
+            :title="`${it.label ?? `候选 ${i + 1}`}${it.review === 'rejected' ? '（已驳回）' : ''} —— 点一下就是选用这张`"
+            @click.stop="emit('pick-item', node.id, shown.id, i)"
+          >
+            <img
+              :src="it.url"
+              alt=""
+              class="cg-image"
+            >
+            <span
+              v-if="it.picked"
+              class="cg-image-badge"
+            ><i class="i-lucide-check" /> 选用</span>
+            <span
+              v-else-if="it.review === 'rejected'"
+              class="cg-image-badge cg-image-badge--bad"
+            >已驳回</span>
+            <span
+              v-else
+              class="cg-image-label"
+            >{{ it.label }}</span>
+          </button>
+        </template>
+        <div
+          v-else-if="shown?.url"
+          class="cg-image-single"
+        >
           <img
             :src="shown.url"
             alt=""
             class="cg-image"
           >
-          <img
-            v-if="node.kind === 'character'"
-            :src="shown.url"
-            alt=""
-            class="cg-image cg-image--side"
-          >
-          <img
-            v-if="node.kind === 'character'"
-            :src="shown.url"
-            alt=""
-            class="cg-image cg-image--side cg-image--flip"
-          >
-        </template>
+        </div>
         <div
           v-else
           class="cg-empty"
@@ -673,7 +693,48 @@ const textPreview = computed(() => {
 .cg-table-row span:first-child { color: var(--hg3-ink); }
 .cg-table-more { margin: 2px 0 0; font-size: 10px; color: var(--hg3-faint); }
 
-.cg-images { display: flex; gap: 4px; }
+.cg-images { display: flex; gap: 5px; }
+
+.cg-image-btn {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--hg3-line-strong);
+}
+
+.cg-image-btn.is-picked { box-shadow: inset 0 0 0 2px var(--hg3-ok); }
+.cg-image-btn.is-rejected { opacity: 0.42; }
+.cg-image-single { display: flex; width: 100%; }
+
+.cg-image-badge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  font-size: 9px;
+  color: var(--hg3-ok);
+  background: rgb(0 0 0 / 62%);
+  border-radius: 999px;
+}
+
+.cg-image-badge--bad { color: var(--hg3-i-coral); }
+
+.cg-image-label {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 5px;
+  font-size: 9px;
+  color: var(--hg3-ink);
+  background: rgb(0 0 0 / 52%);
+  border-radius: 999px;
+}
 .cg-image {
   width: 100%;
   height: 76px;

@@ -19,6 +19,8 @@ import { canConnect, nodeTypeSpec } from './canvas-nodes'
 export interface CanvasArtifactRef {
   artifactId: string
   version: number
+  /** 图像类：这一组候选里选中的是第几张（0 起）。视频/表格类没有。 */
+  item?: number
 }
 
 export interface CanvasInputRef extends CanvasArtifactRef {
@@ -93,12 +95,30 @@ export interface CanvasArtifact {
   url?: string
   /** 展示用备注：分辨率、时长、张数、镜数… */
   note?: string
+  /** 图像类：这一次跑出来的一组候选（三视图 3 张、首帧 3 张）。 */
+  items?: CanvasArtifactItem[]
+  /** 组内选中的下标（0 起），与 items[].picked 保持一致，便于卡片直接读。 */
+  pickedIndex?: number
   /** 表格类产物的内容（分镜表一行一镜）。 */
   rows?: CanvasShotRow[]
   /** 文字类产物的内容（剧本、大纲）。 */
   text?: string
   review: CanvasReview
   createdAt: string
+}
+
+/**
+ * 一组候选里的一张（图像类）。
+ *
+ * 为什么一组要能逐张记：三视图、首帧都是"一次出几张、人挑一张"。
+ * 挑中的那张才往下走（下游的输入引用带 item 下标），其余的留着对比，不删。
+ */
+export interface CanvasArtifactItem {
+  url: string
+  /** 组内标注：正面 / 侧面 / 背面；候选 1 / 2 / 3 */
+  label?: string
+  picked?: boolean
+  review?: CanvasReview
 }
 
 /** 分镜表的一行（一镜）。 */
@@ -398,12 +418,41 @@ export function makeEdge(fromNode: string, fromSlot: string, toNode: string, toS
 export function selectArtifact(graph: CanvasGraph, artifact: CanvasArtifact): void {
   const node = graph.nodes.find(n => n.id === artifact.nodeId)
   if (!node) return
-  node.outputs[artifact.slot] = { artifactId: artifact.id, version: artifact.version }
-  const ref = { artifactId: artifact.id, version: artifact.version }
+  const ref = { artifactId: artifact.id, version: artifact.version, item: artifact.pickedIndex }
+  node.outputs[artifact.slot] = { ...ref }
   for (const edge of graph.edges.filter(e => e.from.node === artifact.nodeId && e.from.slot === artifact.slot)) {
     const down = graph.nodes.find(n => n.id === edge.to.node)
     if (down) down.inputs[edge.to.slot] = { from: node.id, slot: artifact.slot, ...ref }
   }
+}
+
+/**
+ * 组内选用第 index 张：更新 picked 标记与产物镜像的 url，并把下游输入引用一起改掉。
+ *
+ * 返回新的产物数组（页面用不可变方式保存），下游节点的 inputs 由 selectArtifact 同步。
+ */
+export function withItemPicked(
+  graph: CanvasGraph, artifacts: CanvasArtifact[], artifactId: string, index: number
+): CanvasArtifact[] {
+  const next = artifacts.map((a) => {
+    if (a.id !== artifactId || !a.items?.length) return a
+    const items = a.items.map((it, i) => ({ ...it, picked: i === index }))
+    return { ...a, items, pickedIndex: index, url: items[index]?.url ?? a.url }
+  })
+  const hit = next.find(a => a.id === artifactId)
+  if (hit) selectArtifact(graph, hit)
+  return next
+}
+
+/** 逐张驳回/恢复：三视图里"侧面那张不行"要能单独标出来。 */
+export function withItemReview(
+  artifacts: CanvasArtifact[], artifactId: string, index: number, review: CanvasReview
+): CanvasArtifact[] {
+  return artifacts.map((a) => {
+    if (a.id !== artifactId || !a.items?.length) return a
+    const items = a.items.map((it, i) => (i === index ? { ...it, review } : it))
+    return { ...a, items }
+  })
 }
 
 /** 某个输出槽的下一个版本号（同 node + slot 内自增）。 */

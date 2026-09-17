@@ -273,9 +273,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     icon: 'i-lucide-list-video',
     width: 268,
     modelKind: 'text',
+    promptKey: 'instruction',
     inputs: [{ slot: 'shots', type: 'outline', label: '分镜大纲', required: true }],
     outputs: [{ slot: 'table', type: 'table', label: '分镜表' }],
     params: [
+      { key: 'instruction', label: '怎么排 / 哪里不对', kind: 'textarea', placeholder: '例如：第 1 镜再远一点，加一个空镜；每镜不超过 6 秒' },
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'shotsPerScene', label: '每场镜头数', kind: 'number', hint: '默认 5，多了图会挤' },
       { key: 'frames', label: '默认帧数', kind: 'frames', hint: '单镜可按需在表格里改' }

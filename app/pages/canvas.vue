@@ -24,7 +24,8 @@ import type {
   CanvasGraph,
   CanvasNode,
   CanvasNodeState,
-  CanvasRun
+  CanvasRun,
+  CanvasShotRow
 } from '~/data/canvas-graph'
 import {
   NODE_STATE_META,
@@ -42,7 +43,9 @@ import {
   pendingReviewCount,
   removeNode,
   selectArtifact,
-  topoOrder
+  topoOrder,
+  withItemPicked,
+  withItemReview
 } from '~/data/canvas-graph'
 import type { CanvasNodeKind, CanvasParamSpec } from '~/data/canvas-nodes'
 import { creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
@@ -416,7 +419,26 @@ function completeRun(node: CanvasNode, run: CanvasRun): void {
     review: 'pending',
     createdAt: new Date().toISOString()
   }
-  if (type === 'image' || type === 'video') {
+  if (type === 'image') {
+    // 一次出一组候选：三视图 3 张 / 场景 1~3 张 / 首帧 3 张（参数里可改）
+    const labels = node.kind === 'character'
+      ? ['正面', '侧面', '背面']
+      : node.kind === 'scene'
+        ? ['全景', '中景', '近景']
+        : ['候选 1', '候选 2', '候选 3']
+    const want = node.kind === 'scene'
+      ? Number(node.params.angles ?? 1)
+      : Number(node.params.count ?? node.params.views ?? 3)
+    const count = Math.max(1, Math.min(3, Number.isFinite(want) ? want : 3))
+    artifact.items = Array.from({ length: count }, (_, i) => ({
+      url: `/mock/home/explore-0${((version + i) % 4) + 1}.png`,
+      label: labels[i] ?? `候选 ${i + 1}`,
+      // 第一张默认选用：人可以直接改，也可以先跑下游
+      picked: i === 0
+    }))
+    artifact.pickedIndex = 0
+    artifact.url = artifact.items[0]!.url
+  } else if (type === 'video') {
     artifact.url = `/mock/home/explore-0${(version % 4) + 1}.png`
   }
   if (type === 'text' || type === 'outline') {
@@ -504,6 +526,17 @@ function pick(nodeId: string, artifactId: string): void {
   selectArtifact(graph.value, artifact)
 }
 
+/** 组内选用第几张 —— 三视图/首帧"挑一张"，选中的那张才往下走。 */
+function pickItem(nodeId: string, artifactId: string, index: number): void {
+  artifacts.value = withItemPicked(graph.value, artifacts.value, artifactId, index)
+  showToast(`已选用第 ${index + 1} 张，下游按这张走`)
+}
+
+/** 组内逐张驳回（三视图里"侧面那张不行"）。 */
+function reviewItem(nodeId: string, artifactId: string, index: number, action: 'approved' | 'rejected'): void {
+  artifacts.value = withItemReview(artifacts.value, artifactId, index, action)
+}
+
 function review(nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void {
   artifacts.value = artifacts.value.map(a => (a.id === artifactId ? { ...a, review: action } : a))
   showToast(action === 'approved' ? '已认可这一份' : '已驳回，产物还在，可重跑')
@@ -546,6 +579,57 @@ const selectedTableRows = computed(() => {
   const artifact = artifacts.value.find(a => a.id === slot)
   return artifact?.rows ?? []
 })
+
+// ---------------------------------------------------------------- 分镜表逐行编辑
+
+/**
+ * 分镜表是一行一镜，改一镜不该把整张图重跑。
+ *
+ * 所以编辑不直接改老版本：攒一份草稿，点「保存为新版本」才生成 v(n+1)，
+ * 并把新的那一版设为当前选用 —— 下游因此变脏，只有依赖这一镜的节点需要重跑。
+ */
+const draftRows = ref<CanvasShotRow[]>([])
+const draftDirty = ref(false)
+
+watch(
+  () => shownArtifact.value?.id,
+  () => {
+    const rows = shownArtifact.value?.rows
+    draftRows.value = rows ? rows.map(r => ({ ...r })) : []
+    draftDirty.value = false
+  },
+  { immediate: true }
+)
+
+function updateRow(index: number, key: keyof CanvasShotRow, value: string | number): void {
+  const row = draftRows.value[index]
+  if (!row) return
+  if (key === 'frames') row.frames = Number(value)
+  else if (key === 'idx') row.idx = Number(value)
+  else (row as Record<string, unknown>)[key] = value
+  draftDirty.value = true
+}
+
+/** 把草稿存成新版本（不动老版本）。 */
+function saveRowsAsVersion(): void {
+  const node = selected.value
+  const base = shownArtifact.value
+  if (!node || !base) return
+  const version = nextVersion(artifacts.value, node.id, base.slot)
+  const artifact: CanvasArtifact = {
+    ...base,
+    id: `a_${node.id}_${version}`,
+    version,
+    rows: draftRows.value.map(r => ({ ...r })),
+    note: `${draftRows.value.length} 镜 · 手工改过`,
+    review: 'pending',
+    createdAt: new Date().toISOString()
+  }
+  artifacts.value = [...artifacts.value, artifact]
+  selectArtifact(graph.value, artifact)
+  draftDirty.value = false
+  showToast(`已存为 v${version}（待确认）—— 认可后下游才能跑`)
+}
 
 function setParam(node: CanvasNode, key: string, value: unknown): void {
   node.params = { ...node.params, [key]: value }
@@ -740,6 +824,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @duplicate="duplicate"
                 @rename="rename"
                 @pick="pick"
+                @pick-item="pickItem"
                 @review="review"
                 @param="(id: string, key: string, value: string) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
                 @open="selectedId = $event"
@@ -956,6 +1041,80 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
               </label>
             </section>
 
+            <!-- 分镜表：逐行可改，改的是草稿，存成新版本 -->
+            <section
+              v-if="selected.kind === 'shotlist' && draftRows.length"
+              class="cg-block"
+            >
+              <p class="cg-block-title">
+                分镜表 <span class="cg-block-sub">v{{ shownArtifact?.version }} · 改完存新版本，老版本不动</span>
+              </p>
+              <div
+                v-for="(row, i) in draftRows"
+                :key="i"
+                class="cg-row"
+              >
+                <div class="cg-row-head">
+                  <b>S{{ String(row.idx).padStart(2, '0') }}</b>
+                  <input
+                    class="cg-input cg-input--tiny"
+                    :value="row.shotSize"
+                    placeholder="景别"
+                    @input="updateRow(i, 'shotSize', ($event.target as HTMLInputElement).value)"
+                  >
+                  <input
+                    class="cg-input cg-input--tiny"
+                    :value="row.camera"
+                    placeholder="运镜"
+                    @input="updateRow(i, 'camera', ($event.target as HTMLInputElement).value)"
+                  >
+                  <select
+                    class="cg-input cg-input--tiny"
+                    :value="row.frames"
+                    @change="updateRow(i, 'frames', Number(($event.target as HTMLSelectElement).value))"
+                  >
+                    <option
+                      v-for="f in graph.frameGrid"
+                      :key="f"
+                      :value="f"
+                    >
+                      {{ f }}f
+                    </option>
+                  </select>
+                </div>
+                <input
+                  class="cg-input cg-input--tiny"
+                  :value="row.keyframePrompt"
+                  placeholder="关键帧提示词"
+                  @input="updateRow(i, 'keyframePrompt', ($event.target as HTMLInputElement).value)"
+                >
+                <input
+                  class="cg-input cg-input--tiny"
+                  :value="row.line ?? ''"
+                  placeholder="台词"
+                  @input="updateRow(i, 'line', ($event.target as HTMLInputElement).value)"
+                >
+              </div>
+              <div class="cg-row-actions">
+                <button
+                  class="cg-mini cg-mini--accent"
+                  type="button"
+                  :disabled="!draftDirty"
+                  @click="saveRowsAsVersion"
+                >
+                  <i class="i-lucide-save" /> 保存为新版本
+                </button>
+                <button
+                  class="cg-mini"
+                  type="button"
+                  :disabled="!draftDirty"
+                  @click="draftRows = (shownArtifact?.rows ?? []).map(r => ({ ...r })); draftDirty = false"
+                >
+                  放弃修改
+                </button>
+              </div>
+            </section>
+
             <!-- 当前选用产物的正文（剧本/大纲要能整段读） -->
             <section
               v-if="shownArtifact?.text"
@@ -994,6 +1153,41 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                     {{ a.review === 'approved' ? '已认可' : a.review === 'rejected' ? '已驳回' : '待确认' }}
                   </span>
                 </div>
+                <div
+                  v-if="a.items?.length"
+                  class="cg-art-thumbs"
+                >
+                  <div
+                    v-for="(it, i) in a.items"
+                    :key="i"
+                    class="cg-art-thumb"
+                    :class="{ 'is-picked': it.picked, 'is-rejected': it.review === 'rejected' }"
+                  >
+                    <img
+                      :src="it.url"
+                      alt=""
+                    >
+                    <span class="cg-art-thumb-name">{{ it.label ?? `候选 ${i + 1}` }}</span>
+                    <div class="cg-art-thumb-actions">
+                      <button
+                        class="cg-tiny"
+                        type="button"
+                        :disabled="it.picked"
+                        @click="pickItem(selected.id, a.id, i)"
+                      >
+                        {{ it.picked ? '已选用' : '选用' }}
+                      </button>
+                      <button
+                        class="cg-tiny"
+                        type="button"
+                        @click="reviewItem(selected.id, a.id, i, it.review === 'rejected' ? 'approved' : 'rejected')"
+                      >
+                        {{ it.review === 'rejected' ? '恢复' : '驳回' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="cg-art-actions">
                   <button
                     v-if="a.id !== shownArtifact?.id"
@@ -1001,7 +1195,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                     type="button"
                     @click="pick(selected.id, a.id)"
                   >
-                    选用这份
+                    选用这一版
                   </button>
                   <button
                     v-else
@@ -1355,6 +1549,35 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 .cg-art-head .cg-pill { margin-left: auto; }
 .cg-art-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 
+.cg-art-thumbs { display: flex; gap: 6px; margin-top: 7px; }
+
+.cg-art-thumb {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  background: var(--hg3-well);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--hg3-line);
+}
+
+.cg-art-thumb.is-picked { box-shadow: inset 0 0 0 2px var(--hg3-ok); }
+.cg-art-thumb.is-rejected { opacity: 0.45; }
+.cg-art-thumb img { width: 100%; height: 52px; object-fit: cover; border-radius: 5px; }
+.cg-art-thumb-name { display: block; margin-top: 3px; font-size: 9.5px; color: var(--hg3-faint); text-align: center; }
+.cg-art-thumb-actions { display: flex; gap: 3px; margin-top: 3px; }
+
+.cg-tiny {
+  flex: 1;
+  height: 20px;
+  font-size: 9.5px;
+  color: var(--hg3-ink);
+  background: rgb(255 255 255 / 8%);
+  border-radius: 5px;
+}
+
+.cg-tiny:disabled { opacity: 0.5; }
+
 .cg-mini {
   display: inline-flex;
   align-items: center;
@@ -1373,6 +1596,13 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
 .cg-mini--accent:hover:not(:disabled) { background: var(--hg3-accent-hi); }
 
 .cg-empty-line { margin: 0; font-size: 11px; color: var(--hg3-faint); }
+
+.cg-row { margin-bottom: 7px; padding: 6px 7px; background: var(--hg3-card); border-radius: 8px; }
+.cg-row-head { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.cg-row-head b { font-size: 11px; color: var(--hg3-ink); flex: none; }
+.cg-input--tiny { min-height: 24px; padding: 2px 6px; font-size: 10.5px; }
+.cg-row .cg-input--tiny + .cg-input--tiny { margin-top: 4px; }
+.cg-row-actions { display: flex; gap: 6px; margin-top: 4px; }
 
 .cg-fulltext {
   margin: 0;

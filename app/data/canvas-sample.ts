@@ -72,6 +72,7 @@ export function buildCanvasSample(): CanvasSample {
   castB.params.appearance = '青衫、束发、指节有旧伤；站着的时候重心偏左'
   sceneA.params.name = '破庙 · 夜'
   sceneA.params.appearance = '塌了半边的屋脊、神像倒伏、烛火是唯一光源'
+  sceneA.params.angles = '3'
   sceneB.params.name = '灵堂 · 夜'
   sceneB.params.appearance = '白幡低垂、棺木半开、香灰积了七天'
   kf1.params.count = '3'
@@ -80,6 +81,7 @@ export function buildCanvasSample(): CanvasSample {
   vd3.params.tier = 'final'
   compose.params.order = 'idx'
   compose.params.merge = 'list'
+  board.params.instruction = '第 1 镜再远一点，加一个空镜；每镜不超过 6 秒'
   exp.params.nameRule = 'E01-S{镜号}.mp4'
 
   nodes.push(script, write, split, castA, castB, sceneA, sceneB, board, kf1, kf2, kf3, vd1, vd2, vd3, audio, compose, exp)
@@ -134,14 +136,62 @@ export function buildCanvasSample(): CanvasSample {
   push({ id: 'a_chars', nodeId: split.id, slot: 'characters', type: 'outline', version: 1, review: 'approved', note: '2 个人物', text: '林知遥（女主）· 陆青（男主）' })
   push({ id: 'a_scenes', nodeId: split.id, slot: 'scenes', type: 'outline', version: 1, review: 'approved', note: '2 个场景', text: '破庙 · 夜（暴雨）· 灵堂 · 夜（白幡）' })
   push({ id: 'a_shots', nodeId: split.id, slot: 'shots', type: 'outline', version: 1, review: 'approved', note: '3 镜大纲', text: '场 1 破庙外 / 暴雨 · 场 2 灵堂 / 回头 · 场 3 特写 / 七日' })
-  push({ id: 'a_cast_a', nodeId: castA.id, slot: 'image', type: 'image', version: 1, url: img(1), review: 'approved', note: '三视图 3 张' })
-  push({ id: 'a_cast_b', nodeId: castB.id, slot: 'image', type: 'image', version: 1, url: img(3), review: 'approved', note: '三视图 3 张' })
-  push({ id: 'a_scene_a', nodeId: sceneA.id, slot: 'image', type: 'image', version: 1, url: img(0), review: 'approved', note: '环境参考 1 张' })
-  push({ id: 'a_scene_b', nodeId: sceneB.id, slot: 'image', type: 'image', version: 1, url: img(2), review: 'approved', note: '环境参考 1 张' })
+  push({
+    id: 'a_cast_a', nodeId: castA.id, slot: 'image', type: 'image', version: 1, review: 'approved', note: '三视图 3 张 · 已选正面',
+    items: [
+      { url: img(1), label: '正面', picked: true },
+      { url: img(2), label: '侧面' },
+      { url: img(3), label: '背面' }
+    ],
+    pickedIndex: 0, url: img(1)
+  })
+  push({
+    id: 'a_cast_b', nodeId: castB.id, slot: 'image', type: 'image', version: 1, review: 'approved', note: '三视图 3 张 · 已选正面',
+    items: [
+      { url: img(3), label: '正面', picked: true },
+      { url: img(0), label: '侧面' },
+      { url: img(1), label: '背面' }
+    ],
+    pickedIndex: 0, url: img(3)
+  })
+  push({
+    id: 'a_scene_a', nodeId: sceneA.id, slot: 'image', type: 'image', version: 1, review: 'approved', note: '环境参考 3 张 · 已选全景',
+    items: [
+      { url: img(0), label: '全景', picked: true },
+      { url: img(2), label: '中景' },
+      { url: img(3), label: '近景' }
+    ],
+    pickedIndex: 0, url: img(0)
+  })
+  push({ id: 'a_scene_b', nodeId: sceneB.id, slot: 'image', type: 'image', version: 1, review: 'approved', note: '环境参考 1 张', url: img(2) })
   push({ id: 'a_board', nodeId: board.id, slot: 'table', type: 'table', version: 1, review: 'approved', note: `${SHOT_ROWS.length} 镜`, rows: SHOT_ROWS })
-  push({ id: 'a_kf1', nodeId: kf1.id, slot: 'image', type: 'image', version: 1, url: img(2), review: 'pending', note: '3 张 · 768x1344' })
-  push({ id: 'a_kf2_v1', nodeId: kf2.id, slot: 'image', type: 'image', version: 1, url: img(0), review: 'rejected', note: '3 张 · 被驳回' })
-  push({ id: 'a_kf2_v2', nodeId: kf2.id, slot: 'image', type: 'image', version: 2, url: img(3), review: 'approved', note: '3 张 · 这张过' })
+  push({
+    id: 'a_kf1', nodeId: kf1.id, slot: 'image', type: 'image', version: 1, review: 'pending', note: '3 张 · 768x1344 · 等人挑',
+    items: [
+      { url: img(2), label: '候选 1', picked: true },
+      { url: img(3), label: '候选 2' },
+      { url: img(0), label: '候选 3' }
+    ],
+    pickedIndex: 0, url: img(2)
+  })
+  push({
+    id: 'a_kf2_v1', nodeId: kf2.id, slot: 'image', type: 'image', version: 1, review: 'rejected', note: '3 张 · 整组驳回',
+    items: [
+      { url: img(0), label: '候选 1', review: 'rejected' },
+      { url: img(1), label: '候选 2', review: 'rejected' },
+      { url: img(2), label: '候选 3', review: 'rejected' }
+    ],
+    url: img(0)
+  })
+  push({
+    id: 'a_kf2_v2', nodeId: kf2.id, slot: 'image', type: 'image', version: 2, review: 'approved', note: '3 张 · 选了候选 2',
+    items: [
+      { url: img(0), label: '候选 1', review: 'rejected' },
+      { url: img(3), label: '候选 2', picked: true },
+      { url: img(1), label: '候选 3' }
+    ],
+    pickedIndex: 1, url: img(3)
+  })
   push({ id: 'a_vd2', nodeId: vd2.id, slot: 'video', type: 'video', version: 1, url: img(1), review: 'approved', note: '432x768 · 6.6s' })
 
   // 已跑过的节点补一条成功的 run，指纹按当前参数算 —— 于是它们不会出现在「运行全部」里
