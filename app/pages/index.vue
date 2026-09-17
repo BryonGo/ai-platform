@@ -609,7 +609,7 @@ useMediaAutoRefresh(() => Promise.all([
 
     <!-- 继续创作 -->
     <section
-      v-if="loggedIn && (continueLoading || continueItems.length)"
+      v-if="loggedIn && (continueLoading || continueItems.length || runningWorks)"
       class="section"
       aria-labelledby="continue-title"
     >
@@ -641,6 +641,15 @@ useMediaAutoRefresh(() => Promise.all([
         class="hg-empty"
       >
         正在加载最近的创作…
+      </p>
+      <!-- 有在飞任务但还没有完成的作品（新用户的第一单就是这个状态）：
+           整块不能只因为"没有作品"就消失 —— 那会让用户以为提交的活儿没发生。
+           此时角标「任务 (N)」正好是屏幕上看得到的唯一反馈。 -->
+      <p
+        v-else-if="!continueItems.length"
+        class="hg-empty"
+      >
+        {{ runningWorks ? `有 ${runningWorks} 个任务正在生成，完成后会出现在这里。` : '还没有作品。' }}
       </p>
       <div
         v-else
