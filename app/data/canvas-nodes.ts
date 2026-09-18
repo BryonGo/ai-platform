@@ -107,6 +107,23 @@ export interface CanvasParamSpec {
   hint?: string
 }
 
+/**
+ * 文本节点的「上文」参数（服务端 `context`，LLM-CAPABILITY-R1 §11-4）。
+ *
+ * 默认"接着上文"：下游文本节点会读上游产物的会话，模型看得到前面说了什么。
+ * 需要一段互不干扰的新内容时切成"另起一段"（服务端据此新开一条会话）。
+ */
+export const CONTEXT_PARAM: CanvasParamSpec = {
+  key: 'context',
+  label: '上文',
+  kind: 'select',
+  hint: '接默认会读上游节点的对话；另起一段则不带任何上文',
+  options: [
+    { value: 'continue', label: '接着上文（默认）' },
+    { value: 'fresh', label: '另起一段' }
+  ]
+}
+
 export interface CanvasPortSpec {
   /** 槽位名，连线与产物都按它归属（同一节点内唯一）。 */
   slot: string
@@ -189,10 +206,16 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     width: 268,
     modelKind: 'text',
     promptKey: 'prompt',
-    inputs: [{ slot: 'material', type: 'text', label: '原始素材', required: true }],
+    inputs: [
+      { slot: 'material', type: 'text', label: '原始素材', required: true },
+      // 文本节点能直接吃图（服务端编译成多模态块）：参考图是可选的，
+      // 接了就让模型看着图写，没接照旧只按文字写。
+      { slot: 'ref', type: 'image', label: '参考图', multiple: true }
+    ],
     outputs: [{ slot: 'text', type: 'text', label: '剧本定稿' }],
     params: [
       { key: 'prompt', label: '要拍什么', kind: 'textarea', placeholder: '例如：破庙里一个少年的奇遇，民国悬疑，竖屏' },
+      CONTEXT_PARAM,
       { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '每一步各用一个模型，互不影响' },
       { key: 'length', label: '目标时长', kind: 'select', options: [{ value: '60', label: '1 分钟竖屏' }, { value: '180', label: '3 分钟短剧' }] },
       { key: 'tone', label: '风格', kind: 'text', placeholder: '例如：民国悬疑、冷冽、少对白' }
@@ -209,7 +232,10 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     width: 268,
     modelKind: 'text',
     promptKey: 'instruction',
-    inputs: [{ slot: 'text', type: 'text', label: '剧本文本', required: true }],
+    inputs: [
+      { slot: 'text', type: 'text', label: '剧本文本', required: true },
+      { slot: 'ref', type: 'image', label: '参考图', multiple: true }
+    ],
     // 一次拆出三样：人物、场景、分镜。三条线各接各的下游（一个人物/场景一个节点）
     outputs: [
       { slot: 'characters', type: 'outline', label: '人物列表' },
@@ -218,6 +244,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     params: [
       { key: 'instruction', label: '哪里不对 / 怎么改', kind: 'textarea', placeholder: '例如：第 2 场太拖，压到 20 秒内；人物只留两个' },
+      CONTEXT_PARAM,
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'granularity', label: '拆解粒度', kind: 'select', options: [{ value: 'shot', label: '按镜头（默认）' }, { value: 'scene', label: '按场次' }] }
     ],
@@ -274,10 +301,14 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     width: 268,
     modelKind: 'text',
     promptKey: 'instruction',
-    inputs: [{ slot: 'shots', type: 'outline', label: '分镜大纲', required: true }],
+    inputs: [
+      { slot: 'shots', type: 'outline', label: '分镜大纲', required: true },
+      { slot: 'ref', type: 'image', label: '参考图', multiple: true }
+    ],
     outputs: [{ slot: 'table', type: 'table', label: '分镜表' }],
     params: [
       { key: 'instruction', label: '怎么排 / 哪里不对', kind: 'textarea', placeholder: '例如：第 1 镜再远一点，加一个空镜；每镜不超过 6 秒' },
+      CONTEXT_PARAM,
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'shotsPerScene', label: '每场镜头数', kind: 'number', hint: '默认 5，多了图会挤' },
       { key: 'frames', label: '默认帧数', kind: 'frames', hint: '单镜可按需在表格里改' }
