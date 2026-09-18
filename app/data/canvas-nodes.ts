@@ -357,6 +357,16 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
       { key: 'tier', label: '档位', kind: 'select', options: [{ value: 'preview', label: '预览 · 432x768 · 便宜十倍' }, { value: 'final', label: '定稿 · 768x1344 · 交付档' }] },
       { key: 'frames', label: '帧数', kind: 'frames' },
+      {
+        key: 'generateAudio',
+        label: '生成音频',
+        kind: 'select',
+        options: [
+          { value: 'false', label: '不带音频（推荐：音轨交给配音节点）' },
+          { value: 'true', label: '带音频（上游一起生成对白/环境音）' }
+        ],
+        hint: '上游 Seedance 会把音频一起生成，并可能以「音频可能涉版权」拒单 —— 关掉是一条可用的绕法（参数名实测是 generate_audio，传 audio 会被静默忽略）'
+      },
       { key: 'h3Prompt', label: '运动描述', kind: 'textarea', placeholder: '不接分镜时用这里；接了就以分镜为准' }
     ],
     stage: 'ready',
