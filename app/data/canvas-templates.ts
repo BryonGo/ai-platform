@@ -1,13 +1,15 @@
 /**
  * 画布模板：内置一条产线，外加"把当前这张图另存为模板"。
  *
- * 现在没有后端（后端正在重构，接口还没定），所以用户模板先存在**浏览器本地**。
- * 等后端就绪，把这里换成 canvas_template 的两个接口即可，界面不用改。
+ * 用户模板先存在**浏览器本地**（模板是不是运营资产要单独拍板，见 R2 §10.5）。
  *
- * 只存图（节点 + 连线 + 参数），不存产物与运行记录：模板是"产线"，不是"这一集的成果"。
+ * **模板只给结构（节点 + 连线 + 参数），不给产物与运行记录**：模板是"产线"，
+ * 不是"这一集的成果"。以前内置模板连示例产物一起塞进来，套用后图上会出现一批
+ * 指向不存在产物的"已就绪"节点 —— 现在结构照给，产物必须自己跑。
  */
 
 import type { CanvasArtifact, CanvasGraph, CanvasRun } from './canvas-graph'
+import { FRAME_GRID } from './canvas-nodes'
 import { buildCanvasSample } from './canvas-sample'
 
 export interface CanvasTemplateInfo {
@@ -67,16 +69,29 @@ export function listTemplates(): CanvasTemplateInfo[] {
 /** 空白画布：一张什么都没连的图。 */
 export function emptyCanvas(): CanvasTemplatePayload {
   return {
-    graph: { version: 1, frameGrid: [...buildCanvasSample().graph.frameGrid], nodes: [], edges: [] },
+    // 帧数网格随图下发给前端（真源在服务端，见 data/canvas-nodes.ts 的 FRAME_GRID 说明）。
+    graph: { version: 1, frameGrid: [...FRAME_GRID], nodes: [], edges: [] },
     artifacts: [],
     runs: []
   }
 }
 
-/** 载入模板。内置模板带示例产物；自己存的只有图。 */
+/**
+ * 载入模板：**只给结构**（节点 + 连线 + 参数），产物与运行记录一律为空。
+ *
+ * 内置模板的结构同样来自 `canvas-sample.ts` —— 那份数据的价值是"照最短闭环摆好一条
+ * 产线"，不是"替你跑出结果"。
+ */
 export function loadTemplate(id: string): CanvasTemplatePayload | null {
   const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === id)
-  if (builtIn) return { ...buildCanvasSample(), graph: { ...buildCanvasSample().graph } }
+  if (builtIn) {
+    const structure = buildCanvasSample().graph
+    return {
+      graph: { ...structure, nodes: structure.nodes.map(n => ({ ...n, outputs: {} })), edges: structure.edges },
+      artifacts: [],
+      runs: []
+    }
+  }
   const stored = readStored().find(t => t.id === id)
   if (!stored) return null
   return { graph: stored.graph, artifacts: [], runs: [] }

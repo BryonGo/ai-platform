@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 画布顶栏：标题、示例数据标记、就绪/待确认/待重跑/已选/花费/本次预计、撤销重做、
- * 缩放、新建、适应画布、重置示例、运行全部。
+ * 画布顶栏：标题、就绪/待确认/待重跑/已选/花费/本次预计、撤销重做、
+ * 缩放、新建、适应画布、保存、运行全部。
  *
  * 从 canvas.vue 搬出来的：它只显示数字与抛动作，数字全由页面按同一套规则算好传进来
  * （就绪数、待重跑数、预估花费…这些口径要和节点卡、右键菜单一致，不能各算一份）。
@@ -9,8 +9,6 @@
 import { creditsToYuan } from '~/data/canvas-nodes'
 
 defineProps<{
-  /** 示例数据模式（顶部挂标记，免得把演示数据当真）。 */
-  demo: boolean
   nodeCount: number
   readyCount: number
   /** 有几份产物等人确认。 */
@@ -36,7 +34,7 @@ const emit = defineEmits<{
   (e: 'zoom-out'): void
   (e: 'new'): void
   (e: 'fit'): void
-  (e: 'reset'): void
+  (e: 'save'): void
   (e: 'run-all'): void
 }>()
 </script>
@@ -47,11 +45,7 @@ const emit = defineEmits<{
       <h1 class="cg-brand">
         织幕
       </h1>
-      <span class="cg-tag">PROTOTYPE · AI 影剧无界画布</span>
-      <span
-        v-if="demo"
-        class="cg-demo"
-      >示例数据 · 本地模拟</span>
+      <span class="cg-tag">AI 影剧无界画布</span>
     </div>
 
     <div class="cg-top-mid">
@@ -132,9 +126,9 @@ const emit = defineEmits<{
       <button
         class="cg-ghost"
         type="button"
-        @click="emit('reset')"
+        @click="emit('save')"
       >
-        <i class="i-lucide-rotate-ccw" /> 重置示例
+        <i class="i-lucide-save" /> 保存
       </button>
       <button
         class="cg-primary"

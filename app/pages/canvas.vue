@@ -2,15 +2,15 @@
 /**
  * 画布（织幕）—— 节点工作台，前端先行版。
  *
- * 照界面原型重画：顶栏（缩放 / 适应画布 / 重置示例 / 运行全部）、左栏节点库、
+ * 照界面原型重画：顶栏（缩放 / 适应画布 / 保存 / 运行全部）、左栏节点库、
  * 无限画布（端口拖线）、节点卡（内容预览 + 节点内运行）、右栏节点详情（参数 / 产物版本 / 运行记录）。
  *
  * 数据模型与后端契约见 aicodcms/docs/canvas/ZHIMU-DATA-MODEL-R2.md：
  *   产物是实体、依赖是数据、审核的对象是产物。
  *
- * 当前是**示例数据**（顶部有标记）：后端 canvas_run / canvas_artifact 两张表还没建，
- * 所以节点内运行走本地模拟，把「运行 → 出新版本 → 下游变脏」这条链路先跑通；
- * 后端就绪后把 runNode() 里的 simulateRun 换成真接口即可，其余不用改。
+ * **图、产物、运行全部来自服务端**（`/api/v1/canvas/*`，运行是 SSE 流）：
+ * 曾经的本地模拟（simulateRun / streamInto）与示例数据兜底已整体删除 ——
+ * 那套东西留在页面上的表现是"看起来有图、其实什么都没存"。
  */
 import { MarkerType, SelectionMode, VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -30,19 +30,16 @@ import type {
 import {
   NODE_STATE_META,
   addNode,
-  artifactsOf,
   connectNodes,
   connectionAllowed,
   createNode,
   dirtyNodes,
   disconnect,
-  buildExportManifest,
   expandShotlist,
   fragmentOrder,
   isDirty,
   inputRefs,
   makeEdge,
-  nextVersion,
   nodeState,
   paramsHash,
   pendingReviewCount,
@@ -53,7 +50,7 @@ import {
 } from '~/data/canvas-graph'
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasPortSpec } from '~/data/canvas-nodes'
-import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, framesToSeconds, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
+import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
 import type { CanvasTemplateInfo } from '~/data/canvas-templates'
 import {
   emptyCanvas,
@@ -62,19 +59,31 @@ import {
   removeTemplate,
   saveTemplate
 } from '~/data/canvas-templates'
-import { buildCanvasSample } from '~/data/canvas-sample'
 
 useHead({ title: '画布 · 织幕' })
 
 // ---------------------------------------------------------------- 状态
 
-const sample = buildCanvasSample()
-const graph = ref<CanvasGraph>(sample.graph)
-const artifacts = ref<CanvasArtifact[]>(sample.artifacts)
-const runs = ref<CanvasRun[]>(sample.runs)
+/**
+ * 图与产物**来自服务端**（`/api/v1/canvas/*`）。
+ *
+ * 这里刻意不再有"示例数据兜底"：以前后端没通时用本地示例撑着，结果"页面上看着有图、
+ * 其实什么都没存"—— 接真接口后宁可空着（空图会引导用户从节点库拖第一个节点），
+ * 也不要让演示数据混进真实工作区。
+ */
+const canvasApi = useCanvasApi()
+const graph = ref<CanvasGraph>(emptyCanvas().graph)
+const artifacts = ref<CanvasArtifact[]>([])
+const runs = ref<CanvasRun[]>([])
 
-/** 示例数据模式：显式开关，顶部挂标记，免得把演示数据当成真数据。 */
-const demo = ref(true)
+/** 当前这张图在服务端的 id（空 = 还没保存过，第一次保存时新建）。 */
+const graphId = ref('')
+/** 打开这张图时看到的版本号：更新时必须原样回传，服务端据此挡并发覆盖。 */
+const graphRevision = ref(0)
+/** 顶部标题（服务端也存一份）。 */
+const graphTitle = ref('未命名图')
+/** 保存/载入中：按钮转圈，避免连点。 */
+const busy = ref(false)
 const selectedId = ref('')
 const toast = ref('')
 const detailOpen = ref(true)
@@ -104,13 +113,15 @@ function replaceCanvas(payload: { graph: CanvasGraph, artifacts: CanvasArtifact[
   selectedId.value = ''
   clearSelection()
   clearDrafts()
-  demo.value = false
   resetHistory()
   nextTick(() => fit())
 }
 
 function newBlank(): void {
   startPanel.value = null
+  graphId.value = ''
+  graphRevision.value = 0
+  graphTitle.value = '未命名图'
   replaceCanvas(emptyCanvas())
   showToast('空白画布：从左栏拖节点，或从端口拖线到空白处建节点')
 }
@@ -168,7 +179,6 @@ const connectFromSnapshot = ref<{ nodeId: string, slot: string, type: 'source' |
 /** 画布内部的剪贴板（不碰系统剪贴板）：复制一个节点，右键空白粘贴。 */
 const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<string, unknown> } | null>(null)
 /** 每次运行带进来的临时输入（补充要求），按 runId 存，模拟用。 */
-const runInputs = new Map<string, { followUp?: string }>()
 /** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
 const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
@@ -486,6 +496,7 @@ const nodeMenuItems = computed<ContextMenuItem[]>(() => {
     { key: 'duplicate', label: '复制节点', icon: 'i-lucide-copy', hint: '⌘C' },
     { key: 'copy', label: '复制到剪贴板', icon: 'i-lucide-clipboard-copy' },
     { key: 'run', label: '运行这个节点', icon: 'i-lucide-play', hint: cost ? `约 ${creditsToYuan(cost)}` : undefined, disabled: spec.stage !== 'ready' || stateOf(node) === 'blocked' || stateOf(node) === 'awaiting' },
+    { key: 'rerun', label: '重跑（忽略缓存）', icon: 'i-lucide-refresh-cw', disabled: spec.stage !== 'ready' },
     { key: 'collapse', label: node.collapsed ? '展开节点' : '折叠节点', icon: node.collapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up' },
     { key: 'detach', label: '断开全部连线', icon: 'i-lucide-unlink', disabled: !graph.value.edges.some(e => e.from.node === node.id || e.to.node === node.id) },
     { key: 'remove', label: '删除节点', icon: 'i-lucide-trash-2', danger: true, hint: '⌫' }
@@ -504,7 +515,8 @@ const paneMenuItems = computed<ContextMenuItem[]>(() => [
   { key: 'new', label: '新建画布 / 套模板', icon: 'i-lucide-file-plus-2' },
   { key: 'save-template', label: '另存为模板', icon: 'i-lucide-bookmark-plus' },
   { key: 'fit', label: '适应画布', icon: 'i-lucide-maximize' },
-  { key: 'reset', label: '重置示例', icon: 'i-lucide-rotate-ccw' },
+  { key: 'save', label: '保存到服务端', icon: 'i-lucide-save' },
+  { key: 'reload', label: '重新载入（放弃本地修改）', icon: 'i-lucide-refresh-cw' },
   { key: 'run-all', label: '运行全部', icon: 'i-lucide-play', hint: estimatedBatch.value ? `约 ${creditsToYuan(estimatedBatch.value)}` : undefined }
 ])
 
@@ -639,13 +651,15 @@ function onMenuPick(key: string): void {
     case 'duplicate': if (nodeId) duplicate(nodeId); break
     case 'copy': if (nodeId) copyNode(nodeId); break
     case 'run': if (nodeId) void runNode(nodeId); break
+    case 'rerun': if (nodeId) void rerunNode(nodeId); break
+    case 'reload': void reloadFromServer(); break
     case 'detach': if (nodeId) detachNode(nodeId); break
     case 'remove': if (nodeId) drop(nodeId); break
     case 'paste': pasteNode(at ? { x: Math.round(at.x), y: Math.round(at.y) } : undefined); break
     case 'new': openStart('new'); break
     case 'save-template': openStart('save'); break
     case 'fit': fit(); break
-    case 'reset': resetSample(); break
+    case 'save': void saveToServer(); break
     case 'run-all': void runAll(); break
     case 'collapse': {
       const node = graph.value.nodes.find(n => n.id === nodeId)
@@ -857,17 +871,128 @@ function expand(nodeId: string): void {
     : `已按分镜表生成 ${rows} 组节点，记得把人物和场景接上首帧`)
 }
 
+// ---------------------------------------------------------------- 与服务端同步
+
+/** 载入一张图（默认载入最近编辑的那张；一张都没有就留空白图）。 */
+async function loadFromServer(id?: string): Promise<void> {
+  busy.value = true
+  try {
+    let target = id || ''
+    if (!target) {
+      const list = await canvasApi.listGraphs('hougong')
+      target = list[0]?.id || ''
+    }
+    if (!target) {
+      newBlank()
+      return
+    }
+    const view = await canvasApi.getGraph(target)
+    graphId.value = view.summary.id
+    graphRevision.value = view.summary.revision
+    graphTitle.value = view.summary.title || '未命名图'
+    replaceCanvas({ graph: view.graph, artifacts: view.artifacts, runs: view.runs })
+    showToast(`已载入「${graphTitle.value}」`)
+  } catch (err) {
+    showToast(`载入失败：${errText(err)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * 保存整张图。
+ *
+ * 更新时带 `revision`（打开时看到的版本号）：另一个标签页改过就会被服务端挡下来，
+ * 提示"先重新载入"——而不是把对方的工作静默盖掉。
+ */
+async function saveToServer(silent = false): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const summary = await canvasApi.saveGraph({
+      id: graphId.value,
+      title: graphTitle.value,
+      product: 'hougong',
+      graph: graph.value,
+      revision: graphRevision.value
+    })
+    graphId.value = summary.id
+    graphRevision.value = summary.revision
+    if (!silent) showToast(`已保存（v${summary.revision}）`)
+  } catch (err) {
+    const message = errText(err)
+    showToast(message.includes('stale') || message.includes('版本')
+      ? '这张图在别处被改过了 —— 先重新载入，再改'
+      : `保存失败：${message}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 把服务端返回的产物并进本地（按 id 去重；同 id 以服务端为准）。 */
+function mergeArtifacts(list: CanvasArtifact[]): void {
+  if (!list.length) return
+  const byId = new Map(artifacts.value.map(a => [a.id, a]))
+  for (const a of list) byId.set(a.id, a)
+  artifacts.value = [...byId.values()]
+}
+
+/**
+ * 订阅平台事件：任务完成/失败时刷新整图。
+ *
+ * 断线退避重连（1s → 5s），重连成功后**补拉一次整图**（R2 §6.5 的口径：
+ * 断线期间漏掉的事件不重放，靠整图兜底）。
+ */
+let eventAbort: AbortController | null = null
+async function watchEvents(): Promise<void> {
+  let delay = 1000
+  for (;;) {
+    if (eventAbort?.signal.aborted) return
+    eventAbort = new AbortController()
+    try {
+      await canvasApi.subscribeEvents((event, data) => {
+        if (!graphId.value || String(data.graphId ?? '') !== graphId.value) return
+        if (!event.startsWith('task.')) return
+        // 同一批事件可能连着来（完成 + 花费）：稍微攒一下再拉，避免连着拉好几遍整图。
+        scheduleReload()
+      }, eventAbort.signal)
+      delay = 1000
+    } catch {
+      /* 断线：等一会儿重连 */
+    }
+    if (eventAbort.signal.aborted) return
+    await new Promise(resolve => window.setTimeout(resolve, delay))
+    delay = Math.min(delay * 2, 5000)
+    await reloadGraph()
+  }
+}
+
+/** 攒一下再刷新（事件是连着的，逐条拉整图没必要）。 */
+let reloadTimer: number | undefined
+function scheduleReload(): void {
+  if (reloadTimer) window.clearTimeout(reloadTimer)
+  reloadTimer = window.setTimeout(() => {
+    reloadTimer = undefined
+    void reloadGraph()
+  }, 800)
+}
+
+/** 载入失败/接口报错的文案。 */
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 // ---------------------------------------------------------------- 运行
 
 /**
- * 跑一个节点。
+ * 跑一个节点：`POST /canvas/node/run`，响应是 **SSE 流**。
  *
- * 现在是本地模拟：写一条 running 的 run → 一会儿写产物、写 done。
- * 后端接上以后，这里换成 POST /canvas/node/{id}/run + SSE 回推，其余逻辑不变。
+ * 三种结果都在同一条流里：文本逐字吐（delta）、图/视频回 `queued`（产物稍后由服务端
+ * 收敛钩子落库，刷新整图就能看到）、当场出产物（artifact）。
  */
 async function runNode(
   nodeId: string,
-  opts: { silent?: boolean, base?: CanvasArtifact, followUp?: string } = {}
+  opts: { silent?: boolean, base?: CanvasArtifact, followUp?: string, force?: boolean } = {}
 ): Promise<void> {
   const node = graph.value.nodes.find(n => n.id === nodeId)
   if (!node) return
@@ -886,241 +1011,273 @@ async function runNode(
     return
   }
   if (state === 'running') return
+  // 跑之前**先把当前编辑落库**：服务端按库里的图算参数指纹与输入引用，
+  // 用屏幕上的草稿跑会得到"参数没变却重跑"或"用的是旧参数"这种对不上的结果。
+  await saveToServer(true)
+  if (!graphId.value) {
+    if (!opts.silent) showToast('这张图还没保存成功，先解决保存问题')
+    return
+  }
 
   runningIds.value = [...runningIds.value, nodeId]
-  const run: CanvasRun = {
-    id: `r_${nodeId}_${Date.now().toString(36)}`,
-    nodeId,
-    // 「继续补充」时带上基础版本：模型在原稿上改，而不是从零重写
-    baseArtifactId: opts.base?.id,
-    paramsHash: paramsHash(node),
-    status: 'running',
-    startedAt: new Date().toISOString()
-  }
-  if (opts.followUp) runInputs.set(run.id, { followUp: opts.followUp })
-  runs.value = [...runs.value, run]
-
-  await simulateRun(node, run)
-
-  runningIds.value = runningIds.value.filter(id => id !== nodeId)
-}
-
-/** 本地模拟：出一个新版本的产物，并把它设成当前选定（下游输入随之更新）。 */
-async function simulateRun(node: CanvasNode, run: CanvasRun): Promise<void> {
-  const type = nodeTypeSpec(node.kind).outputs[0]?.type ?? 'text'
-  if (type === 'text' || type === 'outline') {
-    // 文本类走流式（真接口是 SSE）：逐字推给界面，人能看到它在写
-    await streamInto(node.id, buildText(node, run))
-  } else {
-    await new Promise(resolve => window.setTimeout(resolve, 900 + Math.random() * 700))
-  }
-  completeRun(node, run)
-}
-
-/** 本地模拟的流式输出：每 30ms 推几个字。 */
-async function streamInto(nodeId: string, full: string): Promise<void> {
   streaming.value = { ...streaming.value, [nodeId]: '' }
-  for (let i = 4; i <= full.length; i += 4) {
-    await new Promise(resolve => window.setTimeout(resolve, 30))
-    streaming.value = { ...streaming.value, [nodeId]: full.slice(0, i) }
+  const startedAt = new Date().toISOString()
+
+  try {
+    await canvasApi.runNodeStream({
+      id: graphId.value,
+      nodeId,
+      force: !!opts.force,
+      baseArtifactId: opts.base?.id,
+      instruction: opts.followUp
+    }, {
+      onDelta: (text) => {
+        streaming.value = { ...streaming.value, [nodeId]: (streaming.value[nodeId] ?? '') + text }
+      },
+      onArtifact: (payload) => {
+        const list = (payload.artifacts?.length ? payload.artifacts : (payload.artifact ? [payload.artifact] : []))
+          .map(toCanvasArtifact)
+        mergeArtifacts(list)
+        // 服务端返回的 run 是权威：用它的 id/状态/花费覆盖本地那条。
+        if (payload.run) upsertRun(toCanvasRun(payload.run))
+        const fresh = list.find(a => a.nodeId === nodeId)
+        if (fresh) selectArtifact(graph.value, fresh)
+        if (payload.cached) showToast('内容没变，直接用已有产物（没有重新计费）')
+      },
+      onQueued: (payload) => {
+        if (payload.run) upsertRun(toCanvasRun(payload.run))
+      },
+      onError: (message) => {
+        upsertRun({
+          id: `local_${nodeId}_${Date.now().toString(36)}`,
+          nodeId,
+          paramsHash: paramsHash(node),
+          status: 'failed',
+          error: message,
+          startedAt
+        })
+        showToast(message)
+      }
+    })
+  } catch (err) {
+    showToast(`运行失败：${errText(err)}`)
+  } finally {
+    const rest = { ...streaming.value }
+    delete rest[nodeId]
+    streaming.value = rest
+    runningIds.value = runningIds.value.filter(id => id !== nodeId)
   }
-  streaming.value = { ...streaming.value, [nodeId]: full }
 }
 
-/**
- * 本地模拟"模型写出来的东西"。
- *
- * 真接口接上后这一段整个删掉 —— 文本由模型流式返回，这里只是为了让界面先跑起来。
- */
-function buildText(node: CanvasNode, run: CanvasRun): string {
-  const ask = String(node.params.prompt ?? '').trim()
-  const instruction = String(node.params.instruction ?? '').trim()
-  const base = run.baseArtifactId ? artifacts.value.find(a => a.id === run.baseArtifactId) : undefined
-  const follow = runInputs.get(run.id)?.followUp
-  const spec = nodeTypeSpec(node.kind)
-
-  let body: string
-  if (node.kind === 'script_gen') {
-    const title = ask ? ask.slice(0, 14) : '回魂夜'
-    body = `第 1 集 · ${title}\n\n`
-      + '场 1 破庙 · 夜（外）\n暴雨敲着残破的屋脊。少年抱着断了腿的纸灯躲进来，神像的阴影里有人先到。\n\n'
-      + '场 2 灵堂 · 夜（内）\n白幡低垂，棺木半开。他认出供桌上的名字——那是他自己。\n\n'
-      + `（按「${ask || '破庙里少年的奇遇'}」写的第 1 稿，${spec.subtitle}）`
-  } else if (node.kind === 'script_split') {
-    body = '人物：少年（主角）· 守夜人（反派）\n'
-      + '场景：破庙 · 夜 / 灵堂 · 夜\n'
-      + '分镜大纲：3 场 · 3 镜（远景破庙 → 中景回头 → 特写瞳孔）\n'
-      + `（拆解依据：${instruction || '默认拆法'}）`
-  } else {
-    body = `${spec.label}完成：按「${ask || instruction || '当前设置'}」产出的第 ${nextVersion(artifacts.value, node.id, spec.outputs[0]?.slot ?? 'text')} 版`
-  }
-
-  if (base?.text) {
-    body = `（在第 ${base.version} 版基础上改：${follow || instruction || '按新要求重写'}）\n\n${body}`
-  } else if (follow) {
-    body = `（补充要求：${follow}）\n\n${body}`
-  }
-  return body
-}
-
-/** 继续补充：带着这一版 + 新的补充要求重跑，产出下一版。 */
+/** 「继续补充」：带着这一版 + 新的补充要求重跑，产出下一版。 */
 async function continueFrom(nodeId: string): Promise<void> {
-  const base = shownArtifact.value
-  if (!base) return
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
   const note = followUp.value.trim()
   if (!note) {
     showToast('先写一句"还要改什么"')
     return
   }
-  followUp.value = ''
-  await runNode(nodeId, { base, followUp: note })
-}
-
-/** 结算一条运行：写产物 + 标记成功。示例数据里预置的"运行中"也走这里落地。 */
-function completeRun(node: CanvasNode, run: CanvasRun): void {
-  if (run.status !== 'running') return
   const spec = nodeTypeSpec(node.kind)
-  const slot = spec.outputs[0]?.slot ?? 'text'
-  const type = spec.outputs[0]?.type ?? 'text'
-
-  const version = nextVersion(artifacts.value, node.id, slot)
-  const note = artifactNote(node, type)
-  const artifact: CanvasArtifact = {
-    id: `a_${node.id}_${version}`,
-    nodeId: node.id,
-    slot,
-    type,
-    version,
-    note,
-    review: 'pending',
-    createdAt: new Date().toISOString()
-  }
-  if (type === 'image') {
-    // 一次出一组候选：三视图 3 张 / 场景 1~3 张 / 首帧 3 张（参数里可改）
-    const labels = node.kind === 'character'
-      ? ['正面', '侧面', '背面']
-      : node.kind === 'scene'
-        ? ['全景', '中景', '近景']
-        : ['候选 1', '候选 2', '候选 3']
-    const want = node.kind === 'scene'
-      ? Number(node.params.angles ?? 1)
-      : Number(node.params.count ?? node.params.views ?? 3)
-    const count = Math.max(1, Math.min(3, Number.isFinite(want) ? want : 3))
-    artifact.items = Array.from({ length: count }, (_, i) => ({
-      url: `/mock/home/explore-0${((version + i) % 4) + 1}.png`,
-      label: labels[i] ?? `候选 ${i + 1}`,
-      // 第一张默认选用：人可以直接改，也可以先跑下游
-      picked: i === 0
-    }))
-    artifact.pickedIndex = 0
-    artifact.url = artifact.items[0]!.url
-  } else if (type === 'video') {
-    artifact.url = `/mock/home/explore-0${(version % 4) + 1}.png`
-  }
-  if (type === 'text' || type === 'outline') {
-    artifact.text = buildText(node, run)
-    const rest = { ...streaming.value }
-    delete rest[node.id]
-    streaming.value = rest
-  }
-  if (type === 'table') {
-    artifact.rows = Array.from({ length: 3 }, (_, i) => ({
-      idx: i + 1,
-      shotSize: ['远景', '中景', '特写'][i % 3]!,
-      camera: ['固定', '缓慢推近', '跟拍'][i % 3]!,
-      frames: [124, 158, 141][i % 3]!,
-      scene: 'SC-新场次',
-      keyframePrompt: '示例提示词（本地模拟生成）'
-    }))
-    artifact.note = '3 镜'
-  }
-  if (type === 'audio') artifact.note = '配音 + 配乐'
-  if (type === 'zip') {
-    // 导出不是"随便打个包"：挑片、写清谁没进来、谁的参数对不上
-    const { manifest, note: zipNote } = buildExportManifest(graph.value, artifacts.value, node)
-    artifact.manifest = manifest
-    artifact.note = zipNote
-  }
-
-  artifacts.value = [...artifacts.value, artifact]
-  selectArtifact(graph.value, artifact)
-  runs.value = runs.value.map(r =>
-    r.id === run.id
-      ? { ...r, status: 'done', costCredits: spec.estimateCredits ?? 0, finishedAt: new Date().toISOString() }
-      : r
-  )
+  const slot = spec.outputs[0]?.slot ?? ''
+  const picked = slot ? node.outputs[slot] : undefined
+  const base = picked ? artifacts.value.find(a => a.id === picked.artifactId) : undefined
+  followUp.value = ''
+  // 强制重跑：同一版 + 不同补充要求本来就该出新版本（服务端也把它算进参数指纹）。
+  await runNode(nodeId, { base, followUp: note, force: true })
 }
 
-/** 示例数据里预置了一条"运行中"的 run：挂载后让它落地，免得顶栏一直显示运行中。 */
-function settleSeededRuns(): void {
-  for (const run of [...runs.value].filter(r => r.status === 'running')) {
-    const node = graph.value.nodes.find(n => n.id === run.nodeId)
-    if (!node) continue
-    window.setTimeout(() => completeRun(node, run), 2000)
-  }
-}
-
-function artifactNote(node: CanvasNode, type: string): string {
-  if (type === 'image') {
-    if (node.kind === 'character') return '三视图 3 张'
-    if (node.kind === 'scene') return '环境参考 1 张'
-    return '3 张 · 768x1344'
-  }
-  if (type === 'video') {
-    const tier = String(node.params.tier ?? 'preview')
-    const frames = Number(node.params.frames ?? 158)
-    return `${tier === 'final' ? '768x1344' : '432x768'} · ${framesToSeconds(frames)}s`
-  }
-  return ''
-}
-
-/** 运行全部：只跑脏节点，按拓扑序一个一个来（重复点应该零花费）。 */
-async function runAll(): Promise<void> {
-  const queue = dirtyNodes(graph.value, runs.value).filter((id) => {
-    const node = graph.value.nodes.find(n => n.id === id)
-    if (!node) return false
-    if (nodeTypeSpec(node.kind).stage !== 'ready') return false
-    // 等待上游 / 等待确认的都不跑：不是"脏"，是"卡在人的确认上"
-    const st = stateOf(node)
-    return st !== 'blocked' && st !== 'awaiting'
-  })
-  if (!queue.length) {
-    showToast('没有需要重跑的节点（参数和输入都没变）')
+/** 写入/覆盖一条本地 run（同名 run 以最新一次为准）。 */
+function upsertRun(run: CanvasRun): void {
+  const idx = runs.value.findIndex(r => r.id === run.id)
+  if (idx >= 0) {
+    const next = [...runs.value]
+    next[idx] = run
+    runs.value = next
     return
   }
-  showToast(`开始运行 ${queue.length} 个节点`)
-  for (const id of queue) {
-    const node = graph.value.nodes.find(n => n.id === id)
-    if (!node) continue
-    const st = stateOf(node)
-    if (st === 'blocked' || st === 'awaiting') continue
-    await runNode(id, { silent: true })
+  runs.value = [...runs.value, run]
+}
+
+/**
+ * 重跑（节点上的「运行」按钮）：忽略缓存，强制出新的一版。
+ */
+async function rerunNode(nodeId: string): Promise<void> {
+  await runNode(nodeId, { force: true })
+}
+
+/**
+ * 运行全部：**计划由服务端算**（拓扑序 + 脏节点判定），前端只负责循环。
+ *
+ * 为什么不由前端算：脏 = 没跑过 / 参数变了 / 上游换了新版，其中"参数变了"靠
+ * `params_hash`，那是服务端口径。前端算的结果一旦与服务端不一致，表现是
+ * "点了运行全部却白花钱"或"该跑的没跑"，而且都不报错。
+ */
+async function runAll(): Promise<void> {
+  if (!graphId.value) {
+    await saveToServer(true)
+    if (!graphId.value) {
+      showToast('先保存成功才能运行整张图')
+      return
+    }
   }
-  showToast(`运行完成：${queue.length} 个节点`)
+  // 先把当前编辑落库：服务端算计划用的是**库里的图**，不是屏幕上的草稿。
+  await saveToServer(true)
+  let plan: CanvasPlanNode[] = []
+  try {
+    plan = await canvasApi.runPlan(graphId.value)
+  } catch (err) {
+    showToast(`取运行计划失败：${errText(err)}`)
+    return
+  }
+  const runnable = plan.filter(p => !p.blocked)
+  const blocked = plan.length - runnable.length
+  if (!runnable.length) {
+    showToast(blocked
+      ? `没有可跑的节点（${blocked} 个卡在输入或确认上）`
+      : '没有需要重跑的节点（参数和输入都没变）')
+    return
+  }
+  showToast(`开始运行 ${runnable.length} 个节点${blocked ? `（${blocked} 个卡住，跳过）` : ''}`)
+  for (const item of runnable) {
+    await runNode(item.nodeId, { silent: true })
+  }
+  // 跑完再拉一次整图：异步任务（图/视频）的产物是后端收敛后落库的。
+  await reloadGraph()
+  showToast(`运行完成：${runnable.length} 个节点`)
+}
+
+/** 重新拉一遍整图（产物/运行以服务端为准）。 */
+async function reloadGraph(): Promise<void> {
+  if (!graphId.value) return
+  try {
+    const view = await canvasApi.getGraph(graphId.value)
+    graphRevision.value = view.summary.revision
+    // 图内容可能被服务端改过（选定走的是服务端的读改写）：**以服务端为准**，
+    // 但保留本地正在编辑的节点参数会带来"到底哪份是新的"的歧义，所以整个换掉。
+    graph.value = view.graph
+    artifacts.value = view.artifacts
+    runs.value = view.runs
+  } catch (err) {
+    showToast(`刷新失败：${errText(err)}`)
+  }
 }
 
 // ---------------------------------------------------------------- 产物操作
 
-function pick(nodeId: string, artifactId: string): void {
+/**
+ * 选定一个产物版本。
+ *
+ * **写回服务端**（`nodes[].outputs[slot]` 存在图的 JSON 里），因为它决定下游用哪一版；
+ * 只改本地内存的话，刷新就回到旧版，而下游已经按新版跑过 —— 两边对不上。
+ */
+async function pick(nodeId: string, artifactId: string): Promise<void> {
   const artifact = artifacts.value.find(a => a.id === artifactId)
   if (!artifact) return
+  // 先本地生效（点下去立刻有反馈），再落服务端。
   selectArtifact(graph.value, artifact)
+  if (!graphId.value) return
+  try {
+    graphRevision.value = await canvasApi.pickArtifact({
+      id: graphId.value,
+      nodeId,
+      slot: artifact.slot,
+      artifactId
+    })
+  } catch (err) {
+    showToast(`选定没能保存：${errText(err)}`)
+  }
 }
 
 /** 组内选用第几张 —— 三视图/首帧"挑一张"，选中的那张才往下走。 */
-function pickItem(nodeId: string, artifactId: string, index: number): void {
+async function pickItem(nodeId: string, artifactId: string, index: number): Promise<void> {
+  const artifact = artifacts.value.find(a => a.id === artifactId)
+  if (!artifact) return
   artifacts.value = withItemPicked(graph.value, artifacts.value, artifactId, index)
-  showToast(`已选用第 ${index + 1} 张，下游按这张走`)
+  if (!graphId.value) return
+  try {
+    graphRevision.value = await canvasApi.pickArtifact({
+      id: graphId.value,
+      nodeId,
+      slot: artifact.slot,
+      artifactId,
+      item: index
+    })
+    showToast(`已选用第 ${index + 1} 张，下游按这张走`)
+  } catch (err) {
+    showToast(`选定没能保存：${errText(err)}`)
+  }
 }
 
-/** 组内逐张驳回（三视图里"侧面那张不行"）。 */
+/** 组内逐张驳回（三视图里"侧面那张不行"）—— 只动这一张的标注，整个产物的审核态另说。 */
 function reviewItem(nodeId: string, artifactId: string, index: number, action: 'approved' | 'rejected'): void {
   artifacts.value = withItemReview(artifacts.value, artifactId, index, action)
 }
 
-function review(nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void {
+/** 审核一份产物（审核对象是**产物**，不是节点）。 */
+async function review(nodeId: string, artifactId: string, action: 'approved' | 'rejected'): Promise<void> {
   artifacts.value = artifacts.value.map(a => (a.id === artifactId ? { ...a, review: action } : a))
-  showToast(action === 'approved' ? '已认可这一份' : '已驳回，产物还在，可重跑')
+  if (!graphId.value) return
+  try {
+    await canvasApi.reviewArtifact({ id: graphId.value, artifactId, review: action })
+    showToast(action === 'approved' ? '已认可这一份' : '已驳回，产物还在，可重跑')
+  } catch (err) {
+    showToast(`审核没能保存：${errText(err)}`)
+  }
+}
+
+/**
+ * 把分镜表的草稿存成**服务端的新版本**（不动老版本，并把新的那版设为当前选用）。
+ *
+ * 为什么要落服务端：以前这里在浏览器内存里造一条产物，刷新就没了 —— 而下游已经
+ * 按它跑过，两边对不上。服务端按 (node, slot) 自增版本，回传的那条就是权威。
+ */
+async function saveRows(nodeId: string): Promise<void> {
+  const node = graph.value.nodes.find(n => n.id === nodeId)
+  if (!node) return
+  const spec = nodeTypeSpec(node.kind)
+  const slot = spec.outputs[0]?.slot ?? ''
+  const rows = tableRowsOf(node)
+  if (!slot || !rows.length) {
+    showToast('这一版没有可保存的行')
+    return
+  }
+  if (!graphId.value) {
+    await saveToServer(true)
+    if (!graphId.value) {
+      showToast('先保存成功才能存新版本')
+      return
+    }
+  }
+  try {
+    const saved = await canvasApi.saveArtifact({
+      id: graphId.value,
+      nodeId,
+      slot,
+      type: spec.outputs[0]?.type,
+      rows,
+      note: `${rows.length} 镜 · 手工改过`
+    })
+    const artifact = toCanvasArtifact(saved)
+    mergeArtifacts([artifact])
+    selectArtifact(graph.value, artifact)
+    discardRows(nodeId)
+    showToast(`已存为 v${artifact.version}（待确认）—— 认可后下游才能跑`)
+  } catch (err) {
+    showToast(`存新版本失败：${errText(err)}`)
+  }
+}
+
+/** 删一份产物（被选定的删不掉 —— 服务端会拒，前端先把话说清楚）。 */
+async function removeArtifact(artifactId: string): Promise<void> {
+  if (!graphId.value) return
+  try {
+    await canvasApi.delArtifact({ id: graphId.value, artifactId })
+    artifacts.value = artifacts.value.filter(a => a.id !== artifactId)
+    showToast('产物已删除')
+  } catch (err) {
+    showToast(`删不掉：${errText(err)}`)
+  }
 }
 
 function openArtifact(artifact: CanvasArtifact): void {
@@ -1128,16 +1285,6 @@ function openArtifact(artifact: CanvasArtifact): void {
 }
 
 // ---------------------------------------------------------------- 详情面板
-
-const shownArtifact = computed(() => {
-  const node = selected.value
-  if (!node || !selectedSpec.value) return undefined
-  const slot = selectedSpec.value.outputs[0]?.slot
-  if (!slot) return undefined
-  const list = artifactsOf(artifacts.value, node.id, slot)
-  const picked = node.outputs[slot]
-  return list.find(a => a.id === picked?.artifactId) ?? list[0]
-})
 
 /** 剪辑合成要拼的片段顺序（默认按镜号；手动调过就按存的顺序）。 */
 const fragments = computed(() => {
@@ -1198,7 +1345,6 @@ const {
   rowsDirty,
   updateRow,
   discardRows,
-  saveRowsAsVersion,
   clearDrafts
 } = useCanvasRows({ graph, artifacts, toast: showToast })
 
@@ -1227,8 +1373,11 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
   // 首屏适应一次，保证一进来就看得到整条产线
   window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
-  // 示例里预置的"运行中"落地，让状态机动起来
-  settleSeededRuns()
+  // 载入服务端最近编辑的那张图（没有就留空白图）。
+  // 未登录时接口会失败，前端只提示一次、把画布留空 —— 不拿示例数据兜底。
+  void loadFromServer()
+  // 任务完成/失败由事件流推送 → 刷新整图（异步产物只有这样才会自己冒出来）。
+  void watchEvents()
   // 每一步的模型下拉：按模态取目录。
   // 文本那一类后端已经下发（catalog.textModels，见 R2 文档 0.7）；音频还没有，
   // 取不到就留一句"服务端默认"。
@@ -1256,21 +1405,18 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   mq?.removeEventListener('change', syncWide)
   window.removeEventListener('keydown', onKeydown)
+  eventAbort?.abort()
+  if (reloadTimer) window.clearTimeout(reloadTimer)
 })
 
 function fit(): void {
   fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 })
 }
 
-/** 重置示例：回到内置的那条产线（后端接通后这个按钮改成"载入模板"）。 */
-function resetSample(): void {
-  const fresh = buildCanvasSample()
-  graph.value = fresh.graph
-  artifacts.value = fresh.artifacts
-  runs.value = fresh.runs
-  selectedId.value = ''
-  demo.value = true
-  showToast('已重置为示例数据')
+/** 重新载入：把这张图从服务端再拉一次（别人改了 / 异步任务落了产物的场景）。 */
+async function reloadFromServer(): Promise<void> {
+  await reloadGraph()
+  showToast('已重新载入')
   window.setTimeout(fit, 120)
 }
 
@@ -1281,7 +1427,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
   <div class="cg-page">
     <!-- 顶栏 -->
     <CanvasTopbar
-      :demo="demo"
+
       :node-count="graph.nodes.length"
       :ready-count="readyCount"
       :pending="pending"
@@ -1299,7 +1445,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
       @zoom-out="zoomOut()"
       @new="openStart('new')"
       @fit="fit"
-      @reset="resetSample"
+      @save="saveToServer()"
       @run-all="runAll"
     />
 
@@ -1364,7 +1510,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
                 @pick="pick"
                 @pick-item="pickItem"
                 @row-update="(id: string, index: number, key: keyof CanvasShotRow, value: string | number) => updateRow(id, index, key, value)"
-                @rows-save="saveRowsAsVersion"
+                @rows-save="saveRows"
                 @rows-discard="discardRows"
                 @collapse="(id: string, collapsed: boolean) => { const n = graph.nodes.find(x => x.id === id); if (n) n.collapsed = collapsed }"
                 @review="review"
@@ -1548,13 +1694,14 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
         @expand="expand"
         @param="(id: string, key: string, value: unknown) => setParam(graph.nodes.find(n => n.id === id)!, key, value)"
         @row-update="updateRow"
-        @rows-save="saveRowsAsVersion"
+        @rows-save="saveRows"
         @rows-discard="discardRows"
         @pick="pick"
         @pick-item="pickItem"
         @review="review"
         @review-item="reviewItem"
         @open-artifact="openArtifact"
+        @delete-artifact="removeArtifact"
         @update:follow-up="followUp = $event"
         @continue="continueFrom"
         @move-fragment="moveFragment"

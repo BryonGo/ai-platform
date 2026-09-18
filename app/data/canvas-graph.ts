@@ -115,6 +115,15 @@ export interface CanvasArtifact {
   manifest?: CanvasExportManifest
   review: CanvasReview
   createdAt: string
+  /**
+   * 文件在对象存储的骨架（服务端给的素材 id）。
+   *
+   * 前端只用来"把这一份交回服务端"（例如挑片后告诉后端用哪张），展示一律用 `url`
+   * —— URL 是**限时签名**，每次读图都由服务端重签。
+   */
+  mediaAssetId?: string
+  /** 这条产物是哪次跑出来的（服务端字段，排查用）。 */
+  runId?: string
 }
 
 /**
@@ -127,6 +136,8 @@ export interface CanvasArtifactItem {
   url: string
   /** 组内标注：正面 / 侧面 / 背面；候选 1 / 2 / 3 */
   label?: string
+  /** 这一张对应的素材 id（服务端用来取参考图；前端不必读，但原样带着不丢）。 */
+  mediaAssetId?: string
   picked?: boolean
   review?: CanvasReview
 }
@@ -141,6 +152,10 @@ export interface CanvasExportManifest {
   exported: { label: string, note?: string }[]
   skipped: { label: string, reason: string }[]
   mismatch: { label: string, detail: string }[]
+  /** 以下三个是服务端多带的（前端不读也不影响）：导出任务 id / 状态 / 条目数。 */
+  exportId?: string
+  status?: string
+  total?: number
 }
 
 /** 分镜表的一行（一镜）。 */

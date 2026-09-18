@@ -48,14 +48,7 @@
   white-space: nowrap;
 }
 
-.cg-demo {
-  padding: 2px 8px;
-  font-size: 10.5px;
-  color: var(--hg3-warn);
-  background: rgb(255 180 84 / 12%);
-  border-radius: 999px;
-  white-space: nowrap;
-}
+
 
 .cg-top-mid { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .cg-metric { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--hg3-muted); white-space: nowrap; }

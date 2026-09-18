@@ -60,6 +60,7 @@ const emit = defineEmits<{
   (e: 'review', nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void
   (e: 'review-item', nodeId: string, artifactId: string, index: number, action: 'approved' | 'rejected'): void
   (e: 'open-artifact', artifact: CanvasArtifact): void
+  (e: 'delete-artifact', artifactId: string): void
   (e: 'update:followUp', value: string): void
   (e: 'continue', nodeId: string): void
   (e: 'move-fragment', index: number, dir: -1 | 1): void
@@ -497,6 +498,15 @@ function updateFollowUp(value: string): void {
                 @click="emit('open-artifact', a)"
               >
                 打开
+              </button>
+              <!-- 删的是**这一版**：当前选用的那版删不掉（服务端会拒），先改选再删。 -->
+              <button
+                v-if="a.id !== shown?.id"
+                class="cg-mini cg-mini--danger"
+                type="button"
+                @click="emit('delete-artifact', a.id)"
+              >
+                删除
               </button>
             </div>
           </div>
