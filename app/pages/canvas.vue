@@ -1033,7 +1033,7 @@ function errText(err: unknown): string {
  */
 async function runNode(
   nodeId: string,
-  opts: { silent?: boolean, base?: CanvasArtifact, followUp?: string, force?: boolean } = {}
+  opts: { silent?: boolean, base?: CanvasArtifact, followUp?: string, force?: boolean, batch?: boolean } = {}
 ): Promise<void> {
   const node = graph.value.nodes.find(n => n.id === nodeId)
   if (!node) return
@@ -1070,7 +1070,10 @@ async function runNode(
       nodeId,
       force: !!opts.force,
       baseArtifactId: opts.base?.id,
-      instruction: opts.followUp
+      instruction: opts.followUp,
+      // 单点「运行」= 用户正在等这一步：给高分，插到批量任务前面
+      // （「运行全部」逐节点调用时走 priority 0，见 runAll）。
+      priority: opts.batch ? 0 : 10
     }, {
       onDelta: (text) => {
         streaming.value = { ...streaming.value, [nodeId]: (streaming.value[nodeId] ?? '') + text }
@@ -1181,7 +1184,8 @@ async function runAll(): Promise<void> {
   }
   showToast(`开始运行 ${runnable.length} 个节点${blocked ? `（${blocked} 个卡住，跳过）` : ''}`)
   for (const item of runnable) {
-    await runNode(item.nodeId, { silent: true })
+    // batch: true → 建单优先级 0：批量任务给"用户正在等的单点操作"让路。
+    await runNode(item.nodeId, { silent: true, batch: true })
   }
   // 跑完再拉一次整图：异步任务（图/视频）的产物是后端收敛后落库的。
   await reloadGraph()

@@ -258,7 +258,20 @@ export function useCanvasApi() {
    * `error` / `done`。**流里报错时 HTTP 仍是 200**，所以别按状态码判成败。
    */
   async function runNodeStream(
-    in_: { id: string, nodeId: string, force?: boolean, baseArtifactId?: string, instruction?: string },
+    in_: {
+      id: string
+      nodeId: string
+      force?: boolean
+      baseArtifactId?: string
+      instruction?: string
+      /**
+       * 任务领取优先级：单点「运行」给 10，「运行全部」逐节点给 0（默认）。
+       *
+       * 为什么要区分：一次运行全部会连着建十几个平台任务，用户紧接着单点某个节点时，
+       * 那颗任务应该插到批量任务前面 —— 否则交互式操作要等整批跑完。
+       */
+      priority?: number
+    },
     handlers: {
       onDelta?: (text: string) => void
       onArtifact?: (payload: { run?: ServerRun, artifact?: ServerArtifact, artifacts?: ServerArtifact[], cached?: boolean }) => void
@@ -285,7 +298,8 @@ export function useCanvasApi() {
         node_id: in_.nodeId,
         force: !!in_.force,
         base_artifact_id: in_.baseArtifactId || 0,
-        instruction: in_.instruction || ''
+        instruction: in_.instruction || '',
+        priority: in_.priority || 0
       })
     })
     if (!resp.ok || !resp.body) {
