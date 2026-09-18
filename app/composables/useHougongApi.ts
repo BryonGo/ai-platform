@@ -274,7 +274,29 @@ export interface Catalog {
    * 且按 token 用量计费（单价在站点配置里），没有图像那套「清晰度档 × 每档单价」。
    */
   textModels?: CatalogTextModel[]
+  /**
+   * 音频模型（kind=audio，openai_audio 协议），画布「配音配乐」节点的模型下拉用它。
+   *
+   * 同样单独一个桶：音频没有档位、没有家族版本，只有「能不能用」——
+   * 未接音频上游时这一桶是空的，前端据此显示"本站暂无音频模型"。
+   */
+  audioModels?: CatalogAudioModel[]
   rates?: CatalogRates
+}
+
+/** 一个音频模型（语音合成）。字段比文本/视频少，因为一次调用没有档位可选。 */
+export interface CatalogAudioModel {
+  id: string
+  name: string
+  author?: string
+  excerpt?: string
+  summary?: string
+  available: boolean
+  selectable: boolean
+  unavailableReason?: string
+  family?: string
+  versionLabel?: string
+  isDefault?: boolean
 }
 
 /**

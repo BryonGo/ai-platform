@@ -387,10 +387,33 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     outputs: [{ slot: 'audio', type: 'audio', label: '配音与配乐' }],
     params: [
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
-      { key: 'voice', label: '音色', kind: 'select', options: [{ value: 'warm', label: '温和女声' }, { value: 'cold', label: '冷冽女声' }, { value: 'deep', label: '低沉男声' }] },
-      { key: 'bgm', label: '背景音乐', kind: 'text', placeholder: '整集统一铺，逐镜不铺' }
+      // 音色用**上游口径的 id**（OpenAI 兼容 TTS 的 voice 名），标签写中文方便选。
+      // 早先这里是 warm/cold/deep 三个产品词，服务端还得再猜一层映射 —— 猜错的表现
+      // 是"上游回 400 或读出来的音色不是选的那个"，而前端本来就能直接给对的值。
+      {
+        key: 'voice',
+        label: '音色',
+        kind: 'select',
+        options: [
+          { value: 'alloy', label: '中性（alloy）' },
+          { value: 'nova', label: '温和女声（nova）' },
+          { value: 'shimmer', label: '明亮女声（shimmer）' },
+          { value: 'onyx', label: '低沉男声（onyx）' },
+          { value: 'echo', label: '沉稳男声（echo）' }
+        ]
+      },
+      {
+        key: 'mode',
+        label: '配音方式',
+        kind: 'select',
+        options: [
+          { value: 'whole', label: '整集合成（默认，可直接接剪辑合成）' },
+          { value: 'perShot', label: '逐镜一条（便于逐镜替换）' }
+        ]
+      },
+      { key: 'bgm', label: '背景音乐', kind: 'text', placeholder: '整集统一铺（需要音乐上游，暂未接入）' }
     ],
-    stage: 'planned',
+    stage: 'ready',
     estimateCredits: 30
   },
   {

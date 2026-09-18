@@ -1379,8 +1379,8 @@ onMounted(async () => {
   // 任务完成/失败由事件流推送 → 刷新整图（异步产物只有这样才会自己冒出来）。
   void watchEvents()
   // 每一步的模型下拉：按模态取目录。
-  // 文本那一类后端已经下发（catalog.textModels，见 R2 文档 0.7）；音频还没有，
-  // 取不到就留一句"服务端默认"。
+  // 文本与音频都由后端下发（catalog.textModels / catalog.audioModels）；
+  // 取不到就留一句"服务端默认"（音频还没接上游时这一桶本来就是空的）。
   const fallback = { value: '', label: '服务端默认（目录未接通）' }
   try {
     const catalog = await hgApi.getCatalog()
@@ -1391,14 +1391,24 @@ onMounted(async () => {
     const text = (catalog.textModels ?? [])
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
+    const audio = (catalog.audioModels ?? [])
+      .filter(m => m.available !== false)
+      .map(m => ({ value: m.id, label: m.name }))
     modelOptions.value = {
       text: text.length ? text : [fallback],
-      audio: [],
+      // 音频这一桶在没接音频上游时本来就是空的：给一句能照着做的提示，
+      // 而不是让下拉空着（空下拉让人以为"界面坏了"）。
+      audio: audio.length ? audio : [{ value: '', label: '本站暂无音频模型（先在后台接入）' }],
       image: image.length ? image : [fallback],
       video: video.length ? video : [fallback]
     }
   } catch {
-    modelOptions.value = { text: [fallback], audio: [], image: [fallback], video: [fallback] }
+    modelOptions.value = {
+      text: [fallback],
+      audio: [{ value: '', label: '本站暂无音频模型（先在后台接入）' }],
+      image: [fallback],
+      video: [fallback]
+    }
   }
 })
 
