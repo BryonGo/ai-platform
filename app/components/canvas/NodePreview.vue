@@ -205,9 +205,14 @@ const slotSummaries = computed(() =>
       </div>
     </div>
 
-    <!-- 视频 -->
+    <!-- 视频 / 成片 -->
+    <!--
+      成片（`cut`）以前只有一个占位图标 —— 那时合成节点确实只出排序清单。
+      现在它是一条真 mp4（`canvas_artifact.media_asset_id` 指向合成结果），
+      所以按视频一样显示：封面（mp4 首帧）+ 播放角标 + 备注（分辨率/时长/标识）。
+    -->
     <div
-      v-else-if="spec.outputs[0]?.type === 'video'"
+      v-else-if="spec.outputs[0]?.type === 'video' || spec.outputs[0]?.type === 'cut'"
       class="cg-video"
     >
       <template v-if="shown?.url">
@@ -223,8 +228,12 @@ const slotSummaries = computed(() =>
         v-else
         class="cg-empty"
       >
-        <i class="i-lucide-film" />
-        <span>{{ state === 'running' ? '渲染中…' : '待渲染' }}</span>
+        <i :class="spec.outputs[0]?.type === 'cut' ? 'i-lucide-clapperboard' : 'i-lucide-film'" />
+        <span>
+          {{ state === 'running'
+            ? (spec.outputs[0]?.type === 'cut' ? '合成中…' : '渲染中…')
+            : '待渲染' }}
+        </span>
       </div>
     </div>
 
