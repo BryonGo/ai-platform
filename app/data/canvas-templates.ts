@@ -16,7 +16,15 @@ export interface CanvasTemplateInfo {
   id: string
   name: string
   summary: string
+  /** 内置产线（代码里那份，来自 canvas-sample）。 */
   builtIn?: boolean
+  /**
+   * 运营下发的站点模板（来自 `/canvas/template/list`）。
+   *
+   * 与本地模板的区别是**所有权**：站点模板全站可见、用户删不掉（要下架得去后台），
+   * 本地模板是这台浏览器里的私人草稿。两者在列表里长一样，但删除按钮只给后者。
+   */
+  site?: boolean
 }
 
 export interface CanvasTemplatePayload {

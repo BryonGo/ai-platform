@@ -10,6 +10,7 @@
  *   2. 服务端多带的字段（mediaAssetId / runId / taskIds）原样带上，前端要就用。
  */
 import type { CanvasArtifact, CanvasExportManifest, CanvasGraph, CanvasReview, CanvasRun } from '~/data/canvas-graph'
+import type { CanvasTemplateInfo } from '~/data/canvas-templates'
 import { apiBase, apiRequest, siteCode, useAuthSession } from './useApi'
 
 // ---------------------------------------------------------------- 服务端形状
@@ -25,6 +26,16 @@ export interface CanvasGraphSummary {
   revision: number
   updatedAt: number
   createdAt: number
+}
+
+/** 运营模板列表项（服务端形状）。 */
+export interface CanvasTemplateItem {
+  id: string
+  name: string
+  summary: string
+  nodeCount: number
+  updatedAt: number
+  builtIn: boolean
 }
 
 /** 一次执行（服务端形状）。 */
@@ -138,6 +149,43 @@ export function toCanvasArtifact(a: ServerArtifact): CanvasArtifact {
 // ---------------------------------------------------------------- 图
 
 export function useCanvasApi() {
+  /**
+   * 本站**运营下发的模板**（只读）。
+   *
+   * 与浏览器本地模板分开：这一份是站点资产（后台配、全站可见），本地那份是用户私人草稿。
+   * 拿不到就返回空数组 —— 页面据此回退到"内置产线 + 本地模板"，不会因为接口挂了打不开画布。
+   */
+  async function listTemplates(): Promise<CanvasTemplateItem[]> {
+    // 服务端回的是 `{list: [...]}`（与后台模板接口同一形状），不是裸数组 ——
+    // 按数组取会得到 undefined，`.map` 抛错后被调用方的 try/catch 吞掉，
+    // 表现是"接口 200 但面板里没有运营模板"（这个坑真踩过，别改成想当然的形状）。
+    const data = await apiRequest<{ list: CanvasTemplateItem[] }>('/canvas/template/list')
+    return data?.list ?? []
+  }
+
+  /**
+   * 站点模板 → 起始面板要的模型。
+   *
+   * `site: true` 让面板知道"这不是用户自己的模板"（不给删除按钮）；
+   * summary 里带上步数 —— 用户选模板时第一句想知道的就是"几步、要不要我填东西"。
+   */
+  function toTemplateInfos(items: CanvasTemplateItem[]): CanvasTemplateInfo[] {
+    return (items ?? []).map(t => ({
+      id: `site:${t.id}`,
+      name: t.name,
+      summary: t.nodeCount ? `${t.summary || '运营模板'}（${t.nodeCount} 步）` : (t.summary || '运营模板'),
+      site: true
+    }))
+  }
+
+  /** 取一条运营模板的结构（套用）。id 回空串 = 这条模板已经下架了。 */
+  async function getTemplate(id: string): Promise<{ id: string, graph: CanvasGraph | null }> {
+    const data = await apiRequest<{ id: string, graph: CanvasGraph | null }>(
+      `/canvas/template/detail?id=${encodeURIComponent(id)}`
+    )
+    return { id: data?.id ?? '', graph: (data?.graph as CanvasGraph) ?? null }
+  }
+
   /** 我的图列表（列表页不拉整图）。 */
   function listGraphs(product = ''): Promise<CanvasGraphSummary[]> {
     const query = product ? `?product=${encodeURIComponent(product)}` : ''
@@ -432,6 +480,9 @@ export function useCanvasApi() {
   }
 
   return {
+    listTemplates,
+    toTemplateInfos,
+    getTemplate,
     listGraphs,
     getGraph,
     saveGraph,

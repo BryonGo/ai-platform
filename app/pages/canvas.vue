@@ -100,9 +100,30 @@ const menu = ref<{ x: number, y: number, kind: 'node' | 'pane' | 'edge' | 'selec
 const startPanel = ref<{ mode: 'new' | 'save' } | null>(null)
 const templates = ref<CanvasTemplateInfo[]>([])
 
-function openStart(mode: 'new' | 'save'): void {
-  templates.value = listTemplates()
+/**
+ * 运营下发的站点模板（只读）。拿不到就是空数组 —— 面板照常显示内置产线与本地模板。
+ *
+ * 这是刻意的**本地回退**：模板接口挂了不该让人打不开画布，
+ * 而"运营模板"与"我自己的模板"在面板里长得一样，用户不必知道它们存哪。
+ */
+const siteTemplates = ref<CanvasTemplateInfo[]>([])
+
+async function refreshSiteTemplates(): Promise<void> {
+  try {
+    siteTemplates.value = canvasApi.toTemplateInfos(await canvasApi.listTemplates())
+  } catch {
+    // 接口不可用：保留上次拿到的（可能是空的），不打断用户
+  }
+}
+
+async function openStart(mode: 'new' | 'save'): Promise<void> {
+  // 先把手里有的摆出来（内置 + 本地 + 上次拉到的运营模板），**再**去拉一次：
+  // 拉取是异步的，等它回来才渲染会让面板白等一个来回；但拉回来之后必须再赋一次值 ——
+  // 否则这一次打开看到的永远是"拉取之前"的列表（运营模板要等下次打开才出现）。
+  templates.value = [...siteTemplates.value, ...listTemplates()]
   startPanel.value = { mode }
+  await refreshSiteTemplates()
+  templates.value = [...siteTemplates.value, ...listTemplates()]
 }
 
 /** 换一张图（新建/套模板）后，历史基线要重建，否则能"撤销"回上一张图，很怪。 */
@@ -126,9 +147,29 @@ function newBlank(): void {
   showToast('空白画布：从左栏拖节点，或从端口拖线到空白处建节点')
 }
 
-function useTemplate(id: string): void {
-  const payload = loadTemplate(id)
+async function useTemplate(id: string): Promise<void> {
   startPanel.value = null
+  // 站点模板要现拉结构（列表里只有名字与步数：一张图可能很大，不该随列表下发）。
+  if (id.startsWith('site:')) {
+    try {
+      const detail = await canvasApi.getTemplate(id.slice(5))
+      if (!detail.graph) {
+        showToast('这个模板已经下架了')
+        return
+      }
+      // 与内置模板同一口径：**只给结构**，产物与运行记录一律为空。
+      replaceCanvas({
+        graph: { ...detail.graph, nodes: (detail.graph.nodes ?? []).map(n => ({ ...n, outputs: {} })) },
+        artifacts: [],
+        runs: []
+      })
+      showToast('已套用运营模板')
+    } catch {
+      showToast('这个模板暂时拉不下来，稍后再试')
+    }
+    return
+  }
+  const payload = loadTemplate(id)
   if (!payload) {
     showToast('这个模板读不出来了')
     return
@@ -1378,6 +1419,8 @@ onMounted(async () => {
   void loadFromServer()
   // 任务完成/失败由事件流推送 → 刷新整图（异步产物只有这样才会自己冒出来）。
   void watchEvents()
+  // 模板先拉一次：等用户点「新建」时才拉会白等一个来回。
+  void refreshSiteTemplates()
   // 每一步的模型下拉：按模态取目录。
   // 文本与音频都由后端下发（catalog.textModels / catalog.audioModels）；
   // 取不到就留一句"服务端默认"（音频还没接上游时这一桶本来就是空的）。

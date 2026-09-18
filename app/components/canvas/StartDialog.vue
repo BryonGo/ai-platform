@@ -82,13 +82,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           @click="emit('use', t.id)"
           @keydown.enter="emit('use', t.id)"
         >
-          <i :class="t.builtIn ? 'i-lucide-sparkles' : 'i-lucide-bookmark'" />
+          <i :class="t.builtIn ? 'i-lucide-sparkles' : (t.site ? 'i-lucide-layout-template' : 'i-lucide-bookmark')" />
           <span>
             <b>{{ t.name }}</b>
             <i>{{ t.summary }}</i>
           </span>
           <button
-            v-if="!t.builtIn"
+            v-if="!t.builtIn && !t.site"
             class="cg-option-del"
             type="button"
             title="删掉这个模板"
