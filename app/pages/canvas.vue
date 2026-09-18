@@ -1229,8 +1229,9 @@ onMounted(async () => {
   window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
   // 示例里预置的"运行中"落地，让状态机动起来
   settleSeededRuns()
-  // 每一步的模型下拉：按模态取目录。目录里还没有文本/音频那两类，
-  // 取不到就留一句"服务端默认"，等后端在 catalog 里补上（见 R2 文档 0.7）。
+  // 每一步的模型下拉：按模态取目录。
+  // 文本那一类后端已经下发（catalog.textModels，见 R2 文档 0.7）；音频还没有，
+  // 取不到就留一句"服务端默认"。
   const fallback = { value: '', label: '服务端默认（目录未接通）' }
   try {
     const catalog = await hgApi.getCatalog()
@@ -1238,14 +1239,17 @@ onMounted(async () => {
     const video = (catalog.videoModels ?? [])
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
+    const text = (catalog.textModels ?? [])
+      .filter(m => m.available !== false)
+      .map(m => ({ value: m.id, label: m.name }))
     modelOptions.value = {
-      text: [],
+      text: text.length ? text : [fallback],
       audio: [],
       image: image.length ? image : [fallback],
       video: video.length ? video : [fallback]
     }
   } catch {
-    modelOptions.value = { text: [], audio: [], image: [fallback], video: [fallback] }
+    modelOptions.value = { text: [fallback], audio: [], image: [fallback], video: [fallback] }
   }
 })
 

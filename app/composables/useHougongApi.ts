@@ -267,7 +267,42 @@ export interface Catalog {
   loras: CatalogItem[]
   videoModels: CatalogVideoModel[]
   cloudModels: CloudModel[]
+  /**
+   * 文本模型（kind=chat，openai_chat 协议）。
+   *
+   * 与 cloudModels 分开：文本声明的是上下文窗口 / 输出上限 / 推理档位，
+   * 且按 token 用量计费（单价在站点配置里），没有图像那套「清晰度档 × 每档单价」。
+   */
+  textModels?: CatalogTextModel[]
   rates?: CatalogRates
+}
+
+/**
+ * 一个文本模型。
+ *
+ * `available === false` 时**不要摆进下拉**：后端只在 ?includeUnavailable=1 口径下
+ * 才下发未就绪条目，常规目录里不会出现（这里的过滤是防御性的）。
+ */
+export interface CatalogTextModel {
+  id: string
+  name: string
+  author?: string
+  excerpt?: string
+  cover?: string
+  summary?: string
+  description?: string
+  /** 上下文窗口（token）；0/缺省 = 上游与后台都没声明 */
+  contextWindow?: number
+  /** 单次最大输出（token）；0/缺省 = 未声明 */
+  maxOutput?: number
+  /** 推理档位；没有该字段 = 该模型不支持推理强度（不要拿空数组当默认） */
+  reasoning?: { efforts: string[], default?: string }
+  available: boolean
+  selectable: boolean
+  unavailableReason?: string
+  family?: string
+  versionLabel?: string
+  isDefault?: boolean
 }
 
 export interface HougongTask {
