@@ -343,7 +343,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'i2v',
     group: 'video',
     label: '图生视频',
-    subtitle: '首帧 + 关键词生成视频',
+    subtitle: '首帧 + 关键词生成视频 · 640P 竖屏',
     icon: 'i-lucide-clapperboard',
     width: 248,
     modelKind: 'video',
@@ -355,7 +355,6 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     outputs: [{ slot: 'video', type: 'video', label: '视频片段' }],
     params: [
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
-      { key: 'tier', label: '档位', kind: 'select', options: [{ value: 'preview', label: '预览 · 432x768 · 便宜十倍' }, { value: 'final', label: '定稿 · 768x1344 · 交付档' }] },
       { key: 'frames', label: '帧数', kind: 'frames' },
       {
         key: 'generateAudio',
@@ -370,7 +369,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       { key: 'h3Prompt', label: '运动描述', kind: 'textarea', placeholder: '不接分镜时用这里；接了就以分镜为准' }
     ],
     stage: 'ready',
-    estimateCredits: 96
+    estimateCredits: 24
   },
   {
     kind: 'audio',
