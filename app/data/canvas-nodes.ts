@@ -354,7 +354,9 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'video', type: 'video', label: '视频片段' }],
     params: [
-      { key: 'modelId', label: '模型', kind: 'select', options: [] },
+      // 花费口径写在这里：视频是按**每秒单价**扣的（各模型不同），而节点卡上那个
+      // 「预计」是固定档位参考 —— 不写清楚，用户会拿预计当账单。
+      { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '实际按所选模型的每秒单价 × 时长计费（余额分）；卡片上的「预计」只是档位参考' },
       { key: 'frames', label: '帧数', kind: 'frames' },
       {
         key: 'generateAudio',
@@ -450,8 +452,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'zip', type: 'zip', label: '压缩包' }],
     params: [
-      { key: 'baseline', label: '基准画幅', kind: 'select', options: [{ value: '768x1344', label: '定稿 768x1344（默认）' }, { value: '432x768', label: '预览 432x768' }, { value: '1080x1920', label: '超分 1080x1920' }], hint: '与这一集的基准比对，不一致的片段单列出来' },
-      { key: 'nameRule', label: '命名规则', kind: 'text', hint: 'E{集号}-S{镜号}.mp4，镜号补零位数按本集最大镜号' }
+      { key: 'baseline', label: '基准画幅', kind: 'select', options: [{ value: '768x1344', label: '定稿 768x1344（默认）' }, { value: '432x768', label: '预览 432x768' }, { value: '1080x1920', label: '超分 1080x1920' }], hint: '与这一集的基准比对，不一致的片段单列出来' }
     ],
     stage: 'ready',
     estimateCredits: 0

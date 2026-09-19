@@ -84,7 +84,6 @@ export function buildCanvasSample(): CanvasSample {
   compose.params.order = 'idx'
   compose.params.merge = 'list'
   board.params.instruction = '第 1 镜再远一点，加一个空镜；每镜不超过 6 秒'
-  exp.params.nameRule = 'E01-S{镜号}.mp4'
 
   nodes.push(script, write, split, castA, castB, sceneA, sceneB, board, kf1, kf2, kf3, vd1, vd2, vd3, audio, compose, exp)
   edges.push(
