@@ -46,12 +46,32 @@ function valueOf(key: string): string {
 
 function optionsOf(p: CanvasParamSpec): { value: string, label: string }[] {
   const dynamic = props.optionsByKey?.[p.key]
-  if (dynamic && dynamic.length) return dynamic
+  const list = (dynamic && dynamic.length ? dynamic : null) ?? p.options ?? []
+  if (list.length) return withStoredValue(list, p)
+
   if (p.key === 'modelId') {
-    const list = props.modelOptions?.[props.spec.modelKind ?? ''] ?? []
-    return list.length ? list : [{ value: '', label: '服务端默认' }]
+    const models = props.modelOptions?.[props.spec.modelKind ?? ''] ?? []
+    return models.length ? withStoredValue(models, p) : [{ value: '', label: '服务端默认' }]
   }
-  return p.options ?? []
+  // 候选还没到（目录没接通、还没选模型）：给一句说明，别给空下拉 ——
+  // 空下拉看起来就是"界面坏了"，而用户这时候其实什么都没做错。
+  return [{ value: '', label: list.length ? '' : '按模型默认' }]
+}
+
+/**
+ * 把节点上**已经存着的值**补进候选。
+ *
+ * 为什么需要：候选是跟着模型能力实时变的（换模型、后台改了能力），旧的图里可能存着
+ * 现在不支持的档。不在候选里又不显示，下拉就是空白 —— 用户既看不出当前用的什么，
+ * 也没法确认自己是不是选错了。补一条带标记的选项，让人看得见、能改掉。
+ */
+function withStoredValue(
+  list: { value: string, label: string }[],
+  p: CanvasParamSpec
+): { value: string, label: string }[] {
+  const current = valueOf(p.key)
+  if (!current || list.some(o => o.value === current)) return list
+  return [{ value: current, label: `${current}（当前值，模型未声明）` }, ...list]
 }
 </script>
 
