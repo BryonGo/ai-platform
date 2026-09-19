@@ -127,6 +127,16 @@ const runs = ref<CanvasRun[]>([])
 const graphId = ref('')
 /** 打开这张图时看到的版本号：更新时必须原样回传，服务端据此挡并发覆盖。 */
 const graphRevision = ref(0)
+/**
+ * 本次会话**主动删掉**、还没提交给服务端的节点/连线 id。
+ *
+ * 保存是整图提交，"我没提交它"和"我删了它"在请求体里长得一模一样 ——
+ * 服务端以前只能靠新旧清单做差集猜，于是任何一次"手里只有半张图"的保存
+ * 都会静默删掉别人的节点（2026-09-19 就这样丢掉了一整套首帧产物）。
+ * 现在删除必须显式说一声，其余节点/连线一律保留。
+ */
+const pendingNodeDeletes = ref<string[]>([])
+const pendingEdgeDeletes = ref<string[]>([])
 /** 顶部标题（服务端也存一份）。 */
 const graphTitle = ref('未命名图')
 /** 保存/载入中：按钮转圈，避免连点。 */
@@ -1066,7 +1076,12 @@ function onMenuPick(key: string): void {
       break
     }
     case 'run-selected': void runSelected(); break
-    case 'disconnect': if (target?.edgeId) disconnect(graph.value, target.edgeId); break
+    case 'disconnect':
+      if (target?.edgeId) {
+        if (!pendingEdgeDeletes.value.includes(target.edgeId)) pendingEdgeDeletes.value.push(target.edgeId)
+        disconnect(graph.value, target.edgeId)
+      }
+      break
   }
 }
 
@@ -1074,7 +1089,15 @@ function onMenuPick(key: string): void {
 function deleteSelected(): void {
   const ids = selectedNodeIds()
   if (ids.some(id => runningIds.value.includes(id) || runs.value.some(r => r.nodeId === id && r.status === 'running'))) { showToast('选区包含运行中的节点，暂不能删除'); return }
-  for (const id of ids) removeNode(graph.value, id)
+  for (const id of ids) {
+    for (const edge of graph.value.edges.filter(e => e.from.node === id || e.to.node === id)) {
+      if (!pendingEdgeDeletes.value.includes(edge.id)) pendingEdgeDeletes.value.push(edge.id)
+    }
+    if (savedGraph.value.nodes.some(n => n.id === id) && !pendingNodeDeletes.value.includes(id)) {
+      pendingNodeDeletes.value.push(id)
+    }
+    removeNode(graph.value, id)
+  }
   if (ids.includes(selectedId.value)) selectedId.value = ''
   showToast(`已删除 ${ids.length} 个节点`)
 }
@@ -1200,6 +1223,13 @@ function rename(nodeId: string, title: string): void {
 
 function drop(nodeId: string): void {
   if (runningIds.value.includes(nodeId) || runs.value.some(r => r.nodeId === nodeId && r.status === 'running')) { showToast('节点仍在运行，暂不能删除'); return }
+  // 它名下的连线会跟着走，所以先记下来（服务端要显式知道这些线是"删除"而不是"没提交"）
+  for (const edge of graph.value.edges.filter(e => e.from.node === nodeId || e.to.node === nodeId)) {
+    if (!pendingEdgeDeletes.value.includes(edge.id)) pendingEdgeDeletes.value.push(edge.id)
+  }
+  if (savedGraph.value.nodes.some(n => n.id === nodeId) && !pendingNodeDeletes.value.includes(nodeId)) {
+    pendingNodeDeletes.value.push(nodeId)
+  }
   removeNode(graph.value, nodeId)
   if (selectedId.value === nodeId) selectedId.value = ''
   showToast('节点已删除')
@@ -1365,6 +1395,11 @@ async function loadFromServer(id?: string): Promise<void> {
       return
     }
     const view = await canvasApi.getGraph(target)
+    // 换了一张图：上张图没提交的删除清单不能带过来（否则会把新图的节点当成"要删的"）
+    if (view.summary.id !== graphId.value) {
+      pendingNodeDeletes.value = []
+      pendingEdgeDeletes.value = []
+    }
     graphId.value = view.summary.id
     graphRevision.value = view.summary.revision
     graphTitle.value = view.summary.title || '未命名图'
@@ -1426,12 +1461,17 @@ async function persistGraph(silent = false): Promise<boolean> {
       ownerType: ownerType.value || undefined,
       ownerId: ownerId.value || undefined,
       graph: sentGraph,
-      revision: graphRevision.value
+      revision: graphRevision.value,
+      deletedNodeIds: [...pendingNodeDeletes.value],
+      deletedEdgeIds: [...pendingEdgeDeletes.value]
     })
     if (disposed || epoch !== graphEpoch) return false
     savedGraph.value = sentGraph
     graphId.value = summary.id
     graphRevision.value = summary.revision
+    // 删除已经落到服务端，清账（保存失败时不清，下次保存继续声明，否则半张图会"复活"）
+    pendingNodeDeletes.value = []
+    pendingEdgeDeletes.value = []
     await refreshPlan(sentGraph, summary.id)
     if (!silent) showToast(`已保存（v${summary.revision}）`)
     return true
@@ -1767,6 +1807,8 @@ async function resolveConflict(): Promise<void> {
   operationError.value = {}
   syncConflict.value = false
   loadError.value = ''
+  pendingNodeDeletes.value = []
+  pendingEdgeDeletes.value = []
   await loadFromServer(graphId.value)
 }
 

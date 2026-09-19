@@ -242,6 +242,11 @@ export function useCanvasApi() {
     ownerId?: string
     graph: CanvasGraph
     revision?: number
+    // 这次**真正删掉**的节点/连线。保存是整图提交，"没提交"与"删掉了"长得一样，
+    // 所以删除必须显式说一声：服务端只删列在这里的，其余一律保留
+    // （不显式说，半张图的保存就会静默删掉别人的节点 —— 2026-09-19 丢过一整套首帧）。
+    deletedNodeIds?: string[]
+    deletedEdgeIds?: string[]
   }): Promise<CanvasGraphSummary> {
     return apiRequest<CanvasGraphSummary>('/canvas/graph/save', {
       method: 'POST',
@@ -254,7 +259,9 @@ export function useCanvasApi() {
         // 服务端按 uint64 解析，转成 number 反而会在前端先把雪花 id 改掉值。
         owner_id: in_.ownerId || 0,
         graph: in_.graph,
-        revision: in_.id ? in_.revision : undefined
+        revision: in_.id ? in_.revision : undefined,
+        deleted_node_ids: in_.deletedNodeIds ?? [],
+        deleted_edge_ids: in_.deletedEdgeIds ?? []
       }
     })
   }
