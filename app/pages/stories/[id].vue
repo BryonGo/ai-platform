@@ -108,8 +108,84 @@ async function load() {
   }
 }
 
-onMounted(load)
-watch(storyId, load)
+// ── 集（画布·集）──
+//
+// 为什么这个区放在故事页而不是单独开一页：集是**故事的从属**（第几集），
+// 单独一页会多一次"先选故事再选集"的导航；而画布要从集进（`ownerType=episode`），
+// 所以每集一行、点「用画布做」直接带着集 id 进画布。
+const episodes = ref<EpisodeItem[]>([])
+const episodesBusy = ref(false)
+const episodeError = ref('')
+
+async function loadEpisodes() {
+  try {
+    episodes.value = await api.listEpisodes(storyId.value)
+    episodeError.value = ''
+  } catch (e: unknown) {
+    // 读不到不打断整页：故事内容仍然能看，只是这一区给一句可读的原因。
+    episodeError.value = e instanceof Error ? e.message : '集列表加载失败'
+  }
+}
+
+async function addEpisode() {
+  if (episodesBusy.value) return
+  episodesBusy.value = true
+  try {
+    const ep = await api.createEpisode(storyId.value)
+    episodes.value = [...episodes.value, ep].sort((a, b) => a.idx - b.idx)
+  } catch (e: unknown) {
+    episodeError.value = e instanceof Error ? e.message : '新建集失败'
+  } finally {
+    episodesBusy.value = false
+  }
+}
+
+async function renameEpisode(ep: EpisodeItem) {
+  const next = window.prompt('集标题', ep.title)
+  if (next === null || next.trim() === '' || next === ep.title) return
+  try {
+    const updated = await api.updateEpisode(ep.id, { title: next.trim() })
+    replaceEpisode(updated)
+  } catch (e: unknown) {
+    episodeError.value = e instanceof Error ? e.message : '改名失败'
+  }
+}
+
+async function setEpisodeStatus(ep: EpisodeItem, status: string) {
+  if (status === ep.status) return
+  try {
+    replaceEpisode(await api.updateEpisode(ep.id, { status }))
+  } catch (e: unknown) {
+    episodeError.value = e instanceof Error ? e.message : '改状态失败'
+  }
+}
+
+async function removeEpisode(ep: EpisodeItem) {
+  // 说清后果：图不会被删（它们只是失去归属），避免用户以为"删了集=删了产出"。
+  const ok = window.confirm(`删除「${ep.title}」？\n这一集下面的画布图不会被删，只是不再属于任何一集。`)
+  if (!ok) return
+  try {
+    await api.deleteEpisode(ep.id)
+    episodes.value = episodes.value.filter(e => e.id !== ep.id)
+  } catch (e: unknown) {
+    episodeError.value = e instanceof Error ? e.message : '删除失败'
+  }
+}
+
+function replaceEpisode(ep: EpisodeItem) {
+  episodes.value = episodes.value.map(e => (e.id === ep.id ? ep : e))
+}
+
+const episodeStatusText: Record<string, string> = { todo: '待做', running: '进行中', done: '已完成' }
+
+onMounted(() => {
+  void load()
+  void loadEpisodes()
+})
+watch(storyId, () => {
+  void load()
+  void loadEpisodes()
+})
 
 // 分镜/作品缩略图是限时签名地址：过期后收到自愈信号重新取一次。
 useMediaAutoRefresh(() => load())
@@ -296,10 +372,14 @@ useMediaAutoRefresh(() => load())
             画布把这当成**归属**存进 canvas_graph（owner_type/owner_id），
             于是"这条故事线的图"和账号里其它图分得开：列表按归属过滤、
             "继续补充"接得上同一条会话。画布不认识"故事"，只是原样带着这个标签。
+
+            这是**整部故事**一把画布（试画/探索用）；按集做请用右侧「集」区里每集那行的
+            入口（`ownerType=episode`）—— 图与集一一对应，导出与排查才说得清这是第几集的图。
           -->
           <NuxtLink
             :to="`/canvas?ownerType=project&ownerId=${story.id}`"
             class="btn-ghost"
+            title="整部故事一把画布；按集做请用右侧「集」区的入口"
           >用画布做</NuxtLink>
           <button
             v-if="!editing"
@@ -363,6 +443,78 @@ useMediaAutoRefresh(() => load())
           </section>
 
           <section class="panel-block">
+            <h2>集 · {{ episodes.length }}</h2>
+            <p class="hint">
+              一集 = 一条产线归属；点「用画布做」会带着这一集的 id 打开画布，图就挂在这一集下面。
+            </p>
+            <div class="episode-list">
+              <div
+                v-for="ep in episodes"
+                :key="ep.id"
+                class="episode-row"
+              >
+                <span class="episode-idx">第 {{ ep.idx }} 集</span>
+                <div class="episode-body">
+                  <strong>{{ ep.title }}</strong>
+                  <span class="episode-meta">
+                    {{ episodeStatusText[ep.status] || ep.status }}
+                    · {{ ep.graphCount }} 张画布图
+                  </span>
+                </div>
+                <div class="episode-actions">
+                  <NuxtLink
+                    :to="`/canvas?ownerType=episode&ownerId=${ep.id}`"
+                    class="btn-ghost small"
+                  >用画布做</NuxtLink>
+                  <select
+                    class="composer2-input episode-status"
+                    :value="ep.status"
+                    @change="setEpisodeStatus(ep, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="todo">待做</option>
+                    <option value="running">进行中</option>
+                    <option value="done">已完成</option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn-ghost small"
+                    @click="renameEpisode(ep)"
+                  >
+                    改名
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-ghost small danger"
+                    @click="removeEpisode(ep)"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p
+              v-if="!episodes.length"
+              class="hint"
+            >
+              还没有集。新建一集，然后在画布里从这一集开始做。
+            </p>
+            <p
+              v-if="episodeError"
+              class="hint"
+            >
+              {{ episodeError }}
+            </p>
+            <button
+              type="button"
+              class="btn-ghost small"
+              :disabled="episodesBusy"
+              @click="addEpisode"
+            >
+              {{ episodesBusy ? '新建中…' : '+ 新建一集' }}
+            </button>
+          </section>
+
+          <section class="panel-block">
             <h2>场景设定</h2>
             <dl v-if="story.settings.length">
               <div
@@ -423,6 +575,54 @@ useMediaAutoRefresh(() => load())
 </style>
 
 <style scoped>
+.episode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.episode-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #2a2b30);
+  border-radius: 8px;
+}
+
+.episode-idx {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--amber-soft);
+}
+
+.episode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.episode-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.episode-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.episode-status {
+  width: auto;
+  padding: 2px 6px;
+}
+
 .clip-actions {
   display: flex;
   gap: 6px;

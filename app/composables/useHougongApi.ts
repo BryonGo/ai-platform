@@ -81,6 +81,23 @@ export interface WorkItem {
   createdAt: number
 }
 
+/**
+ * 一集（画布·集）。
+ *
+ * `graphCount` 由服务端在集列表里一次算好：它是"这一集有没有东西"的唯一线索，
+ * 页面不必为每集再查一次画布接口（N+1）。
+ */
+export interface EpisodeItem {
+  id: number
+  idx: number
+  title: string
+  /** todo / running / done */
+  status: string
+  budgetCredits: number
+  updatedAt: number
+  graphCount: number
+}
+
 export interface StoryItem {
   id: number
   title: string
@@ -821,6 +838,26 @@ export function useHougongApi() {
     return apiRequest<StoryItem>(`/hougong/stories/${id}/clips`, { method: 'PUT', body: { clips } })
   }
 
+  // ── 集（画布·集）：画布按 ownerType=episode 挂图，集本身由产品管 ──
+  async function listEpisodes(storyId: string | number): Promise<EpisodeItem[]> {
+    const res = await apiRequest<{ list: EpisodeItem[] }>(`/hougong/stories/${storyId}/episodes`)
+    return res.list || []
+  }
+
+  /** 新建一集：`idx` 不传 = 服务端取"这一故事下一个"，`title` 空 = "第 N 集"。 */
+  async function createEpisode(storyId: string | number, body: { idx?: number, title?: string } = {}): Promise<EpisodeItem> {
+    return apiRequest<EpisodeItem>(`/hougong/stories/${storyId}/episodes`, { method: 'POST', body })
+  }
+
+  /** 改一集：只改给到的字段（改名不会把状态退回 todo）。 */
+  async function updateEpisode(id: string | number, body: { title?: string, status?: string, budgetCredits?: number }): Promise<EpisodeItem> {
+    return apiRequest<EpisodeItem>(`/hougong/episodes/${id}`, { method: 'PUT', body })
+  }
+
+  async function deleteEpisode(id: string | number): Promise<void> {
+    await apiRequest(`/hougong/episodes/${id}`, { method: 'DELETE' })
+  }
+
   async function listTasks(): Promise<HougongTask[]> {
     const res = await apiRequest<{ list: HougongTask[] }>('/hougong/tasks')
     return res.list || []
@@ -1340,6 +1377,10 @@ export function useHougongApi() {
     listStories,
     getHougongStory,
     updateStoryClips,
+    listEpisodes,
+    createEpisode,
+    updateEpisode,
+    deleteEpisode,
     listTasks,
     wallet,
     uploadAsset,
