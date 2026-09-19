@@ -235,6 +235,32 @@ const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<stri
 /** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
 const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
+/** 目录里所有可用视频模型声明的分辨率档（后台可配，与创作框同一份来源）。 */
+const videoModelResolutions = ref<{ ratio: string, label?: string, width: number, height: number }[]>([])
+
+/**
+ * 成片导出「基准画幅」的候选：**视频模型能力表的并集**。
+ *
+ * 为什么不能写死：产物备注里的分辨率就是按模型能力表算出来的（服务端 `videoSizeOf`
+ * 读的是同一张表），写死的 768x1344 与云端模型实际出的 736x1280 永远对不上 ——
+ * 导出清单会把每个片段都误标成"与基准不一致"。候选与产物同源，才不会自相矛盾。
+ * 这与创作框那边取分辨率/画幅的方式一致（都是读 catalog 的模型能力）。
+ */
+const baselineOptions = computed(() => {
+  const seen = new Map<string, string>()
+  for (const m of videoModelResolutions.value) {
+    const value = `${m.width}x${m.height}`
+    if (!m.width || !m.height || seen.has(value)) continue
+    seen.set(value, `${value} · ${m.ratio}${m.label ? `（${m.label}）` : ''}`)
+  }
+  return [...seen.entries()].map(([value, label]) => ({ value, label }))
+})
+
+const optionsByKey = computed<Record<string, { value: string, label: string }[]>>(() => ({
+  // 「基准画幅」的候选按能力表给；取不到就退回节点定义里的静态选项（离线/目录没接通）。
+  baseline: baselineOptions.value
+}))
+
 const hgApi = useHougongApi()
 
 const {
@@ -338,6 +364,7 @@ const flowNodes = computed<Node[]>(() =>
       tableRows: tableRowsOf(n),
       tableDirty: rowsDirty(n.id),
       modelOptions: modelOptions.value,
+      optionsByKey: optionsByKey.value,
       streaming: streaming.value[n.id]
     }
   }))
@@ -1450,6 +1477,10 @@ onMounted(async () => {
     const video = (catalog.videoModels ?? [])
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
+    // 分辨率候选：所有可用视频模型声明的档（去重后给「基准画幅」用）。
+    videoModelResolutions.value = (catalog.videoModels ?? [])
+      .filter(m => m.available !== false)
+      .flatMap(m => m.resolutions ?? [])
     const text = (catalog.textModels ?? [])
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
@@ -1757,6 +1788,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
         :runs="runs"
         :frame-grid="graph.frameGrid"
         :model-options="modelOptions"
+        :options-by-key="optionsByKey"
         :table-rows="selected ? tableRowsOf(selected) : []"
         :table-dirty="selected ? rowsDirty(selected.id) : false"
         :follow-up="followUp"

@@ -39,6 +39,8 @@ const props = defineProps<{
   runs: CanvasRun[]
   frameGrid: number[]
   modelOptions?: Record<string, { value: string, label: string }[]>
+  /** 按参数 key 覆盖候选（能力值，见 ParamFields 的说明）。 */
+  optionsByKey?: Record<string, { value: string, label: string }[]>
   /** 分镜表草稿（页面按节点 id 存，卡片与这里共用一份）。 */
   tableRows: CanvasShotRow[]
   tableDirty: boolean
@@ -221,6 +223,7 @@ function updateFollowUp(value: string): void {
             :spec="spec"
             :frame-grid="frameGrid"
             :model-options="modelOptions"
+            :options-by-key="optionsByKey"
             @update="(key: string, value: unknown) => emit('param', node!.id, key, value)"
           />
         </section>

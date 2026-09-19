@@ -29,6 +29,8 @@ const props = defineProps<{
     /** H3 帧数网格与模型候选：卡片上也能改参数，取值必须与右栏同一份。 */
     frameGrid?: number[]
     modelOptions?: Record<string, { value: string, label: string }[]>
+    /** 按参数 key 覆盖候选（能力值，见 ParamFields 的说明）。 */
+    optionsByKey?: Record<string, { value: string, label: string }[]>
     /** 分镜表当前的行（草稿优先）与"改过没存"标记。 */
     tableRows?: CanvasShotRow[]
     tableDirty?: boolean
@@ -137,6 +139,7 @@ const tableRowCount = computed(() => (props.data.tableRows ?? shown.value?.rows 
         :spec="spec"
         :frame-grid="props.data.frameGrid ?? []"
         :model-options="props.data.modelOptions"
+        :options-by-key="props.data.optionsByKey"
         :skip-key="spec.promptKey"
         dense
         @update="(key: string, value: unknown) => emit('param', node.id, key, String(value))"

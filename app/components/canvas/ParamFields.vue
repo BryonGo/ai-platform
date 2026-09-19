@@ -17,6 +17,14 @@ const props = defineProps<{
   frameGrid: number[]
   /** modelId 的下拉候选，按 modelKind 分桶。 */
   modelOptions?: Record<string, { value: string, label: string }[]>
+  /**
+   * 按参数 key 覆盖候选（服务端/目录下发的能力值）。
+   *
+   * 为什么要有：像成片导出的「基准画幅」这种选项，**取值范围由模型能力决定**
+   * （后台给每个视频模型配了哪些档就有哪些），写死在节点定义里必然过期 ——
+   * 创作框那边的分辨率/画幅就是这么取的（同一份 catalog），画布跟着走。
+   */
+  optionsByKey?: Record<string, { value: string, label: string }[]>
   /** 紧凑模式：卡片里用，字号与间距更小。 */
   dense?: boolean
   /** 不渲染这个参数（卡片上已把"指令"渲染成输入框，别重复）。 */
@@ -37,6 +45,8 @@ function valueOf(key: string): string {
 }
 
 function optionsOf(p: CanvasParamSpec): { value: string, label: string }[] {
+  const dynamic = props.optionsByKey?.[p.key]
+  if (dynamic && dynamic.length) return dynamic
   if (p.key === 'modelId') {
     const list = props.modelOptions?.[props.spec.modelKind ?? ''] ?? []
     return list.length ? list : [{ value: '', label: '服务端默认' }]

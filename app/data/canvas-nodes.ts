@@ -343,7 +343,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'i2v',
     group: 'video',
     label: '图生视频',
-    subtitle: '首帧 + 关键词生成视频 · 640P 竖屏',
+    subtitle: '首帧 + 关键词生成视频',
     icon: 'i-lucide-clapperboard',
     width: 248,
     modelKind: 'video',
@@ -452,7 +452,10 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'zip', type: 'zip', label: '压缩包' }],
     params: [
-      { key: 'baseline', label: '基准画幅', kind: 'select', options: [{ value: '768x1344', label: '定稿 768x1344（默认）' }, { value: '432x768', label: '预览 432x768' }, { value: '1080x1920', label: '超分 1080x1920' }], hint: '与这一集的基准比对，不一致的片段单列出来' }
+      // 候选不写死：画幅/分辨率是**模型的能力**（后台可配），候选与产物备注里那串
+      // 分辨率同源（服务端读同一张模型能力表算出来）。写死的 768x1344 与云端实际出的
+      // 736x1280 永远对不上，会把每个片段都误标成不一致。
+      { key: 'baseline', label: '基准画幅', kind: 'select', options: [], hint: '与这一集的基准比对，不一致的片段单列出来；候选来自视频模型的能力表' }
     ],
     stage: 'ready',
     estimateCredits: 0
