@@ -48,7 +48,7 @@ import {
 } from '~/data/canvas-graph'
 import { editFingerprint, mergeCanvas, nodeFingerprint } from '~/data/canvas-sync'
 import { layoutCanvas, type LayoutPoint } from '~/data/canvas-layout'
-import { characterEntries, sceneEntries, validateStructuredEdit } from '~/data/canvas-structured'
+import { characterEntries, parseStructured, sceneEntries, validateStructuredEdit } from '~/data/canvas-structured'
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasPortSpec } from '~/data/canvas-nodes'
 import type { CatalogVideoModel } from '~/composables/useHougongApi'
@@ -1227,6 +1227,70 @@ function hydrateInputs(): void {
  * 分镜表自动连到首帧的「这一镜的分镜」和视频的「这一镜关键词」；**人物与场景不替用户猜** ——
  * 沿用图里已有首帧节点的接法（多数集里同一批人/场景反复用），要改就在图上重新连。
  */
+/**
+ * 按这一镜的**分镜行**自动接人物与场景。
+ *
+ * 依据是我们自己的拆解契约：分镜行带 `characters: ["char_1", …]` 与 `scene_id: "scene_1"`，
+ * 而角色/场景设定节点的 `characterSource`/`sceneSource` 正是 `<产物id>:<第几项>` ——
+ * 两边能对号入座，所以这不是"猜"：这一镜写了谁，就接谁的设定图。
+ *
+ * 取不到（老产物没有 id、设定节点还没出图、用户手工改过名字）就返回空，交给调用方的
+ * 兜底（继承已有首帧的输入），绝不给错的人接上。
+ */
+function autoWireShotInputs(kf: CanvasNode, row: CanvasShotRow | undefined, splitId: string): number {
+  if (!row || !splitId) return 0
+  const split = graph.value.nodes.find(n => n.id === splitId)
+  const charsArt = split?.outputs?.characters?.artifactId
+    ? artifacts.value.find(a => a.id === split.outputs.characters!.artifactId)
+    : undefined
+  const scenesArt = split?.outputs?.scenes?.artifactId
+    ? artifacts.value.find(a => a.id === split.outputs.scenes!.artifactId)
+    : undefined
+
+  const indexOf = (art: typeof charsArt, id: string): number => {
+    if (!art || !id) return -1
+    const parsed = parseStructured(art.text || '')
+    const list = Array.isArray(parsed) ? parsed : undefined
+    if (!list) return -1
+    return list.findIndex(item => !!item && typeof item === 'object' && !Array.isArray(item)
+      && String((item as Record<string, unknown>).id ?? '') === id)
+  }
+  // 设定节点的选用值形如 `<产物id>:<第几项>`；按它找到对应节点当前选定的那张图
+  const refOf = (kind: 'character' | 'scene', artId: string, index: number) => {
+    const value = `${artId}:${index}`
+    const key = kind === 'character' ? 'characterSource' : 'sceneSource'
+    const node = graph.value.nodes.find(n => n.kind === kind && String(n.params[key] ?? '') === value)
+    const picked = node?.outputs?.image
+    return picked ? { from: node!.id, slot: 'image', artifactId: picked.artifactId, version: picked.version } : undefined
+  }
+
+  let wired = 0
+  const charIds = Array.isArray((row as unknown as Record<string, unknown>).characters)
+    ? ((row as unknown as Record<string, unknown>).characters as unknown[]).map(String)
+    : []
+  const personRefs = charIds
+    .map(id => refOf('character', charsArt?.id ?? '', indexOf(charsArt, id)))
+    .filter((r): r is NonNullable<typeof r> => !!r)
+  if (personRefs.length) {
+    kf.inputs.person = personRefs
+    for (const ref of personRefs) {
+      if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === 'person' && e.from.node === ref.from)) {
+        graph.value.edges.push(makeEdge(ref.from, ref.slot, kf.id, 'person'))
+      }
+    }
+    wired += personRefs.length
+  }
+  const sceneRef = refOf('scene', scenesArt?.id ?? '', indexOf(scenesArt, String((row as unknown as Record<string, unknown>).scene_id ?? '')))
+  if (sceneRef) {
+    kf.inputs.scene = [sceneRef]
+    if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === 'scene' && e.from.node === sceneRef.from)) {
+      graph.value.edges.push(makeEdge(sceneRef.from, sceneRef.slot, kf.id, 'scene'))
+    }
+    wired += 1
+  }
+  return wired
+}
+
 function expand(nodeId: string): void {
   const node = graph.value.nodes.find(n => n.id === nodeId)
   if (!node) return
@@ -1248,6 +1312,15 @@ function expand(nodeId: string): void {
   // 以前只取 `inputRefs(template, slot)[0]` —— 一镜多人的情况下只继承第一个角色，
   // 另外几个人的参考图就丢了，用户看到的是"生成完还得自己连"（用户 2026-09-19 问的）。
   // 复用的节点只在**自己没接**的时候才继承，免得把用户手工接过的覆盖掉。
+  // 先按**这一镜的分镜行**自动接人物/场景（拆解契约里的 characters / scene_id ↔ 设定节点）
+  const splitId = graph.value.edges.find(e => e.to.node === nodeId)?.from.node ?? ''
+  const rowsByIdx = new Map(selectedTableRows.value.map(r => [r.idx, r]))
+  let autoWired = 0
+  for (const kf of [...res.keyframes, ...res.reused.filter(n => n.kind === 'keyframe')]) {
+    if (inputRefs(kf, 'person').length && inputRefs(kf, 'scene').length) continue // 自己接好了就不动
+    autoWired += autoWireShotInputs(kf, rowsByIdx.get(kf.ref?.shotIdx ?? -1), splitId)
+  }
+
   const template = [...graph.value.nodes]
     .reverse()
     .find(n => n.kind === 'keyframe' && inputRefs(n, 'person').length && inputRefs(n, 'scene').length && !res.keyframes.includes(n))
@@ -1268,6 +1341,7 @@ function expand(nodeId: string): void {
     }
   }
   hydrateInputs()
+  if (autoWired) showToast(`已按分镜行自动接上 ${autoWired} 条人物/场景引用`)
   showToast(template
     ? `已按分镜表生成 ${rows} 组节点，人物与场景沿用了已有的接法`
     : `已按分镜表生成 ${rows} 组节点，记得把人物和场景接上首帧`)
