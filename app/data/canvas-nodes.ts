@@ -357,6 +357,11 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       // 花费口径写在这里：视频是按**每秒单价**扣的（各模型不同），而节点卡上那个
       // 「预计」是固定档位参考 —— 不写清楚，用户会拿预计当账单。
       { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '实际按所选模型的每秒单价 × 时长计费（余额分）；卡片上的「预计」只是档位参考' },
+      // 画幅与清晰度：**候选来自所选模型的能力表**（页面按 catalog 算好下发，
+      // 见 canvas.vue 的 dynamicOptionsOf）。空 options = 等页面填，
+      // 这样换模型/后台改能力都不用改这里的死值。
+      { key: 'ratio', label: '画幅', kind: 'select', options: [], hint: '候选来自所选模型的画幅档' },
+      { key: 'resolution', label: '清晰度', kind: 'select', options: [], hint: '候选来自所选模型该画幅下的清晰度档' },
       { key: 'frames', label: '帧数', kind: 'frames' },
       {
         key: 'generateAudio',

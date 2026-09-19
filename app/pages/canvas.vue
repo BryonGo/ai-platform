@@ -50,6 +50,7 @@ import {
 } from '~/data/canvas-graph'
 import type { ContextMenuItem } from '~/components/canvas/ContextMenu.vue'
 import type { CanvasNodeKind, CanvasPortSpec } from '~/data/canvas-nodes'
+import type { CatalogVideoModel } from '~/composables/useHougongApi'
 import { CANVAS_GROUPS, CANVAS_NODE_TYPES, canConnect, creditsToYuan, groupMeta, nodeTypeSpec, portMeta } from '~/data/canvas-nodes'
 import type { CanvasTemplateInfo } from '~/data/canvas-templates'
 import {
@@ -235,6 +236,9 @@ const clipboard = ref<{ kind: CanvasNodeKind, title: string, params: Record<stri
 /** 每一步用的模型不一样：按节点声明的 modelKind 分桶，参数里的「模型」下拉按桶填。 */
 const modelOptions = ref<Record<string, { value: string, label: string }[]>>({})
 
+/** 目录里的可用视频模型（带能力表；画幅/清晰度候选与创作框取自同一处）。 */
+const videoModels = ref<CatalogVideoModel[]>([])
+
 /** 目录里所有可用视频模型声明的分辨率档（后台可配，与创作框同一份来源）。 */
 const videoModelResolutions = ref<{ ratio: string, label?: string, width: number, height: number }[]>([])
 
@@ -256,10 +260,73 @@ const baselineOptions = computed(() => {
   return [...seen.entries()].map(([value, label]) => ({ value, label }))
 })
 
-const optionsByKey = computed<Record<string, { value: string, label: string }[]>>(() => ({
-  // 「基准画幅」的候选按能力表给；取不到就退回节点定义里的静态选项（离线/目录没接通）。
-  baseline: baselineOptions.value
-}))
+/**
+ * 某个节点要用到的动态候选（按参数 key）。
+ *
+ * 两类：
+ *   - 全局的（`baseline`）：候选是**所有**视频模型分辨率档的并集 —— 导出的基准是
+ *     "这一集按哪个尺寸交付"，与具体哪个模型无关；
+ *   - 跟节点所选模型走的（`ratio` / `resolution`）：画幅与清晰度是**模型的能力**，
+ *     换模型就该换候选。创作框那边也是这么取的（`videoRatios` / `videoSizeFor`）。
+ *
+ * 取不到能力（离线、目录没接通）时返回空 —— 组件会退回节点定义里的静态选项，
+ * 而不是给一个空下拉（空下拉让人以为"界面坏了"）。
+ */
+function dynamicOptionsOf(node: CanvasNode): Record<string, { value: string, label: string }[]> {
+  const out: Record<string, { value: string, label: string }[]> = { baseline: baselineOptions.value }
+  const modelId = String(node.params.modelId ?? '')
+  const resolutions = videoModelResolutionsOf(modelId)
+  if (resolutions.length) {
+    // 画幅：去重；标签带上像素尺寸，用户才知道 9:16 意味着多少（与创作框一致）。
+    const seenRatio = new Map<string, string>()
+    for (const r of resolutions) {
+      if (!r.ratio || seenRatio.has(r.ratio)) continue
+      seenRatio.set(r.ratio, r.width && r.height ? `${r.ratio} · ${r.width}x${r.height}` : r.ratio)
+    }
+    out.ratio = [...seenRatio.entries()].map(([value, label]) => ({ value, label }))
+
+    // 清晰度：**只给当前画幅下的档**（不同画幅可能配不同 label）；
+    // 没选画幅时给该模型所有 label（去重）。
+    const ratio = String(node.params.ratio ?? '')
+    const labels = [...new Set(
+      resolutions
+        .filter(r => !ratio || r.ratio === ratio)
+        .map(r => r.label)
+        .filter((label): label is string => !!label)
+    )]
+    if (labels.length) out.resolution = labels.map(label => ({ value: label, label }))
+  }
+  return out
+}
+
+/** 某个视频模型声明的分辨率档（模型没选/不是视频模型时为空）。 */
+function videoModelResolutionsOf(modelId: string) {
+  if (!modelId) return []
+  return videoModels.value.find(m => m.id === modelId)?.resolutions ?? []
+}
+
+/**
+ * 换模型后把画幅/清晰度收敛到新模型支持的档。
+ *
+ * 为什么要收敛：候选换了但值还留着旧模型的值时，服务端会**静默回落到首选档**
+ * （`videoFormatOf`），用户看到的是"我选的画幅没生效"；更糟的是清晰度可能发成
+ * 新模型不认的 label，被上游拒。创作框那边有同样的收敛（watch modelId）。
+ */
+function convergeVideoFormat(node: CanvasNode): void {
+  const resolutions = videoModelResolutionsOf(String(node.params.modelId ?? ''))
+  if (!resolutions.length) return
+  const preferred = resolutions.find(r => r.ratio === '9:16') ?? resolutions[0]
+  const ratio = String(node.params.ratio ?? '')
+  if (!resolutions.some(r => r.ratio === ratio)) {
+    setParam(node, 'ratio', preferred?.ratio ?? '')
+  }
+  const currentRatio = String(node.params.ratio ?? '') || preferred?.ratio || ''
+  const labels = resolutions.filter(r => r.ratio === currentRatio).map(r => r.label).filter(Boolean)
+  const resolution = String(node.params.resolution ?? '')
+  if (labels.length && !labels.includes(resolution)) {
+    setParam(node, 'resolution', labels[0])
+  }
+}
 
 const hgApi = useHougongApi()
 
@@ -364,7 +431,7 @@ const flowNodes = computed<Node[]>(() =>
       tableRows: tableRowsOf(n),
       tableDirty: rowsDirty(n.id),
       modelOptions: modelOptions.value,
-      optionsByKey: optionsByKey.value,
+      optionsByKey: dynamicOptionsOf(n),
       streaming: streaming.value[n.id]
     }
   }))
@@ -1437,6 +1504,9 @@ const {
 
 function setParam(node: CanvasNode, key: string, value: unknown): void {
   node.params = { ...node.params, [key]: value }
+  // 换了模型：画幅/清晰度候选跟着换，旧值可能已经不是这个模型支持的档 ——
+  // 不收敛的话服务端会静默回落首选档（用户以为"我选的没生效"）。
+  if (key === 'modelId') convergeVideoFormat(node)
 }
 
 // ---------------------------------------------------------------- 生命周期
@@ -1478,9 +1548,8 @@ onMounted(async () => {
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
     // 分辨率候选：所有可用视频模型声明的档（去重后给「基准画幅」用）。
-    videoModelResolutions.value = (catalog.videoModels ?? [])
-      .filter(m => m.available !== false)
-      .flatMap(m => m.resolutions ?? [])
+    videoModels.value = (catalog.videoModels ?? []).filter(m => m.available !== false)
+    videoModelResolutions.value = videoModels.value.flatMap(m => m.resolutions ?? [])
     const text = (catalog.textModels ?? [])
       .filter(m => m.available !== false)
       .map(m => ({ value: m.id, label: m.name }))
@@ -1788,7 +1857,7 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
         :runs="runs"
         :frame-grid="graph.frameGrid"
         :model-options="modelOptions"
-        :options-by-key="optionsByKey"
+        :options-by-key="selected ? dynamicOptionsOf(selected) : {}"
         :table-rows="selected ? tableRowsOf(selected) : []"
         :table-dirty="selected ? rowsDirty(selected.id) : false"
         :follow-up="followUp"
