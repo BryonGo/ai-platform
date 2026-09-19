@@ -1243,17 +1243,26 @@ function expand(nodeId: string): void {
     ? `新建 ${res.nodes.length} 个节点${res.reused.length ? `，复用已有 ${res.reused.length} 个` : ''}（同一镜不会重复建）`
     : `这一批 ${res.reused.length} 个节点都已存在，只补了缺的连线`)
 
+  // 已有配好人物/场景的首帧节点时，**新出来的首帧继承它的输入**（人物、场景都要全带上）。
+  //
+  // 以前只取 `inputRefs(template, slot)[0]` —— 一镜多人的情况下只继承第一个角色，
+  // 另外几个人的参考图就丢了，用户看到的是"生成完还得自己连"（用户 2026-09-19 问的）。
+  // 复用的节点只在**自己没接**的时候才继承，免得把用户手工接过的覆盖掉。
   const template = [...graph.value.nodes]
     .reverse()
     .find(n => n.kind === 'keyframe' && inputRefs(n, 'person').length && inputRefs(n, 'scene').length && !res.keyframes.includes(n))
   if (template) {
-    for (const kf of res.keyframes) {
+    const targets = [...res.keyframes, ...res.reused.filter(n => n.kind === 'keyframe')]
+    for (const kf of targets) {
       for (const slot of ['person', 'scene'] as const) {
-        const ref = inputRefs(template, slot)[0]
-        if (!ref) continue
-        kf.inputs[slot] = [{ ...ref }]
-        if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === slot)) {
-          graph.value.edges.push(makeEdge(ref.from, ref.slot, kf.id, slot))
+        const refs = inputRefs(template, slot)
+        if (!refs.length) continue
+        if (inputRefs(kf, slot).length) continue // 自己接过了就别动
+        kf.inputs[slot] = refs.map(r => ({ ...r }))
+        for (const ref of refs) {
+          if (!graph.value.edges.some(e => e.to.node === kf.id && e.to.slot === slot && e.from.node === ref.from)) {
+            graph.value.edges.push(makeEdge(ref.from, ref.slot, kf.id, slot))
+          }
         }
       }
     }
