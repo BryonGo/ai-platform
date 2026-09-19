@@ -185,13 +185,17 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     kind: 'script_in',
     group: 'script',
     label: '剧本输入',
-    subtitle: '导入或粘贴剧本文字 / 梗概',
+    subtitle: '粘贴剧本文字 / 梗概',
     icon: 'i-lucide-scroll-text',
     width: 236,
     inputs: [],
     outputs: [{ slot: 'text', type: 'text', label: '剧本文本' }],
     params: [
-      { key: 'text', label: '剧本', kind: 'textarea', placeholder: '把剧本贴进来，或点右上角上传 .txt / .md' }
+      // 只支持粘贴：**不支持上传文件**（用户 2026-09-19 明确）。
+      // 之前 placeholder 里写「或点右上角上传 .txt / .md」是一句**空头承诺** ——
+      // 画布里从来没有上传实现（全仓 grep 无 file input），用户照着找了一圈找不到。
+      // 需要文件里的内容，就让人自己打开文件复制粘贴。
+      { key: 'text', label: '剧本', kind: 'textarea', placeholder: '把剧本直接贴进来（只支持粘贴，不支持上传文件）' }
     ],
     stage: 'ready',
     estimateCredits: 0
