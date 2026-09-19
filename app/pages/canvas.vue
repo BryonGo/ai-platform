@@ -1325,7 +1325,12 @@ function saveToServer(silent = false): Promise<boolean> {
 }
 
 async function persistGraph(silent = false): Promise<boolean> {
-  if (syncConflict.value || loadError.value) { showToast(syncConflict.value ? '画布存在并发修改，请先解决冲突' : '当前操作尚未完成，请稍后再试'); return false }
+  if (syncConflict.value || loadError.value) {
+    showToast(syncConflict.value
+      ? '这张图在别处被改过，已暂停保存 —— 点上面那行「放弃本地修改并重新载入」'
+      : '图还没载入成功，保存不了 —— 点「放弃本地修改并重新载入」重来一次')
+    return false
+  }
   busy.value = true
   const epoch = graphEpoch
   const sentGraph = JSON.parse(JSON.stringify(graph.value)) as CanvasGraph
@@ -1468,7 +1473,9 @@ async function runNode(
     const want = Number(node.params.shotIdx ?? node.ref?.shotIdx ?? 0)
     if (!want && shotRowsOf(node).length) showToast('没选「这一镜」，这次按第一镜算')
   }
-  if (mutationBusy.value || syncConflict.value || (batchBusy.value && !opts.batch)) { showToast('当前操作尚未完成，请稍后再试'); return 'skipped' }
+  if (syncConflict.value) { showToast('这张图在别处被改过 —— 点上面那行「放弃本地修改并重新载入」，再继续'); return 'skipped' }
+  if (mutationBusy.value) { showToast('上一个操作还没落库，稍等一下再点'); return 'skipped' }
+  if (batchBusy.value && !opts.batch) { showToast('「运行全部」正在进行中'); return 'skipped' }
   const epoch = graphEpoch
   const current = () => !disposed && epoch === graphEpoch
   const controller = new AbortController()
@@ -1666,6 +1673,17 @@ async function reloadGraph(): Promise<boolean> {
 
 async function resolveConflict(): Promise<void> {
   if (!window.confirm('服务端也修改了这张图。重新载入会放弃本地画布修改，确定继续？')) return
+  // 硬重置瞬态标记：这是**唯一的出路**，如果它被卡住的 busy/在飞状态挡住，
+  // 用户就会陷入"保存不了、运行不了、连重载也没反应"（用户 2026-09-19）。
+  busy.value = false
+  mutationBusy.value = false
+  textSaving.value = false
+  batchBusy.value = false
+  runningIds.value = []
+  streaming.value = {}
+  operationError.value = {}
+  syncConflict.value = false
+  loadError.value = ''
   await loadFromServer(graphId.value)
 }
 
