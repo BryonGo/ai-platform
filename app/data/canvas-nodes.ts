@@ -400,6 +400,9 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
         key: 'voice',
         label: '音色',
         kind: 'select',
+        // 本地 H3 语音不认这套 OpenAI 音色名（它用"描述音色"），所以写明适用范围 ——
+        // 没有音频模型时这个下拉选了也不会生效，不写清楚就是"调了没反应"。
+        hint: '只有云端音频模型认这些音色；没有音频模型时走本地 H3 语音（用描述音色）',
         options: [
           { value: 'alloy', label: '中性（alloy）' },
           { value: 'nova', label: '温和女声（nova）' },
@@ -417,7 +420,7 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
           { value: 'perShot', label: '逐镜一条（便于逐镜替换）' }
         ]
       },
-      { key: 'bgm', label: '背景音乐', kind: 'text', placeholder: '整集统一铺（需要音乐上游，暂未接入）' }
+      { key: 'bgm', label: '背景音乐', kind: 'text', placeholder: '整集统一铺（本地生成；comfy85 要有音乐权重）' }
     ],
     stage: 'ready',
     estimateCredits: 30
