@@ -406,7 +406,7 @@ export function expandShotlist(
   shotlistId: string,
   rowCount: number,
   opts: { keyframeKind?: CanvasNodeKind, videoKind?: CanvasNodeKind } = {}
-): { nodes: CanvasNode[], edges: CanvasEdge[], keyframes: CanvasNode[], videos: CanvasNode[] } {
+): { nodes: CanvasNode[], edges: CanvasEdge[], keyframes: CanvasNode[], videos: CanvasNode[], reused: CanvasNode[] } {
   const kfKind = opts.keyframeKind ?? 'keyframe'
   const vKind = opts.videoKind ?? 'i2v'
   const shotlist = graph.nodes.find(n => n.id === shotlistId)
@@ -418,25 +418,56 @@ export function expandShotlist(
   const edges: CanvasEdge[] = []
   const keyframes: CanvasNode[] = []
   const videos: CanvasNode[] = []
+  const reused: CanvasNode[] = []
 
-  // 已有几镜就接着排，重复点不会把图叠成一团
-  const already = graph.nodes.filter(n => n.kind === kfKind).length
+  // **按镜复用，只补缺的**：这一步必须幂等。
+  //
+  // 以前是"按 kind 数已有几个，从下一个编号接着排" —— 第二次点「生成节点」就把
+  // 同一批镜头**再叠一套**（用户 2026-09-19：我让他点生成，结果旧的那套没删、新的叠上来）。
+  // 判据是这一镜的镜号（`ref.shotIdx`）配合同一个分镜表：第 N 镜只该有一个首帧、一个视频。
+  // 重复点正确的表现是"补齐缺的那几个 + 把缺的连线补上"，而不是又造一套。
+  const byShot = (kind: CanvasNodeKind, idx: number) =>
+    graph.nodes.find(n => n.kind === kind && n.ref?.shotIdx === idx)
+    ?? nodes.find(n => n.kind === kind && n.ref?.shotIdx === idx)
+
+  // 同一对节点之间已经有边就别再加（连带重跑时也不会长出平行线）
+  const hasEdge = (fromNode: string, fromSlot: string, toNode: string, toSlot: string) =>
+    graph.edges.some(e => e.from.node === fromNode && e.from.slot === fromSlot && e.to.node === toNode && e.to.slot === toSlot)
+  const pushEdge = (fromNode: string, fromSlot: string, toNode: string, toSlot: string) => {
+    if (hasEdge(fromNode, fromSlot, toNode, toSlot)) return
+    edges.push(makeEdge(fromNode, fromSlot, toNode, toSlot))
+  }
 
   for (let i = 0; i < rowCount; i++) {
-    const idx = already + i + 1
-    const kf = createNode(kfKind, { x: baseX, y: baseY + i * ROW }, `S${String(idx).padStart(2, '0')} 首帧`, idx)
-    const vd = createNode(vKind, { x: baseX + 300, y: baseY + i * ROW }, `S${String(idx).padStart(2, '0')} 视频`, idx)
+    const idx = i + 1
+    const at = { x: baseX, y: baseY + i * ROW }
+
+    let kf = byShot(kfKind, idx)
+    if (kf) {
+      reused.push(kf)
+    } else {
+      kf = createNode(kfKind, at, `S${String(idx).padStart(2, '0')} 首帧`, idx)
+      nodes.push(kf)
+      keyframes.push(kf)
+    }
+
+    let vd = byShot(vKind, idx)
+    if (vd) {
+      reused.push(vd)
+    } else {
+      vd = createNode(vKind, { x: baseX + 300, y: at.y }, `S${String(idx).padStart(2, '0')} 视频`, idx)
+      nodes.push(vd)
+      videos.push(vd)
+    }
+
     // 分镜表 → 首帧（这一镜的分镜）；分镜表 → 视频（这一镜的关键词）
-    edges.push(makeEdge(shotlistId, 'table', kf.id, 'shot'))
-    edges.push(makeEdge(shotlistId, 'table', vd.id, 'shot'))
+    pushEdge(shotlistId, 'table', kf.id, 'shot')
+    pushEdge(shotlistId, 'table', vd.id, 'shot')
     // 首帧 → 视频（首帧图是视频的输入）
-    edges.push(makeEdge(kf.id, 'image', vd.id, 'firstFrame'))
+    pushEdge(kf.id, 'image', vd.id, 'firstFrame')
     // 人物与场景由调用方接（一镜可能用不同的人/场景，不该替用户猜）
-    nodes.push(kf, vd)
-    keyframes.push(kf)
-    videos.push(vd)
   }
-  return { nodes, edges, keyframes, videos }
+  return { nodes, edges, keyframes, videos, reused }
 }
 
 /** 造一条边：from（上游）→ to（下游）。 */

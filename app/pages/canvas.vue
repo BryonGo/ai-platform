@@ -1238,6 +1238,10 @@ function expand(nodeId: string): void {
   const res = expandShotlist(graph.value, nodeId, rows)
   graph.value.nodes.push(...res.nodes)
   graph.value.edges.push(...res.edges)
+  // 幂等：重复点只补缺的，说清"新建了几个、复用了几个"，别让人以为又叠了一套
+  showToast(res.nodes.length
+    ? `新建 ${res.nodes.length} 个节点${res.reused.length ? `，复用已有 ${res.reused.length} 个` : ''}（同一镜不会重复建）`
+    : `这一批 ${res.reused.length} 个节点都已存在，只补了缺的连线`)
 
   const template = [...graph.value.nodes]
     .reverse()
