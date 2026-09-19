@@ -284,7 +284,8 @@
 .cg-detail {
   display: flex;
   flex-direction: column;
-  width: 326px;
+  width: clamp(400px, 33.333vw, 760px);
+  max-width: 50vw;
   flex: none;
   min-height: 0;
   border-left: 1px solid var(--hg3-line);
@@ -319,6 +320,34 @@
 .cg-input-name { font-size: 11.5px; color: var(--hg3-ink); }
 .cg-input-val { margin-left: auto; font-size: 10.5px; color: var(--hg3-faint); }
 .cg-input-val[data-tone='ok'] { color: var(--hg3-ok); }
+
+/* 侧栏「输出口」换口：多口节点（剧本拆解：人物 / 场景 / 分镜）逐口看版本与正文 */
+.cg-slot-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.cg-slot-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--hg3-muted);
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+.cg-slot-tab b { font-weight: 500; color: var(--hg3-ink); }
+.cg-slot-tab i { font-style: normal; font-size: 10px; color: var(--hg3-faint); }
+.cg-slot-tab:hover { background: rgb(255 255 255 / 12%); }
+.cg-slot-tab.is-on { background: var(--hg3-accent); border-color: var(--hg3-accent-hi); }
+.cg-slot-tab.is-on b,
+.cg-slot-tab.is-on i { color: var(--hg3-accent-ink); }
+
+/* 正文就地编辑：高度对齐只读的 .cg-fulltext，字色/行高保持一致（改前改后不该是两种观感） */
+.cg-fulltext-edit {
+  min-height: 190px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
 
 .cg-field { display: block; margin-bottom: 10px; }
 .cg-field-label { display: block; margin-bottom: 4px; font-size: 11px; color: var(--hg3-muted); }
@@ -500,7 +529,11 @@
 .cg-menu {
   position: fixed;
   z-index: 60;
-  width: 208px;
+  width: max-content;
+  min-width: min(220px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   padding: 5px;
   background: var(--hg3-well);
   border: 1px solid var(--hg3-line-strong);
@@ -541,16 +574,17 @@
 .cg-menu-row.is-disabled > button { opacity: 0.42; cursor: not-allowed; }
 .cg-menu-row > button i, .cg-menu-subrow i { font-size: 13px; }
 
-.cg-menu-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cg-menu-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .cg-menu-hint { font-size: 10px; color: var(--hg3-faint); }
 .cg-menu-arrow { color: var(--hg3-faint); }
 
 .cg-menu--sub {
-  position: absolute;
-  top: -5px;
-  left: 100%;
-  max-height: 60vh;
-  overflow-y: auto;
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-height: none;
+  margin: 4px 0;
+  box-shadow: none;
 }
 
 .cg-menu--sub.is-left { left: auto; right: 100%; }
@@ -640,8 +674,22 @@
   box-shadow: 0 0 6px var(--hg3-warn);
 }
 
-.cg-slots { display: flex; flex-direction: column; gap: 5px; }
-.cg-slot { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+/* 多口输出的每一行是按钮：点一下右栏就切到这一口（只读的三行字"点哪儿都没反应"） */
+.cg-slots { display: flex; flex-direction: column; gap: 3px; }
+.cg-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 11px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+}
+.cg-slot:hover { background: rgb(255 255 255 / 8%); }
+.cg-slot.is-on { background: rgb(255 255 255 / 13%); }
 .cg-slot-label { color: var(--hg3-ink); }
 .cg-slot-note { margin-left: auto; color: var(--hg3-muted); font-size: 10.5px; }
 .cg-slot-note[data-tone='muted'] { color: var(--hg3-faint); }
@@ -830,7 +878,7 @@
 
 .cg-image-btn.is-picked { box-shadow: inset 0 0 0 2px var(--hg3-ok); }
 .cg-image-btn.is-rejected { opacity: 0.42; }
-.cg-image-single { display: flex; width: 100%; }
+.cg-image-single { position: relative; display: flex; width: 100%; }
 
 .cg-image-badge {
   position: absolute;
@@ -847,6 +895,27 @@
 }
 
 .cg-image-badge--bad { color: var(--hg3-i-coral); }
+
+/* 「放大看」：卡片里的图/视频只有两百来像素，点这里开满屏预览。
+   压在媒体上面（z-index 高于 <video> 的控件层），否则点不到。 */
+.cg-image-zoom {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  color: var(--hg3-ink);
+  background: rgb(0 0 0 / 56%);
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.cg-image-zoom:hover { background: rgb(0 0 0 / 78%); }
 
 .cg-image-label {
   position: absolute;
@@ -1251,3 +1320,103 @@
 .cg-primary { font-weight: 600; color: var(--hg3-accent-ink); background: var(--hg3-accent); }
 .cg-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
+
+/* 菜单反馈：同时支持鼠标、键盘与减少动画偏好。 */
+.cg-page button { transition: background-color 140ms ease, transform 100ms ease; }
+.cg-page button:hover:not(:disabled) { background-color: rgb(255 255 255 / 10%); }
+.cg-page button:active:not(:disabled) { transform: translateY(1px); }
+.cg-page button:focus-visible { outline: 2px solid var(--hg3-ink); outline-offset: 2px; }
+.cg-page button:disabled { opacity: .45; cursor: not-allowed; }
+.cg-menu-head { overflow-wrap: anywhere; }
+.cg-spin, .cg-menu .i-lucide-loader-circle { animation: cg-feedback-spin 1s linear infinite; }
+@keyframes cg-feedback-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cg-page button { transition: none; }
+  .cg-spin, .cg-menu .i-lucide-loader-circle { animation: none; }
+}
+@media (max-width: 720px) { .cg-detail { max-width: 100%; } }
+
+.cg-menu-row[data-tone] > button:disabled { opacity: 1; }
+.cg-menu-row[data-tone="run"] > button { color: #7eb8ff; }
+.cg-menu-row[data-tone="ok"] > button { color: #81d8aa; }
+.cg-menu-row[data-tone="bad"] > button { color: #ff9494; }
+.cg-menu-row[data-tone="warn"] > button { color: #f2cb7d; }
+
+/* 右侧作为输出与确认工作区，参数与历史保持次级层级。 */
+.cg-detail-head { padding: 18px 20px; }
+.cg-detail-title b { font-size: 16px; }
+.cg-detail-scroll { padding: 16px 20px 32px; display: flex; flex-direction: column; gap: 16px; }
+.cg-detail-scroll > .cg-block { margin: 0; padding: 14px; border: 1px solid var(--hg3-line); border-radius: 12px; }
+.cg-detail-state { position: sticky; top: -16px; z-index: 2; padding: 12px 0; background: var(--hg3-rail-active); }
+.cg-live-output { border-color: #7eb8ff !important; }
+.cg-output-status { display: flex; align-items: center; gap: 8px; color: #7eb8ff; font-size: 13px; }
+.cg-stream-text::after { content: '▍'; color: #7eb8ff; animation: cg-caret 1s steps(2) infinite; }
+.cg-detail .cg-fulltext { max-height: 50vh; font-size: 13px; line-height: 1.8; }
+.cg-text-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.cg-text-table th, .cg-text-table td { padding: 8px; border: 1px solid var(--hg3-line); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+.cg-text-table th:first-child { width: 30%; color: var(--hg3-faint); font-weight: 500; }
+.cg-text-table textarea { width: 100%; min-height: 72px; resize: vertical; background: transparent; color: var(--hg3-ink); line-height: 1.65; border: 0; }
+.cg-text-table textarea:focus { outline: 1px solid #7eb8ff; }
+.cg-text-table tbody tr { animation: cg-row-enter 180ms ease-out; }
+.cg-context-note { font-size: 12px; line-height: 1.6; color: var(--hg3-faint); }
+
+/* 「这次会带哪几张参考图」：顺序就是上游收到的顺序，编号要能对上 */
+.cg-ref-list { margin: 8px 0 4px; padding: 8px 9px; background: var(--hg3-well); border-radius: 8px; }
+.cg-ref-list .cg-param-label { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; }
+.cg-ref-group { margin: 6px 0 3px; font-size: 10.5px; color: var(--hg3-faint); }
+.cg-ref-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.cg-ref-item { width: 72px; margin: 0; }
+.cg-ref-item img {
+  display: block;
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+.cg-ref-noimg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 54px;
+  font-size: 10px;
+  color: var(--hg3-faint);
+  background: rgb(255 255 255 / 6%);
+  border-radius: 6px;
+}
+.cg-ref-item figcaption { margin-top: 3px; font-size: 10px; line-height: 1.35; color: var(--hg3-muted); }
+
+/* 「出图就按这一条来」：把上游那一条的设定露出来（只读，可滚动） */
+.cg-source-preview { margin: 8px 0 4px; padding: 8px 9px; background: var(--hg3-well); border-radius: 8px; }
+.cg-source-preview .cg-param-label { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; }
+.cg-source-text {
+  margin: 0;
+  max-height: 132px;
+  overflow: auto;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--hg3-ink);
+}
+@keyframes cg-caret { 50% { opacity: 0; } }
+@keyframes cg-row-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (max-width: 1000px) and (min-width: 721px) { .cg-detail { width: 44vw; min-width: 320px; } }
+@media (max-width: 720px) { .cg-detail { width: 100%; max-width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .cg-stream-text::after, .cg-text-table tbody tr { animation: none; } }
+
+/* Keep the animation's temporary coordinates out of user edits. */
+.cg-page.is-arranging .cg-body, .cg-page.is-arranging .cg-top { pointer-events: none; }
+
+.cg-media { display: block; width: 100%; max-height: 360px; object-fit: contain; border-radius: 8px; }
+.cg-sync-error { margin: 0; padding: 10px 16px; color: #f2cb7d; background: var(--hg3-well); font-size: 13px; }
+.cg-sync-error button { margin-left: 16px; text-decoration: underline; }
+.cg-text-table textarea[readonly] { color: var(--hg3-faint); }
+
+
+/* 卡片底栏：文字收进 title，默认只留 icon（长文本会把卡片顶出去）——
+   悬停/聚焦时浏览器用 title 显示"这个按钮是干什么的"。宽屏下（>=1400px）再显示文字。 */
+.cg-btn-label { display: none; }
+@media (min-width: 1400px) { .cg-btn-label { display: inline; } }
+.cg-node-foot .cg-btn { gap: 5px; }

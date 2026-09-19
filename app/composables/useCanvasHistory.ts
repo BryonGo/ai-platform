@@ -11,12 +11,12 @@
  *      测量过期会让线"跑偏或看不见"
  */
 import type { Ref } from 'vue'
-import type { CanvasArtifact, CanvasGraph } from '~/data/canvas-graph'
+import type { CanvasArtifact, CanvasGraph, CanvasNode } from '~/data/canvas-graph'
+import { editableGraph, withServerOutputs } from '~/data/canvas-sync'
 import { createHistory } from '~/data/canvas-history'
 
 export interface CanvasSnapshot {
   graph: string
-  artifacts: string
 }
 
 export function useCanvasHistory(opts: {
@@ -29,10 +29,10 @@ export function useCanvasHistory(opts: {
   /** 让 Vue Flow 重新测量节点句柄。 */
   remeasure: () => void
 }) {
-  const { graph, artifacts, selectedId, toast, remeasure } = opts
+  const { graph, selectedId, toast, remeasure } = opts
 
   function sameSnapshot(a: CanvasSnapshot, b: CanvasSnapshot): boolean {
-    return a.graph === b.graph && a.artifacts === b.artifacts
+    return a.graph === b.graph
   }
 
   const history = createHistory<CanvasSnapshot>(50, sameSnapshot)
@@ -40,15 +40,19 @@ export function useCanvasHistory(opts: {
   const historyVersion = ref(0)
   let applyingHistory = false
   let historyTimer: number | undefined
+  const serverNodes = new Map<string, CanvasNode>()
+  function rememberSelections(): void {
+    for (const node of graph.value.nodes) serverNodes.set(node.id, { ...node, outputs: { ...node.outputs } })
+  }
 
   function snapshotNow(): CanvasSnapshot {
-    return { graph: JSON.stringify(graph.value), artifacts: JSON.stringify(artifacts.value) }
+    return { graph: JSON.stringify(editableGraph(graph.value)) }
   }
 
   function applySnapshot(snap: CanvasSnapshot): void {
     applyingHistory = true
-    graph.value = JSON.parse(snap.graph) as CanvasGraph
-    artifacts.value = JSON.parse(snap.artifacts) as CanvasArtifact[]
+    rememberSelections()
+    graph.value = withServerOutputs(JSON.parse(snap.graph) as CanvasGraph, { ...graph.value, nodes: [...serverNodes.values()] })
     if (selectedId.value && !graph.value.nodes.some(n => n.id === selectedId.value)) selectedId.value = ''
     nextTick(() => {
       applyingHistory = false
@@ -57,6 +61,9 @@ export function useCanvasHistory(opts: {
 
   /** 重建基线：没有它，第一次改动就没有"上一步"可回。换图（新建/套模板）后也要调。 */
   function reset(): void {
+    serverNodes.clear()
+    rememberSelections()
+    if (typeof window !== 'undefined') window.clearTimeout(historyTimer)
     history.reset(snapshotNow())
     historyVersion.value++
   }
@@ -65,8 +72,9 @@ export function useCanvasHistory(opts: {
   reset()
 
   watch(
-    [graph, artifacts],
+    graph,
     () => {
+      rememberSelections()
       if (applyingHistory) return
       nextTick(remeasure)
       window.clearTimeout(historyTimer)
@@ -87,8 +95,30 @@ export function useCanvasHistory(opts: {
     return history.canRedo()
   })
 
-  function undo(): void {
+  function checkpoint(): void {
     window.clearTimeout(historyTimer)
+    history.push(snapshotNow())
+    historyVersion.value++
+  }
+
+  /** Commit bulk changes as exactly one step, separate from pending edits. */
+  async function transaction(change: () => void): Promise<void> {
+    checkpoint()
+    applyingHistory = true
+    try {
+      change()
+      checkpoint()
+      await nextTick()
+    } finally {
+      applyingHistory = false
+      remeasure()
+    }
+  }
+
+  onBeforeUnmount(() => window.clearTimeout(historyTimer))
+
+  function undo(): void {
+    checkpoint()
     const previous = history.undo()
     if (!previous) return
     historyVersion.value++
@@ -97,6 +127,7 @@ export function useCanvasHistory(opts: {
   }
 
   function redo(): void {
+    checkpoint()
     const next = history.redo()
     if (!next) return
     historyVersion.value++
@@ -104,5 +135,5 @@ export function useCanvasHistory(opts: {
     toast('已重做')
   }
 
-  return { canUndo, canRedo, undo, redo, reset }
+  return { canUndo, canRedo, undo, redo, reset, transaction }
 }

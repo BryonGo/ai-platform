@@ -10,7 +10,6 @@
  */
 import type { Ref } from 'vue'
 import type { CanvasArtifact, CanvasGraph, CanvasNode, CanvasShotRow } from '~/data/canvas-graph'
-import { nextVersion, selectArtifact } from '~/data/canvas-graph'
 import { nodeTypeSpec } from '~/data/canvas-nodes'
 
 export function useCanvasRows(opts: {
@@ -18,13 +17,19 @@ export function useCanvasRows(opts: {
   artifacts: Ref<CanvasArtifact[]>
   toast: (text: string) => void
 }) {
-  const { graph, artifacts, toast } = opts
+  const { graph, artifacts } = opts
 
   const rowDrafts = ref<Record<string, { rows: CanvasShotRow[], dirty: boolean }>>({})
 
+  function keyOf(nodeId: string): string {
+    const node = graph.value.nodes.find(n => n.id === nodeId)
+    const slot = node ? nodeTypeSpec(node.kind).outputs[0]?.slot ?? '' : ''
+    return `${nodeId}:${node?.outputs[slot]?.artifactId || ''}`
+  }
+
   /** 该节点当前的分镜表：有草稿用草稿，否则用当前选用产物的行。 */
   function tableRowsOf(node: CanvasNode): CanvasShotRow[] {
-    const draft = rowDrafts.value[node.id]
+    const draft = rowDrafts.value[keyOf(node.id)]
     if (draft) return draft.rows
     const slot = nodeTypeSpec(node.kind).outputs[0]?.slot ?? ''
     const picked = node.outputs[slot]
@@ -33,48 +38,24 @@ export function useCanvasRows(opts: {
   }
 
   function rowsDirty(nodeId: string): boolean {
-    return !!rowDrafts.value[nodeId]?.dirty
+    return !!rowDrafts.value[keyOf(nodeId)]?.dirty
   }
 
   function updateRow(nodeId: string, index: number, key: keyof CanvasShotRow, value: string | number): void {
     const node = graph.value.nodes.find(n => n.id === nodeId)
     if (!node) return
-    const rows = (rowDrafts.value[nodeId]?.rows ?? tableRowsOf(node)).map(r => ({ ...r }))
+    const rows = (rowDrafts.value[keyOf(nodeId)]?.rows ?? tableRowsOf(node)).map(r => ({ ...r }))
     const row = rows[index]
     if (!row) return
     if (key === 'frames' || key === 'idx') row[key] = Number(value)
     else (row as Record<string, unknown>)[key] = value
-    rowDrafts.value = { ...rowDrafts.value, [nodeId]: { rows, dirty: true } }
+    rowDrafts.value = { ...rowDrafts.value, [keyOf(nodeId)]: { rows, dirty: true } }
   }
 
-  function discardRows(nodeId: string): void {
+  function discardRows(nodeId: string, artifactId?: string): void {
     const rest = { ...rowDrafts.value }
-    delete rest[nodeId]
+    delete rest[artifactId === undefined ? keyOf(nodeId) : `${nodeId}:${artifactId}`]
     rowDrafts.value = rest
-  }
-
-  /** 把草稿存成新版本（不动老版本），并把新的那一版设为当前选用。 */
-  function saveRowsAsVersion(nodeId: string): void {
-    const node = graph.value.nodes.find(n => n.id === nodeId)
-    if (!node) return
-    const rows = tableRowsOf(node)
-    const slot = nodeTypeSpec(node.kind).outputs[0]?.slot ?? 'table'
-    const version = nextVersion(artifacts.value, node.id, slot)
-    const artifact: CanvasArtifact = {
-      id: `a_${node.id}_${version}`,
-      nodeId: node.id,
-      slot,
-      type: 'table',
-      version,
-      rows: rows.map(r => ({ ...r })),
-      note: `${rows.length} 镜 · 手工改过`,
-      review: 'pending',
-      createdAt: new Date().toISOString()
-    }
-    artifacts.value = [...artifacts.value, artifact]
-    selectArtifact(graph.value, artifact)
-    discardRows(nodeId)
-    toast(`已存为 v${version}（待确认）—— 认可后下游才能跑`)
   }
 
   /** 换图时清空草稿。 */
@@ -82,5 +63,5 @@ export function useCanvasRows(opts: {
     rowDrafts.value = {}
   }
 
-  return { rowDrafts, tableRowsOf, rowsDirty, updateRow, discardRows, saveRowsAsVersion, clearDrafts }
+  return { rowDrafts, tableRowsOf, rowsDirty, updateRow, discardRows, clearDrafts }
 }

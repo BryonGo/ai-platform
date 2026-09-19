@@ -11,9 +11,12 @@ const props = defineProps<{
   /** new = 新建（选空白或模板）；save = 另存为模板。 */
   mode: 'new' | 'save'
   templates: CanvasTemplateInfo[]
+  loading?: boolean
+  error?: string
 }>()
 
 const emit = defineEmits<{
+  (e: 'retry'): void
   (e: 'blank'): void
   (e: 'use', id: string): void
   (e: 'remove', id: string): void
@@ -59,6 +62,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </p>
 
       <template v-if="props.mode === 'new'">
+        <p
+          v-if="loading"
+          role="status"
+        >
+          正在加载模板…
+        </p>
+        <p
+          v-else-if="error"
+          role="alert"
+        >
+          {{ error }} <button
+            type="button"
+            @click="emit('retry')"
+          >
+            重试
+          </button>
+        </p>
+        <p v-else-if="!templates.length">
+          暂无模板，可以从空白画布开始。
+        </p>
         <div
           class="cg-option"
           role="button"

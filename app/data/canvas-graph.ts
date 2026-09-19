@@ -281,8 +281,9 @@ export function disconnect(graph: CanvasGraph, edgeId: string): void {
   if (!toNode) return
   const rest = (toNode.inputs[edge.to.slot] ?? [])
     .filter(ref => !(ref.from === edge.from.node && ref.slot === edge.from.slot))
-  if (rest.length) toNode.inputs[edge.to.slot] = rest
-  else delete toNode.inputs[edge.to.slot]
+  // 清空要**显式给空数组**，不能删键：服务端保存是字段级合并（没提到的槽位保留库里的），
+  // 删键等于"这次没提到"，那条引用会被服务端补回来 —— 断线就断不掉了。
+  toNode.inputs[edge.to.slot] = rest
 }
 
 /** from 顺着边走能不能到 target。 */
@@ -369,27 +370,20 @@ export function nodeState(
 ): CanvasNodeState {
   const last = lastRun(runs, node.id)
   if (last?.status === 'running') return 'running'
-  if (last?.status === 'failed') return 'failed'
-  if (Object.keys(node.outputs).length > 0) return 'ready'
-
   for (const port of nodeTypeSpec(node.kind).inputs) {
     if (!port.required) continue
     const refs = node.inputs[port.slot] ?? []
     if (!refs.length) return 'blocked'
-    if (artifacts.length) {
-      // 多条入边（剪辑合成那种）要**每一条**都确认过才放行
-      for (const ref of refs) {
-        const artifact = artifacts.find(a => a.id === ref.artifactId)
-        if (artifact && artifact.review !== 'approved') return 'awaiting'
-      }
+    for (const ref of refs) {
+      const artifact = artifacts.find(a => a.id === ref.artifactId)
+      if (!artifact) return 'blocked'
+      if (artifact.review !== 'approved') return 'awaiting'
+      const parentRun = lastRun(runs, ref.from)
+      if (parentRun?.status === 'running') return 'blocked'
     }
   }
-
-  for (const parentId of parentsOf(graph, node.id)) {
-    const parent = graph.nodes.find(n => n.id === parentId)
-    if (!parent) continue
-    if (nodeState(graph, parent, runs, artifacts) !== 'ready') return 'blocked'
-  }
+  if (last?.status === 'failed') return 'failed'
+  if (Object.values(node.outputs).some(ref => artifacts.some(a => a.id === ref.artifactId))) return 'ready'
   return 'idle'
 }
 
@@ -400,21 +394,6 @@ export const NODE_STATE_META: Record<CanvasNodeState, { label: string, tone: 'mu
   failed: { label: '失败', tone: 'bad' },
   blocked: { label: '等待上游', tone: 'warn' },
   awaiting: { label: '等待确认', tone: 'warn' }
-}
-
-/** 脏节点：从没成功跑过 / 参数变了 / 输入换了版本。 */
-export function isDirty(node: CanvasNode, runs: CanvasRun[]): boolean {
-  const done = [...runs].reverse().find(r => r.nodeId === node.id && r.status === 'done')
-  if (!done) return true
-  return done.paramsHash !== paramsHash(node)
-}
-
-/** 「运行全部」要跑的节点，按拓扑序。 */
-export function dirtyNodes(graph: CanvasGraph, runs: CanvasRun[]): string[] {
-  return topoOrder(graph).filter((id) => {
-    const node = graph.nodes.find(n => n.id === id)
-    return node ? isDirty(node, runs) : false
-  })
 }
 
 /**
@@ -486,6 +465,23 @@ export function selectArtifact(graph: CanvasGraph, artifact: CanvasArtifact): vo
     else list.push(next)
     down.inputs[edge.to.slot] = list
   }
+}
+
+/**
+ * 一次运行落了**多口**产物时，逐口都成为"当前选用"。
+ *
+ * 为什么必须逐口都选：下游的输入引用是**按口**记的 —— 人物列表 → 角色设定、
+ * 场景列表 → 场景设定、分镜大纲 → 分镜生成，三口的引用各写各的。
+ * 只选第一口的表现是"拆解明明出了场景，场景设定却永远等着上游"，而且怎么点都没反应。
+ */
+export function selectFreshArtifacts(graph: CanvasGraph, list: CanvasArtifact[]): void {
+  // 同一口在这次事件里可能来了多条（重跑/补跑）：取版本号最大的那条当当前选用。
+  const newest = new Map<string, CanvasArtifact>()
+  for (const a of list) {
+    const seen = newest.get(a.slot)
+    if (!seen || a.version > seen.version) newest.set(a.slot, a)
+  }
+  for (const a of newest.values()) selectArtifact(graph, a)
 }
 
 /**
@@ -682,4 +678,32 @@ export function pendingReviewCount(artifacts: CanvasArtifact[]): number {
 export function exportFileName(episodeIdx: number, shotIdx: number, maxShotIdx: number): string {
   const pad = Math.max(2, String(Math.max(1, maxShotIdx)).length)
   return `E${String(episodeIdx).padStart(2, '0')}-S${String(shotIdx).padStart(pad, '0')}.mp4`
+}
+
+/**
+ * 把一批节点按**依赖分层**：同一层里的节点互不依赖，可以一起跑；层与层之间串行。
+ *
+ * 为什么要这一层：拆解出 3 个角色、分镜表展开出 5 个首帧时，串行就是"一次一次地等"；
+ * 而它们彼此没有依赖，云端本来也收并发请求。层间仍然串行 —— 下游要等上游的产物真的落库。
+ */
+export function dependencyLevels(graph: CanvasGraph, ids: string[]): string[][] {
+  const set = new Set(ids)
+  const depth = new Map<string, number>()
+  const depthOf = (id: string, seen = new Set<string>()): number => {
+    const cached = depth.get(id)
+    if (cached !== undefined) return cached
+    if (seen.has(id)) return 0 // 成环（本不该有）：别递归到栈溢出
+    seen.add(id)
+    const parents = parentsOf(graph, id).filter(p => set.has(p))
+    const d = parents.length ? Math.max(...parents.map(p => depthOf(p, seen))) + 1 : 0
+    depth.set(id, d)
+    return d
+  }
+  const levels: string[][] = []
+  for (const id of ids) {
+    const d = depthOf(id)
+    if (!levels[d]) levels[d] = []
+    levels[d]!.push(id)
+  }
+  return levels.filter(Boolean)
 }

@@ -1,5 +1,5 @@
 /**
- * 画布模板：内置一条产线，外加"把当前这张图另存为模板"。
+ * 画布模板："把当前这张图另存为模板"。
  *
  * 用户模板先存在**浏览器本地**（模板是不是运营资产要单独拍板，见 R2 §10.5）。
  *
@@ -10,13 +10,12 @@
 
 import type { CanvasArtifact, CanvasGraph, CanvasRun } from './canvas-graph'
 import { FRAME_GRID } from './canvas-nodes'
-import { buildCanvasSample } from './canvas-sample'
 
 export interface CanvasTemplateInfo {
   id: string
   name: string
   summary: string
-  /** 内置产线（代码里那份，来自 canvas-sample）。 */
+  /** 服务端内置模板标识。 */
   builtIn?: boolean
   /**
    * 运营下发的站点模板（来自 `/canvas/template/list`）。
@@ -34,11 +33,6 @@ export interface CanvasTemplatePayload {
 }
 
 const STORAGE_KEY = 'hougong.canvas.templates.v1'
-
-/** 内置模板：带产物与运行记录，用来"看明白这条产线长什么样"。 */
-export const BUILT_IN_TEMPLATES: CanvasTemplateInfo[] = [
-  { id: 'builtin-three-shots', name: '三镜短剧产线', summary: '剧本 → 拆解 → 人物/场景/分镜 → 首帧 → 视频 → 排序合成 → 导出', builtIn: true }
-]
 
 interface StoredTemplate {
   id: string
@@ -59,19 +53,20 @@ function readStored(): StoredTemplate[] {
   }
 }
 
-function writeStored(list: StoredTemplate[]): void {
-  if (typeof window === 'undefined') return
+function writeStored(list: StoredTemplate[]): boolean {
+  if (typeof window === 'undefined') return false
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+    return true
   } catch {
-    /* 存不下（隐私模式/配额满）就算了，界面上会提示一句 */
+    return false
   }
 }
 
-/** 全部模板：内置的在前，自己存的在后。 */
+/** 本机用户实际保存的模板。 */
 export function listTemplates(): CanvasTemplateInfo[] {
   const mine = readStored().map(t => ({ id: t.id, name: t.name, summary: '我存的模板' }))
-  return [...BUILT_IN_TEMPLATES, ...mine]
+  return mine
 }
 
 /** 空白画布：一张什么都没连的图。 */
@@ -87,22 +82,12 @@ export function emptyCanvas(): CanvasTemplatePayload {
 /**
  * 载入模板：**只给结构**（节点 + 连线 + 参数），产物与运行记录一律为空。
  *
- * 内置模板的结构同样来自 `canvas-sample.ts` —— 那份数据的价值是"照最短闭环摆好一条
- * 产线"，不是"替你跑出结果"。
+ * 仅载入用户实际保存的结构，不生成示例内容。
  */
 export function loadTemplate(id: string): CanvasTemplatePayload | null {
-  const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === id)
-  if (builtIn) {
-    const structure = buildCanvasSample().graph
-    return {
-      graph: { ...structure, nodes: structure.nodes.map(n => ({ ...n, outputs: {} })), edges: structure.edges },
-      artifacts: [],
-      runs: []
-    }
-  }
   const stored = readStored().find(t => t.id === id)
   if (!stored) return null
-  return { graph: stored.graph, artifacts: [], runs: [] }
+  return { graph: { ...stored.graph, nodes: stored.graph.nodes.map(n => ({ ...n, outputs: {} })) }, artifacts: [], runs: [] }
 }
 
 /** 把当前这张图存成模板（只存图，不存产物与账）。 */
@@ -111,10 +96,10 @@ export function saveTemplate(name: string, graph: CanvasGraph): CanvasTemplateIn
   const id = `t_${Date.now().toString(36)}`
   const list = readStored()
   list.push({ id, name, graph })
-  writeStored(list.slice(-20))
+  if (!writeStored(list.slice(-20))) return null
   return { id, name, summary: '我存的模板' }
 }
 
-export function removeTemplate(id: string): void {
-  writeStored(readStored().filter(t => t.id !== id))
+export function removeTemplate(id: string): boolean {
+  return writeStored(readStored().filter(t => t.id !== id))
 }

@@ -15,9 +15,10 @@ export interface ContextMenuItem {
   icon?: string
   /** 右侧说明（快捷键、约花费…）。 */
   hint?: string
+  tone?: 'muted' | 'run' | 'ok' | 'bad' | 'warn'
   danger?: boolean
   disabled?: boolean
-  /** 子菜单（"新增节点"用）：hover 展开。 */
+  /** 子菜单（"新增节点"用）：点击展开。 */
   children?: ContextMenuItem[]
 }
 
@@ -37,25 +38,30 @@ const emit = defineEmits<{
 const root = ref<HTMLElement | null>(null)
 const openSub = ref<string>('')
 /** 贴着视口边缘时翻转，别让菜单跑出屏幕。 */
-const pos = ref({ left: props.x, top: props.y })
+const pos = ref({ left: Math.max(8, props.x), top: props.y })
 const flipUp = ref(false)
 const flipLeft = ref(false)
 
-const MENU_W = 208
+let observer: ResizeObserver | undefined
 
 function layout(): void {
   const el = root.value
   const h = el?.offsetHeight ?? 240
-  flipLeft.value = props.x + MENU_W > window.innerWidth - 8
+  const width = el?.offsetWidth ?? 240
+  flipLeft.value = props.x + width > window.innerWidth - 8
   flipUp.value = props.y + h > window.innerHeight - 8
   pos.value = {
-    left: flipLeft.value ? Math.max(8, props.x - MENU_W) : props.x,
-    top: flipUp.value ? Math.max(8, props.y - h) : props.y
+    left: flipLeft.value ? Math.max(8, props.x - width) : Math.max(8, props.x),
+    top: flipUp.value ? Math.max(8, props.y - h) : Math.max(8, props.y)
   }
 }
 
 function onPick(item: ContextMenuItem): void {
-  if (item.disabled || item.children?.length) return
+  if (item.disabled) return
+  if (item.children?.length) {
+    openSub.value = openSub.value === item.key ? '' : item.key
+    return
+  }
   emit('pick', item.key)
 }
 
@@ -65,6 +71,11 @@ function onKey(event: KeyboardEvent): void {
 
 onMounted(() => {
   layout()
+  observer = new ResizeObserver(layout)
+  if (root.value) {
+    observer.observe(root.value)
+    root.value.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+  }
   window.addEventListener('mousedown', onDocDown, true)
   window.addEventListener('keydown', onKey)
   window.addEventListener('resize', layout)
@@ -72,6 +83,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  observer?.disconnect()
   window.removeEventListener('mousedown', onDocDown, true)
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('resize', layout)
@@ -82,7 +94,8 @@ function onDocDown(event: MouseEvent): void {
   if (root.value && !root.value.contains(event.target as Node)) emit('close')
 }
 
-function onScroll(): void {
+function onScroll(event: Event): void {
+  if (event.target instanceof Node && root.value?.contains(event.target)) return
   emit('close')
 }
 </script>
@@ -91,6 +104,7 @@ function onScroll(): void {
   <div
     ref="root"
     class="cg-menu"
+    :aria-label="title || '画布菜单'"
     :style="{ left: `${pos.left}px`, top: `${pos.top}px` }"
     @contextmenu.prevent
   >
@@ -106,12 +120,13 @@ function onScroll(): void {
       v-for="item in items"
       :key="item.key"
       class="cg-menu-row"
+      :data-tone="item.tone"
       :class="{ 'is-danger': item.danger, 'is-disabled': item.disabled, 'is-open': openSub === item.key }"
-      @mouseenter="openSub = item.children?.length ? item.key : ''"
     >
       <button
         type="button"
         :disabled="item.disabled"
+        :aria-expanded="item.children?.length ? openSub === item.key : undefined"
         @click="onPick(item)"
       >
         <i

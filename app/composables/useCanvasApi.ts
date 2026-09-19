@@ -9,6 +9,7 @@
  *   1. 时间戳：服务端是 unix 秒（数字），前端模型是字符串 → 一律转 ISO；
  *   2. 服务端多带的字段（mediaAssetId / runId / taskIds）原样带上，前端要就用。
  */
+import { readCanvasEvents } from '~/data/canvas-sse'
 import type { CanvasArtifact, CanvasExportManifest, CanvasGraph, CanvasReview, CanvasRun } from '~/data/canvas-graph'
 import type { CanvasTemplateInfo } from '~/data/canvas-templates'
 import { apiBase, apiRequest, siteCode, useAuthSession } from './useApi'
@@ -186,14 +187,13 @@ export function useCanvasApi() {
     return { id: data?.id ?? '', graph: (data?.graph as CanvasGraph) ?? null }
   }
 
-  /** 我的图列表（列表页不拉整图）。 */
   /**
    * 列图。`owner` 是**可选的归属过滤**（从某一集/某个项目进画布时只列这一份的图）。
    *
    * 归属对前端是个**不透明标签**（`{ type: 'episode' | 'project', id: string }`）：
    * 画布不认识"集"与"项目"，只是原样带给服务端 —— 加归属过滤不需要画布认识业务模型。
    */
-  function listGraphs(
+  async function listGraphs(
     product = '',
     owner: { type?: string, id?: string } = {}
   ): Promise<CanvasGraphSummary[]> {
@@ -202,7 +202,13 @@ export function useCanvasApi() {
     if (owner.type) params.set('owner_type', owner.type)
     if (owner.id) params.set('owner_id', owner.id)
     const query = params.toString()
-    return apiRequest<CanvasGraphSummary[]>(`/canvas/graph/list${query ? `?${query}` : ''}`)
+    // 服务端回的是 `{list: [...]}`（`api/v1/canvas.GraphListRes`），不是裸数组 ——
+    // 按数组取会得到 undefined：**打开画布永远是一张空白图**、某一集下面永远"还没有画布图"，
+    // 而且不报错（`list[0]` 只是 undefined）。与 `listTemplates` 是同一个坑。
+    const data = await apiRequest<{ list: CanvasGraphSummary[] }>(
+      `/canvas/graph/list${query ? `?${query}` : ''}`
+    )
+    return data?.list ?? []
   }
 
   /** 一次拿全：图 + runs + artifacts（全部转成前端模型）。 */
@@ -317,65 +323,25 @@ export function useCanvasApi() {
         priority: in_.priority || 0
       })
     })
-    if (!resp.ok || !resp.body) {
-      handlers.onError?.(`运行失败：HTTP ${resp.status}`)
-      return
-    }
-
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      // SSE 以空行分帧；最后一段可能不完整，留在 buffer 里等下一块。
-      let sep = buffer.indexOf('\n\n')
-      while (sep >= 0) {
-        const frame = buffer.slice(0, sep)
-        buffer = buffer.slice(sep + 2)
-        dispatchFrame(frame, handlers)
-        sep = buffer.indexOf('\n\n')
+    if (!resp.ok || !resp.body) throw new Error(`运行失败：HTTP ${resp.status}`)
+    let terminal = false
+    await readCanvasEvents(resp.body, (event, data) => {
+      switch (event) {
+        case 'delta': handlers.onDelta?.(String(data.text ?? '')); break
+        case 'artifact':
+          if (!data.artifact && !Array.isArray(data.artifacts)) throw new Error('产物事件缺少产物数据')
+          terminal = true
+          handlers.onArtifact?.(data as Parameters<NonNullable<typeof handlers.onArtifact>>[0])
+          break
+        case 'queued':
+          if (!data.run) throw new Error('排队事件缺少运行记录')
+          terminal = true
+          handlers.onQueued?.(data as { run?: ServerRun })
+          break
+        case 'error': throw new Error(String(data.message ?? '运行失败'))
       }
-    }
-    if (buffer.trim()) dispatchFrame(buffer, handlers)
-  }
-
-  /** 解析一帧 SSE（`event:` + `data:` 两行）。 */
-  function dispatchFrame(
-    frame: string,
-    handlers: Parameters<typeof runNodeStream>[1]
-  ): void {
-    let event = ''
-    let payload = ''
-    for (const line of frame.split('\n')) {
-      const text = line.replace(/\r$/, '')
-      if (text.startsWith('event: ')) event = text.slice(7).trim()
-      else if (text.startsWith('data: ')) payload = text.slice(6)
-    }
-    if (!event) return
-    let data: Record<string, unknown>
-    try {
-      data = payload ? JSON.parse(payload) : {}
-    } catch {
-      return
-    }
-    switch (event) {
-      case 'delta':
-        handlers.onDelta?.(String(data.text ?? ''))
-        break
-      case 'artifact':
-        handlers.onArtifact?.(data as Parameters<NonNullable<typeof handlers.onArtifact>>[0])
-        break
-      case 'queued':
-        handlers.onQueued?.(data as { run?: ServerRun })
-        break
-      case 'error':
-        handlers.onError?.(String(data.message ?? '运行失败'))
-        break
-      default:
-        break
-    }
+    })
+    if (!terminal) throw new Error('未收到执行结果，连接已结束；请同步状态后重试')
   }
 
   // ---------------------------------------------------------------- 产物
@@ -464,35 +430,8 @@ export function useCanvasApi() {
     }
     if (session.token.value) headers.Authorization = `Bearer ${session.token.value}`
     const resp = await fetch(`${apiBase()}/platform/events`, { headers, credentials: 'include', signal })
-    if (!resp.ok || !resp.body) return
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let sep = buffer.indexOf('\n\n')
-      while (sep >= 0) {
-        const frame = buffer.slice(0, sep)
-        buffer = buffer.slice(sep + 2)
-        let event = ''
-        let payload = ''
-        for (const line of frame.split('\n')) {
-          const text = line.replace(/\r$/, '')
-          if (text.startsWith('event: ')) event = text.slice(7).trim()
-          else if (text.startsWith('data: ')) payload = text.slice(6)
-          // id: 行是给 Last-Event-ID 续传用的；这里不续传，断线后直接重拉整图。
-        }
-        if (!event || !payload) continue
-        try {
-          onEvent(event, JSON.parse(payload) as Record<string, unknown>)
-        } catch {
-          /* 解析失败的事件跳过，不影响其它事件 */
-        }
-        sep = buffer.indexOf('\n\n')
-      }
-    }
+    if (!resp.ok || !resp.body) throw new Error(`状态连接失败：HTTP ${resp.status}`)
+    await readCanvasEvents(resp.body, onEvent)
   }
 
   /** 导出节点运行（打包成 ZIP，异步）。 */

@@ -74,6 +74,69 @@
   background: var(--hg3-rail);
 }
 
+/* ---------- 收起 / 展开 ---------- */
+
+.hg-rail-collapse {
+  position: absolute;
+  top: 16px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--hg3-faint);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.hg-rail-collapse:hover {
+  color: var(--hg3-ink);
+  background: rgb(255 255 255 / 8%);
+}
+
+/* ---------- 收起态：只留图标 ----------
+ *
+ * 用在画布这类"横向空间就是生产力"的页面（点画布那一刻收起）。
+ * 收起的只是**文字与列表**，不是功能：图标仍可点、仍能导航，也仍能再展开 ——
+ * 所以这里 hide 掉的是 label / 最近会话 / 版本号 / 协议链接，而不是整块导航。
+ */
+.hg-app.rail-collapsed { --hg3-rail-w: 60px; }
+
+.hg-app.rail-collapsed .hg-rail-brand {
+  grid-template-columns: auto;
+  justify-content: center;
+  padding: 16px 0 12px;
+}
+
+.hg-app.rail-collapsed .hg-rail-brand b,
+.hg-app.rail-collapsed .hg-rail-brand small,
+.hg-app.rail-collapsed .hg-rail-cta-label,
+.hg-app.rail-collapsed .hg-nav-label,
+.hg-app.rail-collapsed .hg-nav-caret,
+.hg-app.rail-collapsed .hg-nav-item.sub,
+.hg-app.rail-collapsed .hg-rail-divider,
+.hg-app.rail-collapsed .hg-rail-section,
+.hg-app.rail-collapsed .hg-rail-version,
+.hg-app.rail-collapsed .hg-legal { display: none; }
+
+.hg-app.rail-collapsed .hg-rail-brand img { grid-row: auto; }
+
+.hg-app.rail-collapsed .hg-rail-cta {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 12px;
+  gap: 0;
+}
+
+.hg-app.rail-collapsed .hg-nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.hg-app.rail-collapsed .hg-rail-foot { padding: 8px 0 12px; }
+
 .hg-rail-brand {
   display: grid;
   grid-template-columns: auto 1fr;

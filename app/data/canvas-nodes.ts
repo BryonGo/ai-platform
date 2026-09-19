@@ -330,13 +330,21 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     modelKind: 'image',
     promptKey: 'prompt',
     inputs: [
-      { slot: 'person', type: 'image', label: '人物参考', required: true },
+      // 一镜里往往不止一个人（对话镜头就是两个人同框）：人物参考是**多条入边**。
+      // 以前写成单条，表现是"第二个角色连不上来 —— 只能有一条线"（用户 2026-09-19）。
+      // 多张参考图是上游本来就支持的（见 app/utils/image-ref.ts：GPT Image 2 /
+      // Seedream / Nano Banana 上 2 张、3 张场景都实测成立），所以这里不该拦。
+      { slot: 'person', type: 'image', label: '人物参考（一镜几人接几张）', multiple: true, required: true },
       { slot: 'scene', type: 'image', label: '场景参考', required: true },
       { slot: 'shot', type: 'table', label: '这一镜的分镜', required: true }
     ],
     outputs: [{ slot: 'image', type: 'image', label: '候选首帧' }],
     params: [
       { key: 'modelId', label: '模型', kind: 'select', options: [] },
+      // 「这一镜」必须能从上游分镜表里选：批量「生成节点」会自动带上第几镜，
+      // 但**手动拖出来的首帧节点**以前只能落在第一行（服务端 want=-1 的兜底）——
+      // 于是"我明明接的是 S03，出图却按 S01"。候选由页面按上游那一版的行下发。
+      { key: 'shotIdx', label: '这一镜', kind: 'select', options: [], hint: '从上游分镜表里选；「生成节点」批量建出来的会自动带上是第几镜' },
       { key: 'prompt', label: '画面提示词', kind: 'textarea', placeholder: '不填则用分镜里的关键帧提示词' },
       { key: 'count', label: '一次出几张', kind: 'select', options: [{ value: '3', label: '3 张（默认）' }, { value: '1', label: '1 张' }] }
     ],
@@ -361,6 +369,8 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
       // 花费口径写在这里：视频是按**每秒单价**扣的（各模型不同），而节点卡上那个
       // 「预计」是固定档位参考 —— 不写清楚，用户会拿预计当账单。
       { key: 'modelId', label: '模型', kind: 'select', options: [], hint: '实际按所选模型的每秒单价 × 时长计费（余额分）；卡片上的「预计」只是档位参考' },
+      // 同首帧：手动建的视频节点也要能说清"这一镜是第几镜"，否则关键词永远取第一行。
+      { key: 'shotIdx', label: '这一镜', kind: 'select', options: [], hint: '从上游分镜表里选；接了分镜就以它为准，否则用下面的运动描述' },
       // 画幅与清晰度：**候选来自所选模型的能力表**（页面按 catalog 算好下发，
       // 见 canvas.vue 的 dynamicOptionsOf）。空 options = 等页面填，
       // 这样换模型/后台改能力都不用改这里的死值。

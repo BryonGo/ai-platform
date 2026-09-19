@@ -34,6 +34,8 @@ const props = defineProps<{
     /** 分镜表当前的行（草稿优先）与"改过没存"标记。 */
     tableRows?: CanvasShotRow[]
     tableDirty?: boolean
+    /** 当前在看哪一口输出槽（多口节点由页面记着，见 useCanvasSlots）。 */
+    activeSlot?: string
     artifacts: CanvasArtifact[]
     /** 这一步用的模型名（每一步不一样，显示出来才知道在烧哪个模型的钱）。 */
     modelLabel?: string
@@ -45,6 +47,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'run', nodeId: string): void
+  (e: 'rerun', nodeId: string): void
   (e: 'expand', nodeId: string): void
   (e: 'remove', nodeId: string): void
   (e: 'duplicate', nodeId: string): void
@@ -53,6 +56,8 @@ const emit = defineEmits<{
   (e: 'pick-item', nodeId: string, artifactId: string, index: number): void
   (e: 'review', nodeId: string, artifactId: string, action: 'approved' | 'rejected'): void
   (e: 'open', nodeId: string): void
+  (e: 'slot', nodeId: string, slot: string): void
+  (e: 'preview', url: string, title: string, kind?: 'image' | 'video'): void
   (e: 'param', nodeId: string, key: string, value: string): void
   (e: 'collapse', nodeId: string, collapsed: boolean): void
   (e: 'row-update', nodeId: string, index: number, key: keyof CanvasShotRow, value: string | number): void
@@ -64,15 +69,17 @@ const node = computed(() => props.data.node)
 const spec = computed(() => props.data.spec)
 const state = computed(() => props.data.state)
 
+/** 当前在看哪一口（多口节点：底栏的版本切换也跟着这一口走，与右栏一致）。 */
+const onSlot = computed(() => props.data.activeSlot || spec.value.outputs[0]?.slot || '')
+
 /** 该槽位的全部版本（版本切换用；新的在前）。 */
 const versions = computed<CanvasArtifact[]>(() => {
-  const slot = spec.value.outputs[0]?.slot
-  return slot ? artifactsOf(props.data.artifacts, node.value.id, slot) : []
+  return onSlot.value ? artifactsOf(props.data.artifacts, node.value.id, onSlot.value) : []
 })
 
 /** 当前选用的产物（底栏要它的备注）。 */
 const shown = computed<CanvasArtifact | undefined>(() => {
-  const slot = spec.value.outputs[0]?.slot
+  const slot = onSlot.value
   if (!slot) return undefined
   const picked = node.value.outputs[slot]
   return picked
@@ -123,8 +130,11 @@ const tableRowCount = computed(() => (props.data.tableRows ?? shown.value?.rows 
       :table-rows="props.data.tableRows"
       :table-dirty="props.data.tableDirty"
       :frame-grid="props.data.frameGrid"
+      :active-slot="props.data.activeSlot"
       @param="(key, value) => emit('param', node.id, key, value)"
       @pick-item="(artifactId, index) => emit('pick-item', node.id, artifactId, index)"
+      @slot="(slot) => emit('slot', node.id, slot)"
+      @preview="(url, title, kind) => emit('preview', url, title, kind)"
       @row-update="(index, key, value) => emit('row-update', node.id, index, key, value)"
       @rows-save="emit('rows-save', node.id)"
       @rows-discard="emit('rows-discard', node.id)"
@@ -160,6 +170,7 @@ const tableRowCount = computed(() => (props.data.tableRows ?? shown.value?.rows 
       :params-open="paramsOpen"
       :can-expand="node.kind === 'shotlist' && tableRowCount > 0"
       @run="emit('run', node.id)"
+      @rerun="emit('rerun', node.id)"
       @expand="emit('expand', node.id)"
       @pick="(artifactId) => emit('pick', node.id, artifactId)"
       @toggle-params="paramsOpen = !paramsOpen"

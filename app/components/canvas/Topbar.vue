@@ -9,6 +9,9 @@
 import { creditsToYuan } from '~/data/canvas-nodes'
 
 defineProps<{
+  busy?: boolean
+  arranging?: boolean
+  canArrange?: boolean
   nodeCount: number
   readyCount: number
   /** 有几份产物等人确认。 */
@@ -34,13 +37,17 @@ const emit = defineEmits<{
   (e: 'zoom-out'): void
   (e: 'new'): void
   (e: 'fit'): void
+  (e: 'arrange'): void
   (e: 'save'): void
   (e: 'run-all'): void
 }>()
 </script>
 
 <template>
-  <header class="cg-top">
+  <header
+    class="cg-top"
+    :inert="arranging"
+  >
     <div class="cg-top-left">
       <h1 class="cg-brand">
         织幕
@@ -112,6 +119,7 @@ const emit = defineEmits<{
       <button
         class="cg-ghost"
         type="button"
+        :disabled="busy || !!runningCount"
         @click="emit('new')"
       >
         <i class="i-lucide-file-plus-2" /> 新建
@@ -126,14 +134,27 @@ const emit = defineEmits<{
       <button
         class="cg-ghost"
         type="button"
+        :disabled="!canArrange || arranging"
+        :aria-busy="arranging"
+        title="按依赖和镜号整理位置，可一步撤销"
+        @click="emit('arrange')"
+      >
+        <i :class="arranging ? 'i-lucide-loader-circle cg-spin' : 'i-lucide-layout-grid'" />
+        {{ arranging ? '整理中…' : '整理画布' }}
+      </button>
+      <button
+        class="cg-ghost"
+        type="button"
+        :disabled="busy"
+        :aria-busy="busy"
         @click="emit('save')"
       >
-        <i class="i-lucide-save" /> 保存
+        <i :class="busy ? 'i-lucide-loader-circle cg-spin' : 'i-lucide-save'" /> {{ busy ? '处理中…' : '保存' }}
       </button>
       <button
         class="cg-primary"
         type="button"
-        :disabled="!!runningCount"
+        :disabled="busy || !!runningCount || !nodeCount"
         @click="emit('run-all')"
       >
         <i :class="runningCount ? 'i-lucide-loader-circle' : 'i-lucide-play'" />

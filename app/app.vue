@@ -143,6 +143,14 @@ const assetsOpen = ref(true)
 const accountOpen = ref(false)
 const accountWrapRef = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
+/**
+ * 侧栏收起态（只留图标）。
+ *
+ * 画布是"横向空间就是生产力"的页面：一动手画布，那条约 17vw 的侧栏就该让位，
+ * 只剩一条图标竖条（点图标仍能导航，也能再展开）。状态放 `useState` 里，
+ * 因为**触发收起的是画布页**（点画布那一刻），而这条栏画在 app.vue 的壳上。
+ */
+const railCollapsed = useState('hg-rail-collapsed', () => false)
 // 对话创作页需要占满可视高度（输入器贴底、消息区独立滚动），
 // 因此让主内容区去掉通用内边距，由页面自己排布。
 const isFullBleed = computed(() => route.path.startsWith('/create') || route.path.startsWith('/canvas'))
@@ -224,6 +232,8 @@ watch(authOpen, (value, previous) => {
 watch(() => route.fullPath, () => {
   railOpen.value = false
   accountOpen.value = false
+  // 离开画布就把侧栏展开：收起态是"在画布上干活时"的，跟着走到别的页面会显得栏丢了。
+  if (!route.path.startsWith('/canvas')) railCollapsed.value = false
 })
 </script>
 
@@ -231,7 +241,7 @@ watch(() => route.fullPath, () => {
   <UApp>
     <div
       class="hg-app"
-      :class="{ 'rail-open': railOpen, 'full-bleed': isFullBleed }"
+      :class="{ 'rail-open': railOpen, 'rail-collapsed': railCollapsed, 'full-bleed': isFullBleed }"
     >
       <div
         v-if="railOpen"
@@ -243,6 +253,17 @@ watch(() => route.fullPath, () => {
         class="hg-rail"
         aria-label="主导航"
       >
+        <!-- 收起 / 展开：收起后是**唯一**留在栏上的控件（否则一旦收起就没路回来） -->
+        <button
+          type="button"
+          class="hg-rail-collapse"
+          :aria-label="railCollapsed ? '展开侧栏' : '收起侧栏'"
+          :title="railCollapsed ? '展开侧栏' : '收起侧栏'"
+          @click="railCollapsed = !railCollapsed"
+        >
+          <UIcon :name="railCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" />
+        </button>
+
         <NuxtLink
           class="hg-rail-brand"
           to="/"
@@ -267,7 +288,7 @@ watch(() => route.fullPath, () => {
             name="i-lucide-plus"
             aria-hidden="true"
           />
-          创作
+          <span class="hg-rail-cta-label">创作</span>
         </button>
 
         <div class="hg-rail-scroll">
@@ -281,6 +302,7 @@ watch(() => route.fullPath, () => {
                 class="hg-nav-item"
                 :class="{ active: isActive(item.to) }"
                 :to="item.to"
+                :title="item.label"
               >
                 <UIcon
                   :name="item.icon"
@@ -293,6 +315,7 @@ watch(() => route.fullPath, () => {
                 v-else
                 type="button"
                 class="hg-nav-item"
+                :title="item.label"
                 disabled
               >
                 <UIcon
@@ -309,6 +332,7 @@ watch(() => route.fullPath, () => {
               class="hg-nav-item"
               :class="{ active: navAssets.some(item => isActive(item.to)) }"
               :aria-expanded="assetsOpen"
+              title="我的资产"
               @click="assetsOpen = !assetsOpen"
             >
               <UIcon
@@ -346,6 +370,7 @@ watch(() => route.fullPath, () => {
             <button
               type="button"
               class="hg-nav-item"
+              title="搜索"
               @click="openSearch()"
             >
               <UIcon
@@ -393,6 +418,7 @@ watch(() => route.fullPath, () => {
                 class="hg-nav-item"
                 :class="{ active: isActive(item.to) }"
                 :to="item.to"
+                :title="item.label"
               >
                 <UIcon
                   :name="item.icon"
@@ -405,6 +431,7 @@ watch(() => route.fullPath, () => {
                 v-else
                 type="button"
                 class="hg-nav-item"
+                :title="item.label"
                 disabled
               >
                 <UIcon

@@ -34,6 +34,7 @@ const _props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'run'): void
+  (e: 'rerun'): void
   (e: 'expand'): void
   (e: 'pick', artifactId: string): void
   (e: 'toggle-params'): void
@@ -51,10 +52,11 @@ function reviewLabel(a: CanvasArtifact): string {
       v-if="spec.stage === 'planned'"
       class="cg-btn cg-btn--ghost"
       type="button"
-      title="本版未开放"
+      :title="'本版未开放'"
       disabled
     >
-      本版未开放
+      <i class="i-lucide-lock" />
+      <span class="cg-btn-label">本版未开放</span>
     </button>
     <button
       v-else-if="canExpand"
@@ -63,19 +65,32 @@ function reviewLabel(a: CanvasArtifact): string {
       title="按分镜表批量生成首帧与视频节点"
       @click.stop="emit('expand')"
     >
-      生成节点
+      <i class="i-lucide-list-plus" />
+      <span class="cg-btn-label">生成节点</span>
     </button>
     <button
       v-else
       class="cg-btn"
       type="button"
       :disabled="state === 'running' || state === 'blocked'"
+      :title="state === 'running' ? '正在运行' : state === 'failed' ? '上次失败，点一下重试' : (estimate ? `运行这个节点 · 约 ${estimate}` : '运行这个节点')"
       @click.stop="emit('run')"
     >
-      <i :class="state === 'running' ? 'i-lucide-loader-circle' : 'i-lucide-play'" />
-      {{ state === 'running' ? '运行中' : dirty ? '重跑' : '运行' }}
+      <i :class="state === 'running' ? 'i-lucide-loader-circle' : (state === 'failed' ? 'i-lucide-rotate-cw' : 'i-lucide-play')" />
+      <span class="cg-btn-label">{{ state === 'running' ? '运行中' : state === 'failed' ? '重试' : '运行' }}</span>
     </button>
 
+    <button
+      v-if="versions.length && spec.stage === 'ready'"
+      class="cg-btn cg-btn--ghost"
+      type="button"
+      :disabled="['running', 'blocked'].includes(state)"
+      title="忽略缓存，重新生成一版"
+      @click.stop="emit('rerun')"
+    >
+      <i class="i-lucide-refresh-cw" />
+      <span class="cg-btn-label">重新生成</span>
+    </button>
     <span
       v-if="versions.length > 1"
       class="cg-versions"
