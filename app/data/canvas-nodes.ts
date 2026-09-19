@@ -430,9 +430,10 @@ export const CANVAS_NODE_TYPES: CanvasNodeTypeSpec[] = [
     ],
     outputs: [{ slot: 'cut', type: 'cut', label: '成片' }],
     params: [
-      { key: 'order', label: '排序', kind: 'select', options: [{ value: 'idx', label: '按镜号（默认）' }, { value: 'manual', label: '手动排' }] },
-      { key: 'merge', label: '合成方式', kind: 'select', options: [{ value: 'list', label: '只出排序清单（本版）' }, { value: 'mux', label: '真拼片（第二轮）' }], hint: '本版不出画面，只把顺序与片段定下来' },
-      { key: 'transition', label: '转场', kind: 'select', options: [{ value: 'cut', label: '硬切' }, { value: 'fade', label: '淡入淡出' }] }
+      { key: 'order', label: '排序', kind: 'select', options: [{ value: 'idx', label: '按镜号（默认）' }, { value: 'manual', label: '按接线顺序（手动排）' }] },
+      // 默认改成「真拼成片」：服务端早就能拼（ffmpeg，没装才降级成清单），
+      // 旧文案把顺序写反了（"只出清单（本版）"在前），照着读会以为只能出清单。
+      { key: 'merge', label: '合成方式', kind: 'select', options: [{ value: 'mux', label: '真拼成片（默认）' }, { value: 'list', label: '只出排序清单（不拼画面）' }], hint: '只出清单用于先定顺序；真拼需要服务端有 ffmpeg' }
     ],
     stage: 'ready',
     estimateCredits: 10
