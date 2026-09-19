@@ -178,6 +178,69 @@ function replaceEpisode(ep: EpisodeItem) {
 
 const episodeStatusText: Record<string, string> = { todo: '待做', running: '进行中', done: '已完成' }
 
+// ── 看剧本：**按需读画布**，不把剧本镜像进 hougong_episode.script ──
+//
+// 为什么不镜像：剧本在画布里是产物（`script_in` / `script_gen` 节点的输出），
+// 而产物有版本、有会话、有运行记录。再往集表里存一份就是第二份真源 ——
+// 改一边忘另一边正是这个仓库反复踩的坑（工具清单、参数规则、节点端口都栽过）。
+// 所以集表那列 `script` 保持**遗留不用**，要看就直接读画布产物。
+//
+// 为什么按需（点开才拉）：集列表已经有 `graphCount` 这个线索，为每一集各拉一次
+// 图才有剧本正文是 N+1；用户点哪一集才拉哪一集。
+const canvasApi = useCanvasApi()
+const episodeScripts = ref<Record<string, {
+  open: boolean
+  loading: boolean
+  text: string
+  graphId: string
+  error: string
+}>>({})
+
+function scriptState(ep: EpisodeItem) {
+  return episodeScripts.value[ep.id] ?? { open: false, loading: false, text: '', graphId: '', error: '' }
+}
+
+async function toggleEpisodeScript(ep: EpisodeItem) {
+  const cur = scriptState(ep)
+  if (cur.open) {
+    episodeScripts.value = { ...episodeScripts.value, [ep.id]: { ...cur, open: false } }
+    return
+  }
+  episodeScripts.value = { ...episodeScripts.value, [ep.id]: { ...cur, open: true } }
+  if (cur.text || cur.loading) return
+  episodeScripts.value = { ...episodeScripts.value, [ep.id]: { ...scriptState(ep), loading: true } }
+  try {
+    // 这一集的图可能不止一张（多次尝试）：取**最近更新**的那张，
+    // 与用户"刚改完那张"的直觉一致。
+    const graphs = await canvasApi.listGraphs('hougong', { type: 'episode', id: String(ep.id) })
+    const latest = [...graphs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+    if (!latest) {
+      episodeScripts.value = { ...episodeScripts.value, [ep.id]: { open: true, loading: false, text: '', graphId: '', error: '这一集还没有画布图' } }
+      return
+    }
+    const view = await canvasApi.getGraph(latest.id)
+    // 只认**文本类**产物（`text` 槽）：`outline` 是拆解出的大纲、`table` 是分镜表，
+    // 都不是"剧本"。取最新一版 —— 生成过的剧本比粘进去的原文更能代表这一集。
+    const texts = view.artifacts
+      .filter(a => a.type === 'text' && (a.text || '').trim() !== '')
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+    const picked = texts[texts.length - 1]
+    episodeScripts.value = {
+      ...episodeScripts.value,
+      [ep.id]: {
+        open: true, loading: false, graphId: latest.id,
+        text: picked ? String(picked.text) : '',
+        error: picked ? '' : '这张图里还没有剧本（先去「剧本输入」贴一份，或在「剧本生成」里写一版）'
+      }
+    }
+  } catch (e: unknown) {
+    episodeScripts.value = {
+      ...episodeScripts.value,
+      [ep.id]: { open: true, loading: false, text: '', graphId: '', error: e instanceof Error ? e.message : '剧本读取失败' }
+    }
+  }
+}
+
 onMounted(() => {
   void load()
   void loadEpisodes()
@@ -451,44 +514,87 @@ useMediaAutoRefresh(() => load())
               <div
                 v-for="ep in episodes"
                 :key="ep.id"
-                class="episode-row"
+                class="episode-block"
               >
-                <span class="episode-idx">第 {{ ep.idx }} 集</span>
-                <div class="episode-body">
-                  <strong>{{ ep.title }}</strong>
-                  <span class="episode-meta">
-                    {{ episodeStatusText[ep.status] || ep.status }}
-                    · {{ ep.graphCount }} 张画布图
-                  </span>
+                <div class="episode-row">
+                  <span class="episode-idx">第 {{ ep.idx }} 集</span>
+                  <div class="episode-body">
+                    <strong>{{ ep.title }}</strong>
+                    <span class="episode-meta">
+                      {{ episodeStatusText[ep.status] || ep.status }}
+                      · {{ ep.graphCount }} 张画布图
+                    </span>
+                  </div>
+                  <div class="episode-actions">
+                    <NuxtLink
+                      :to="`/canvas?ownerType=episode&ownerId=${ep.id}`"
+                      class="btn-ghost small"
+                    >用画布做</NuxtLink>
+                    <select
+                      class="composer2-input episode-status"
+                      :value="ep.status"
+                      @change="setEpisodeStatus(ep, ($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="todo">
+                        待做
+                      </option>
+                      <option value="running">
+                        进行中
+                      </option>
+                      <option value="done">
+                        已完成
+                      </option>
+                    </select>
+                    <button
+                      type="button"
+                      class="btn-ghost small"
+                      @click="toggleEpisodeScript(ep)"
+                    >
+                      {{ scriptState(ep).open ? '收起剧本' : '看剧本' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-ghost small"
+                      @click="renameEpisode(ep)"
+                    >
+                      改名
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-ghost small danger"
+                      @click="removeEpisode(ep)"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
-                <div class="episode-actions">
-                  <NuxtLink
-                    :to="`/canvas?ownerType=episode&ownerId=${ep.id}`"
-                    class="btn-ghost small"
-                  >用画布做</NuxtLink>
-                  <select
-                    class="composer2-input episode-status"
-                    :value="ep.status"
-                    @change="setEpisodeStatus(ep, ($event.target as HTMLSelectElement).value)"
+                <!--
+                  剧本按需展开：内容是**画布产物**（不是集表 `script` 那列）。
+                  只读不写：要改剧本回画布改（那里有版本、会话与运行记录）。
+                -->
+                <div
+                  v-if="scriptState(ep).open"
+                  class="episode-script"
+                >
+                  <p
+                    v-if="scriptState(ep).loading"
+                    class="hint"
                   >
-                    <option value="todo">待做</option>
-                    <option value="running">进行中</option>
-                    <option value="done">已完成</option>
-                  </select>
-                  <button
-                    type="button"
-                    class="btn-ghost small"
-                    @click="renameEpisode(ep)"
+                    读取中…
+                  </p>
+                  <p
+                    v-else-if="scriptState(ep).error"
+                    class="hint"
                   >
-                    改名
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-ghost small danger"
-                    @click="removeEpisode(ep)"
-                  >
-                    删除
-                  </button>
+                    {{ scriptState(ep).error }}
+                  </p>
+                  <template v-else>
+                    <pre class="episode-script-text">{{ scriptState(ep).text }}</pre>
+                    <NuxtLink
+                      :to="`/canvas?ownerType=episode&ownerId=${ep.id}`"
+                      class="btn-ghost small"
+                    >去画布改剧本</NuxtLink>
+                  </template>
                 </div>
               </div>
             </div>
@@ -575,6 +681,32 @@ useMediaAutoRefresh(() => load())
 </style>
 
 <style scoped>
+.episode-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.episode-script {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--amber-soft);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 8px 8px 0;
+}
+
+.episode-script-text {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .episode-list {
   display: flex;
   flex-direction: column;
