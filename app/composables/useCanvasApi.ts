@@ -187,9 +187,22 @@ export function useCanvasApi() {
   }
 
   /** 我的图列表（列表页不拉整图）。 */
-  function listGraphs(product = ''): Promise<CanvasGraphSummary[]> {
-    const query = product ? `?product=${encodeURIComponent(product)}` : ''
-    return apiRequest<CanvasGraphSummary[]>(`/canvas/graph/list${query}`)
+  /**
+   * 列图。`owner` 是**可选的归属过滤**（从某一集/某个项目进画布时只列这一份的图）。
+   *
+   * 归属对前端是个**不透明标签**（`{ type: 'episode' | 'project', id: string }`）：
+   * 画布不认识"集"与"项目"，只是原样带给服务端 —— 加归属过滤不需要画布认识业务模型。
+   */
+  function listGraphs(
+    product = '',
+    owner: { type?: string, id?: string } = {}
+  ): Promise<CanvasGraphSummary[]> {
+    const params = new URLSearchParams()
+    if (product) params.set('product', product)
+    if (owner.type) params.set('owner_type', owner.type)
+    if (owner.id) params.set('owner_id', owner.id)
+    const query = params.toString()
+    return apiRequest<CanvasGraphSummary[]>(`/canvas/graph/list${query ? `?${query}` : ''}`)
   }
 
   /** 一次拿全：图 + runs + artifacts（全部转成前端模型）。 */
@@ -231,6 +244,8 @@ export function useCanvasApi() {
         title: in_.title,
         product: in_.product ?? 'hougong',
         owner_type: in_.ownerType ?? '',
+        // `ownerId` 是**字符串**（项目/集的 id 可能超过 2^53），这里原样传字符串：
+        // 服务端按 uint64 解析，转成 number 反而会在前端先把雪花 id 改掉值。
         owner_id: in_.ownerId || 0,
         graph: in_.graph,
         revision: in_.id ? in_.revision : undefined

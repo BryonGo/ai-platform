@@ -291,6 +291,16 @@ useMediaAutoRefresh(() => load())
             :to="`/create?story=${story.id}`"
             class="btn-primary"
           >继续创作</NuxtLink>
+          <!--
+            进画布：带上 `ownerType=project&ownerId=故事 id`。
+            画布把这当成**归属**存进 canvas_graph（owner_type/owner_id），
+            于是"这条故事线的图"和账号里其它图分得开：列表按归属过滤、
+            "继续补充"接得上同一条会话。画布不认识"故事"，只是原样带着这个标签。
+          -->
+          <NuxtLink
+            :to="`/canvas?ownerType=project&ownerId=${story.id}`"
+            class="btn-ghost"
+          >用画布做</NuxtLink>
           <button
             v-if="!editing"
             type="button"

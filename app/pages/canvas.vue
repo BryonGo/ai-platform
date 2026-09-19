@@ -72,6 +72,18 @@ useHead({ title: '画布 · 织幕' })
  * 也不要让演示数据混进真实工作区。
  */
 const canvasApi = useCanvasApi()
+/**
+ * 归属：这张图画的是"哪一集 / 哪个项目"。
+ *
+ * 从剧集/项目页点进来时 URL 上带 `?ownerType=project&ownerId=123`，画布只当一个
+ * **不透明标签**：保存时原样写入（服务端存 `owner_type`/`owner_id`）、列表时按它过滤。
+ * 画布不认识"集"与"项目"（那是产品的模型），所以这里不做任何映射或校验。
+ */
+const route = useRoute()
+const ownerType = computed(() => String(route.query.ownerType || '').trim())
+const ownerId = computed(() => String(route.query.ownerId || '').trim())
+const ownerQuery = computed(() => ({ type: ownerType.value, id: ownerId.value }))
+
 const graph = ref<CanvasGraph>(emptyCanvas().graph)
 const artifacts = ref<CanvasArtifact[]>([])
 const runs = ref<CanvasRun[]>([])
@@ -920,7 +932,7 @@ async function loadFromServer(id?: string): Promise<void> {
   try {
     let target = id || ''
     if (!target) {
-      const list = await canvasApi.listGraphs('hougong')
+      const list = await canvasApi.listGraphs('hougong', ownerQuery.value)
       target = list[0]?.id || ''
     }
     if (!target) {
@@ -954,6 +966,9 @@ async function saveToServer(silent = false): Promise<void> {
       id: graphId.value,
       title: graphTitle.value,
       product: 'hougong',
+      // 归属：URL 里带了就写进去（"先画后挂"也走这里 —— 服务端只在带了归属时覆盖）。
+      ownerType: ownerType.value || undefined,
+      ownerId: ownerId.value || undefined,
       graph: graph.value,
       revision: graphRevision.value
     })
