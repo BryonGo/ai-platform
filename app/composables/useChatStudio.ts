@@ -1054,7 +1054,17 @@ export function createChatStudio() {
         role: imageRefFirstFrame.value ? imageRefLabel(i + 1, true) : undefined
       }))
     }
-    const taskMessage: StudioMessage = {
+    // 必须是**响应式对象**，不能是裸字面量。
+    //
+    // settle() 会原地改这条消息（taskId / status / progress / assets / error），
+    // 而 Vue 只在「代理的 set」上触发更新：往 messages（ref 数组）里推一个裸对象后
+    // 再直接改它的字段，一个 effect 都不会被唤醒。后果是 computed 永久停在旧值 ——
+    // assets 恒为空、isRunning 恒为真（卡片一直挂着「取消」和涨着的计时器、
+    // runningMessages 一直报「N 个任务进行中」），而模板里的 statusLabel(message.status)
+    // 是**直接调用**，下次渲染就会显示新值。于是卡片同时写着「已完成」和「取消 ·
+    // 已等 00:52」，产物图一张都不渲染 —— 用户看到的就是"图没回到对话框里"。
+    // 刷新页面反而正常，因为历史重建是整体替换数组（messages.value = ...）。
+    const taskMessage = reactive<StudioMessage>({
       id: makeId('t'),
       role: 'assistant',
       kind: 'task',
@@ -1064,7 +1074,7 @@ export function createChatStudio() {
       status: 'creating',
       progress: 0,
       meta
-    }
+    })
     messages.value.push(userMessage, taskMessage)
     // 提交前留一份草稿：建任务失败（内容守卫拦截 / 积分不足 / 参数不支持 / 网络失败）时
     // 要还回输入框。以前是提交前直接 clearPrompt()，于是失败后用户点发送只会看到
