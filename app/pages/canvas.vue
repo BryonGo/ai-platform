@@ -82,6 +82,7 @@ const canvasApi = useCanvasApi()
  * 画布不认识"集"与"项目"（那是产品的模型），所以这里不做任何映射或校验。
  */
 const route = useRoute()
+const router = useRouter()
 const ownerType = computed(() => String(route.query.ownerType || '').trim())
 const ownerId = computed(() => String(route.query.ownerId || '').trim())
 const ownerQuery = computed(() => ({ type: ownerType.value, id: ownerId.value }))
@@ -181,6 +182,13 @@ const templates = ref<CanvasTemplateInfo[]>([])
  * 而"运营模板"与"我自己的模板"在面板里长得一样，用户不必知道它们存哪。
  */
 const siteTemplates = ref<CanvasTemplateInfo[]>([])
+/**
+ * 我的图（最近更新在前）：顶栏那个下拉用它做"就地切换"。
+ *
+ * 为什么要有：图名以前**根本没渲染**，进来只认 `?id=` 或"最近编辑的那张" ——
+ * 用户新建第二张后，第一张就只剩 id 了（2026-06 用户反馈"找不到老的了"）。
+ */
+const myGraphs = ref<{ id: string, title: string }[]>([])
 
 async function refreshSiteTemplates(): Promise<void> {
   templateLoading.value = true
@@ -192,6 +200,28 @@ async function refreshSiteTemplates(): Promise<void> {
   } finally {
     templateLoading.value = false
   }
+}
+
+/** 拉一次"我的图"给顶栏下拉（失败就留空，不打断画布）。 */
+async function refreshMyGraphs(): Promise<void> {
+  try {
+    const { list } = await canvasApi.listGraphsPaged('hougong', {}, { page: 1, size: 12 })
+    myGraphs.value = list.map(g => ({ id: String(g.id), title: g.title || '未命名图' }))
+  } catch {
+    myGraphs.value = []
+  }
+}
+
+/** 就地切到另一张图（不整页刷新，避免丢掉画布缩放/滚动这些状态）。 */
+async function switchGraph(id: string): Promise<void> {
+  if (!id || id === String(route.query.id || '')) return
+  await loadFromServer(id)
+  void router.replace({ query: { ...route.query, id } })
+}
+
+/** 去「我的画布」列表页（管理全部：搜索/改名/删除）。 */
+function openGraphList(): void {
+  void navigateTo('/canvases')
 }
 
 async function openStart(mode: 'new' | 'save'): Promise<void> {
@@ -238,6 +268,7 @@ function newBlank(): void {
   graphId.value = ''
   graphRevision.value = 0
   graphTitle.value = '未命名图'
+  void refreshMyGraphs()
   replaceCanvas(emptyCanvas())
   showToast('空白画布：从左栏拖节点，或从端口拖线到空白处建节点')
 }
@@ -2268,6 +2299,8 @@ onMounted(async () => {
   void watchEvents()
   // 模板先拉一次：等用户点「新建」时才拉会白等一个来回。
   void refreshSiteTemplates()
+  // 图列表也先拉一次：顶栏下拉点开时不该等一个来回（它就在首屏可见）。
+  void refreshMyGraphs()
   // 每一步的模型下拉：按模态取目录。
   // 文本与音频都由后端下发（catalog.textModels / catalog.audioModels）；
   // 取不到就留一句"服务端默认"（音频还没接上游时这一桶本来就是空的）。
@@ -2410,6 +2443,8 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
       :zoom-percent="zoomPercent"
       :can-undo="canUndo"
       :can-redo="canRedo"
+      :graph-title="graphTitle"
+      :graphs="myGraphs"
       @undo="undo"
       @redo="redo"
       @zoom-in="zoomIn()"
@@ -2419,6 +2454,8 @@ const zoomPercent = computed(() => `${Math.round((viewport.value?.zoom ?? 1) * 1
       @arrange="arrangeCanvas"
       @save="saveToServer()"
       @run-all="runAll"
+      @switch-graph="switchGraph"
+      @open-graphs="openGraphList"
     />
 
     <p

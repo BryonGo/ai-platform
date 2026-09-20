@@ -271,6 +271,40 @@ export function useCanvasApi() {
     return apiRequest('/canvas/graph/del', { method: 'POST', body: { id } })
   }
 
+  /**
+   * 分页列图（「我的画布」列表页用）：带关键词与命中总数。
+   *
+   * 与 `listGraphs` 分开而不是改它：那个是"工作台侧栏 / 按集列图"的用法，服务端在
+   * 不传分页参数时给的是"最近 200 张"（不分页）—— 改成默认分页会让某些集下面的图**静默少几张**。
+   */
+  async function listGraphsPaged(
+    product = '',
+    owner: { type?: string, id?: string } = {},
+    page: { page?: number, size?: number, keyword?: string } = {}
+  ): Promise<{ list: CanvasGraphSummary[], total: number }> {
+    const params = new URLSearchParams()
+    if (product) params.set('product', product)
+    if (owner.type) params.set('owner_type', owner.type)
+    if (owner.id) params.set('owner_id', owner.id)
+    params.set('page', String(page.page ?? 1))
+    params.set('size', String(page.size ?? 20))
+    if (page.keyword) params.set('keyword', page.keyword)
+    const data = await apiRequest<{ list: CanvasGraphSummary[], total: number }>(
+      `/canvas/graph/list?${params.toString()}`
+    )
+    return { list: data?.list ?? [], total: data?.total ?? 0 }
+  }
+
+  /**
+   * 只改标题。
+   *
+   * 不复用 `saveGraph`：那个要整图 + revision，列表页手里只有摘要 ——
+   * 为改个名字把整图读出来再写回去，既慢又可能覆盖别人正在编的那一版。
+   */
+  function renameGraph(id: string, title: string): Promise<unknown> {
+    return apiRequest('/canvas/graph/rename', { method: 'POST', body: { id, title } })
+  }
+
   // ---------------------------------------------------------------- 运行
 
   /** 「运行全部」的执行计划：服务端按拓扑序算出**脏**节点，前端只负责循环。 */
@@ -459,6 +493,8 @@ export function useCanvasApi() {
     toTemplateInfos,
     getTemplate,
     listGraphs,
+    listGraphsPaged,
+    renameGraph,
     getGraph,
     saveGraph,
     deleteGraph,

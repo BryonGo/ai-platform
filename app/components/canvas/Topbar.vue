@@ -28,6 +28,10 @@ defineProps<{
   zoomPercent: string
   canUndo: boolean
   canRedo: boolean
+  /** 当前图名（以前页面里存了 `graphTitle` 却没渲染，界面上根本看不到自己在哪张图）。 */
+  graphTitle?: string
+  /** 我的图（最近更新在前）；点一下就地切过去。 */
+  graphs?: { id: string, title: string }[]
 }>()
 
 const emit = defineEmits<{
@@ -40,7 +44,20 @@ const emit = defineEmits<{
   (e: 'arrange'): void
   (e: 'save'): void
   (e: 'run-all'): void
+  (e: 'switch-graph', id: string): void
+  (e: 'open-graphs'): void
 }>()
+
+// 下拉开关就地放在顶栏组件里：它只影响这一块 UI，页面不必知道"菜单开没开"。
+const graphOpen = ref(false)
+function pickGraph(id: string): void {
+  graphOpen.value = false
+  emit('switch-graph', id)
+}
+function openGraphList(): void {
+  graphOpen.value = false
+  emit('open-graphs')
+}
 </script>
 
 <template>
@@ -53,6 +70,48 @@ const emit = defineEmits<{
         织幕
       </h1>
       <span class="cg-tag">AI 影剧无界画布</span>
+
+      <!-- 图名 + 就地切换：「我另一张图在哪」这个问题的第一道答案 -->
+      <div class="cg-graph">
+        <button
+          type="button"
+          class="cg-graph-btn"
+          title="切换画布"
+          @click="graphOpen = !graphOpen"
+        >
+          <i class="i-lucide-files" />
+          <b>{{ graphTitle || '未命名图' }}</b>
+          <i class="i-lucide-chevron-down" />
+        </button>
+        <div
+          v-if="graphOpen"
+          class="cg-graph-menu"
+        >
+          <p
+            v-if="!graphs || !graphs.length"
+            class="cg-graph-empty"
+          >
+            还没有别的画布
+          </p>
+          <button
+            v-for="g in graphs || []"
+            :key="g.id"
+            type="button"
+            class="cg-graph-item"
+            :class="{ 'is-current': g.title === (graphTitle || '未命名图') }"
+            @click="pickGraph(g.id)"
+          >
+            {{ g.title || '未命名图' }}
+          </button>
+          <button
+            type="button"
+            class="cg-graph-all"
+            @click="openGraphList"
+          >
+            全部画布 →
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="cg-top-mid">
