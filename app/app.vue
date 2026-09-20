@@ -64,6 +64,9 @@ const navMain = computed(() => [
 // 而页面本身叫「素材」—— 三套叫法互相不一致。现在收敛成：一个「素材」入口，
 // 图片/视频在页面内做成页签（一处管理、多选可跨类型）。
 const navAssets = [
+  // 「我的画布」放在最前：创作者找"我建过的那张图"比找素材更频繁
+  // （此前唯一入口在画布编辑器顶栏的下拉里，人不在编辑器就找不到 —— 2026-09-20 补）。
+  { to: '/canvases', label: '我的画布', icon: 'i-lucide-layout-dashboard', color: 'var(--hg3-i-blue)' },
   { to: '/assets', label: '素材', icon: 'i-lucide-images', color: 'var(--hg3-i-blue)' },
   // 角色资产的入口按 FEATURES.characterAssets 决定是否出现；页面与接口都还在，
   // 直接访问 /characters 依旧可用（见 config/features.ts）。
@@ -90,6 +93,7 @@ const SEARCH_PAGES = [
   { label: '对话创作', to: '/create' },
   { label: '全部工具', to: '/effects' },
   { label: '我的资产', to: '/assets' },
+  { label: '我的画布', to: '/canvases' },
   { label: '角色资产', to: '/characters', feature: 'characterAssets' as const },
   { label: '我的发布', to: '/works' },
   { label: '钱包与账单', to: '/wallet' },

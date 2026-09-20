@@ -280,15 +280,18 @@ export function useCanvasApi() {
   async function listGraphsPaged(
     product = '',
     owner: { type?: string, id?: string } = {},
-    page: { page?: number, size?: number, keyword?: string } = {}
+    page: { page?: number, size?: number, keyword?: string, sort?: string, ownerType?: string } = {}
   ): Promise<{ list: CanvasGraphSummary[], total: number }> {
     const params = new URLSearchParams()
     if (product) params.set('product', product)
+    // 列表页的"归属"筛选走 page.ownerType（`-` = 只看自由图）；owner 参数是"某一集/项目"的用法。
     if (owner.type) params.set('owner_type', owner.type)
     if (owner.id) params.set('owner_id', owner.id)
+    if (!owner.type && page.ownerType) params.set('owner_type', page.ownerType)
     params.set('page', String(page.page ?? 1))
     params.set('size', String(page.size ?? 20))
     if (page.keyword) params.set('keyword', page.keyword)
+    if (page.sort && page.sort !== 'updated') params.set('sort', page.sort)
     const data = await apiRequest<{ list: CanvasGraphSummary[], total: number }>(
       `/canvas/graph/list?${params.toString()}`
     )
@@ -303,6 +306,19 @@ export function useCanvasApi() {
    */
   function renameGraph(id: string, title: string): Promise<unknown> {
     return apiRequest('/canvas/graph/rename', { method: 'POST', body: { id, title } })
+  }
+
+  /**
+   * 复制一张图（另存一份）。
+   *
+   * 走服务端而不是"前端读整图再建一张"：读回来的图带着**源图的产物引用**，
+   * 照搬过去新图一跑就报"指向的产物不存在"（模板踩过同一个坑）——服务端会清掉。
+   */
+  function duplicateGraph(id: string, title = ''): Promise<{ graph: CanvasGraphSummary }> {
+    return apiRequest<{ graph: CanvasGraphSummary }>('/canvas/graph/duplicate', {
+      method: 'POST',
+      body: { id, title }
+    })
   }
 
   // ---------------------------------------------------------------- 运行
@@ -495,6 +511,7 @@ export function useCanvasApi() {
     listGraphs,
     listGraphsPaged,
     renameGraph,
+    duplicateGraph,
     getGraph,
     saveGraph,
     deleteGraph,

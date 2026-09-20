@@ -20,6 +20,15 @@ const page = ref(1)
 const size = 10
 const keyword = ref('')
 const keywordApplied = ref('')
+/** 排序与归属筛选：列表页只做这两个，够用且不引额外字段。 */
+const sort = ref('updated')
+const ownerFilter = ref('')
+const OWNER_OPTIONS = [
+  { value: '', label: '全部画布' },
+  { value: 'episode', label: '挂在某一集' },
+  { value: 'project', label: '挂在某个项目' },
+  { value: '-', label: '自由图（没挂归属）' }
+]
 const loading = ref(false)
 const error = ref('')
 /** 正在改名的行 id 与草稿（就地编辑）。 */
@@ -34,7 +43,8 @@ async function load(): Promise<void> {
   error.value = ''
   try {
     const { list, total: t } = await canvasApi.listGraphsPaged('hougong', {}, {
-      page: page.value, size, keyword: keywordApplied.value
+      page: page.value, size, keyword: keywordApplied.value,
+      sort: sort.value, ownerType: ownerFilter.value
     })
     rows.value = list.map(g => ({
       id: String(g.id),
@@ -88,6 +98,20 @@ async function commitRename(row: Row): Promise<void> {
   }
 }
 
+/** 复制一份：新图从零再跑一遍（产物引用由服务端清掉）。 */
+async function duplicate(row: Row): Promise<void> {
+  busy.value = true
+  try {
+    const { graph } = await canvasApi.duplicateGraph(row.id)
+    await load()
+    if (graph?.id) void navigateTo(`/canvas?id=${encodeURIComponent(String(graph.id))}`)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '复制失败'
+  } finally {
+    busy.value = false
+  }
+}
+
 async function remove(row: Row): Promise<void> {
   // 软删：说清"产物还在"，否则用户会以为作品没了（服务端确实只软删图）。
   if (!window.confirm(`删除「${row.title}」？\n\n图会从列表里消失，但它的产物（图片/视频）与对话记录都会留着。`)) return
@@ -130,9 +154,34 @@ onMounted(() => { void load() })
           v-model="keyword"
           class="cl-input"
           type="search"
-          placeholder="搜标题…"
+          placeholder="搜标题，或粘一个画布 id…"
           @keyup.enter="search"
         >
+        <select
+          v-model="ownerFilter"
+          class="cl-input"
+          @change="search"
+        >
+          <option
+            v-for="o in OWNER_OPTIONS"
+            :key="o.value"
+            :value="o.value"
+          >
+            {{ o.label }}
+          </option>
+        </select>
+        <select
+          v-model="sort"
+          class="cl-input"
+          @change="search"
+        >
+          <option value="updated">
+            最近更新
+          </option>
+          <option value="created">
+            最近创建
+          </option>
+        </select>
         <button
           type="button"
           class="cl-btn"
@@ -168,7 +217,7 @@ onMounted(() => { void load() })
       v-else-if="!rows.length"
       class="cl-muted"
     >
-      {{ keywordApplied ? `没有标题含「${keywordApplied}」的画布` : '还没有画布，点「新建画布」开始' }}
+      {{ keywordApplied ? `没有标题含「${keywordApplied}」的画布（粘 id 也可以搜）` : '还没有画布，点「新建画布」开始' }}
     </p>
 
     <ul
@@ -212,6 +261,14 @@ onMounted(() => { void load() })
             @click="open(row.id)"
           >
             打开
+          </button>
+          <button
+            type="button"
+            class="cl-btn"
+            :disabled="busy"
+            @click="duplicate(row)"
+          >
+            复制
           </button>
           <button
             type="button"
