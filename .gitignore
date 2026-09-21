@@ -18,6 +18,8 @@ logs
 .fleet
 .idea
 tmp
+# Agent 的工作记录（本机排查笔记），不进团队仓库
+.workbuddy-ai/
 
 # Local env files
 .env
