@@ -48,6 +48,83 @@
   white-space: nowrap;
 }
 
+/* 图名 + 就地切换下拉：原本这些类写在 canvas.vue 里，搬样式时漏掉了，
+   导致下拉框无定位、无背景，顶栏整体错位（错位 / 按钮破相）。这里补上。 */
+.cg-graph { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+
+.cg-graph-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hg3-ink);
+  background: rgb(255 255 255 / 7%);
+  border: 1px solid var(--hg3-line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cg-graph-btn:hover { background: rgb(255 255 255 / 12%); }
+.cg-graph-btn i { font-size: 13px; }
+.cg-graph-btn b {
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cg-graph-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--hg3-well);
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 52%);
+}
+
+.cg-graph-empty { margin: 0; padding: 8px 10px; font-size: 11.5px; color: var(--hg3-faint); }
+
+.cg-graph-item {
+  padding: 7px 9px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--hg3-ink);
+  border-radius: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cg-graph-item:hover { background: rgb(255 255 255 / 8%); }
+.cg-graph-item.is-current {
+  background: var(--hg3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--hg3-accent-line);
+}
+
+.cg-graph-all {
+  margin-top: 3px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--hg3-muted);
+  border-top: 1px solid var(--hg3-line);
+  border-radius: 0 0 7px 7px;
+}
+
+.cg-graph-all:hover { color: var(--hg3-ink); background: rgb(255 255 255 / 8%); }
+
 
 
 .cg-top-mid { display: flex; align-items: center; gap: 10px; margin-left: auto; }

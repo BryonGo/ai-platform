@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import { ref, computed, watch, nextTick, effectScope } from 'vue'
-import { mergeCanvas, editableGraph, withServerOutputs } from '../app/data/canvas-sync.ts'
+import { mergeCanvas } from '../app/data/canvas-sync.ts'
 import { readCanvasEvents } from '../app/data/canvas-sse.ts'
 import { structuredCells, validateStructuredEdit, streamCells, characterEntries } from '../app/data/canvas-structured.ts'
 

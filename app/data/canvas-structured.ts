@@ -149,7 +149,7 @@ export function structuredTable(value: JsonValue, slot: string): StructuredTable
   const base = inList ? [] : [slot]
   const rows = list.map((item, index) => ({
     label: rowLabel(item, index),
-    cells: keys.map(key => {
+    cells: keys.map((key) => {
       const raw = item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, JsonValue>)[key] : undefined
       const path = [...base, index, key]
       // 只有**字符串叶子**才绑定到可编辑的那一格；数组/对象一律只读并排成一行文字。
@@ -178,7 +178,9 @@ function rowLabel(item: JsonValue, index: number): string {
 }
 
 /** 非字符串叶子的展示文本：只读格也总要有东西可看。 */
-function valueText(value: JsonValue): string {
+// 入参放宽到 undefined：调用点传的是 `Record<string, JsonValue>[key]`，取不到就是 undefined，
+// 而函数体第一行本来就在处理这个分支（返回 '—'）。签名写窄了反而与实现对不上，typecheck 报 TS2345。
+function valueText(value: JsonValue | undefined): string {
   if (value === null || value === undefined) return '—'
   if (Array.isArray(value)) {
     // 台词是契约里的固定形状（`[{speaker,line}]`）：排成"谁：说了什么"。
@@ -193,7 +195,7 @@ function valueText(value: JsonValue): string {
 
 /** 台词数组 → 多行文本；不是台词形状（没有 line）时返回 undefined，交给通用拼接。 */
 function dialogueText(list: JsonValue[]): string | undefined {
-  const lines = list.map(item => {
+  const lines = list.map((item) => {
     const row = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, JsonValue> : undefined
     const line = row ? firstString(row, ['line', 'text']) : undefined
     if (!line) return undefined

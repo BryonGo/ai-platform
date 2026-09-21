@@ -7,12 +7,9 @@
  */
 import type { CanvasArtifact, CanvasNode, CanvasNodeState } from '~/data/canvas-graph'
 import type { CanvasNodeTypeSpec } from '~/data/canvas-nodes'
+import { creditsToYuan } from '~/data/canvas-nodes'
 
-// 变量名带下划线：模板里用的是 bare 名（`spec.stage` / `state === 'running'`，
-// Vue SFC 编译后可用），script 段一次都没读过 `props.*`，所以这个绑定本身是多余的。
-// eslint 的 no-unused-vars 报的就是这个（**不是误报** —— 我起初以为是工具识别不了
-// 模板引用，实测确认 script 里 0 次 `props.`）。`_` 前缀是本仓 eslint 允许的写法。
-const _props = defineProps<{
+const props = defineProps<{
   node: CanvasNode
   spec: CanvasNodeTypeSpec
   state: CanvasNodeState
@@ -44,6 +41,17 @@ function reviewLabel(a: CanvasArtifact): string {
   const review = a.review === 'approved' ? '已认可' : a.review === 'rejected' ? '已驳回' : '待确认'
   return `v${a.version} · ${a.note ?? ''} · ${review}`
 }
+
+/**
+ * 跑这个节点大概花多少积分 —— 底栏「运行」按钮的 title 里给个预期，别等点了才知道。
+ *
+ * 口径与右侧详情面板（DetailPanel）的 `estimate` 一致：都取节点类型规格上的
+ * `estimateCredits`，金额都用 `creditsToYuan` 格式化，避免同一个数在图上和面板里长得不一样。
+ *
+ * 早先这里直接引用了一个不存在的 `estimate`：恒为 undefined，于是三元永远走 false 分支，
+ * 「约 ¥x.xx」从来没显示过 —— 功能静默失效，typecheck 报的 TS2339 就是它。
+ */
+const estimate = computed(() => props.spec.estimateCredits ?? 0)
 </script>
 
 <template>
@@ -73,7 +81,7 @@ function reviewLabel(a: CanvasArtifact): string {
       class="cg-btn"
       type="button"
       :disabled="state === 'running' || state === 'blocked'"
-      :title="state === 'running' ? '正在运行' : state === 'failed' ? '上次失败，点一下重试' : (estimate ? `运行这个节点 · 约 ${estimate}` : '运行这个节点')"
+      :title="state === 'running' ? '正在运行' : state === 'failed' ? '上次失败，点一下重试' : (estimate ? `运行这个节点 · 约 ${creditsToYuan(estimate)}` : '运行这个节点')"
       @click.stop="emit('run')"
     >
       <i :class="state === 'running' ? 'i-lucide-loader-circle' : (state === 'failed' ? 'i-lucide-rotate-cw' : 'i-lucide-play')" />
