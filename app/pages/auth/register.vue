@@ -3,20 +3,21 @@
 //
 // 只填邮箱与密码 —— 用户名由服务端按「邮箱前缀 + 随机后缀」自动生成，并且就是展示名，
 // 注册后可在设置页自行修改；过去让用户先想一个用户名的做法已取消（2026-09 口径）。
+import { PASSWORD_HINT, PASSWORD_RE } from '~/utils/password'
+
+const route = useRoute()
 const email = ref('')
 const password = ref('')
 const agreed = ref(false)
 const pending = ref(false)
 const error = ref('')
 
-/**
- * 密码强度基线：与后端同一口径（≥8 位且同时含字母与数字）。
- *
- * 后端在 2026-09-15 的 fix(security) 里加了这条校验（注册/游客升级/改密/重置密码都走它），
- * 前端此前只判 ≥6 位、错误文案还写「6-18 位」—— 用户按前端规则填 6 位会被服务端拒，
- * 报错还来自后端，看起来像"前端没问题但注册失败"。这里对齐，避免两端口径漂移。
- */
-const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
+// 成功后回到来源页（只放行站内路径），没有来源就回首页。
+function redirectTarget(): string {
+  const raw = route.query.redirect
+  const target = typeof raw === 'string' ? raw : ''
+  return target.startsWith('/') ? target : '/'
+}
 
 async function submit() {
   error.value = ''
@@ -25,7 +26,7 @@ async function submit() {
     return
   }
   if (!PASSWORD_RE.test(password.value)) {
-    error.value = '密码至少 8 位，且需同时包含字母与数字'
+    error.value = PASSWORD_HINT
     return
   }
   if (!agreed.value) {
@@ -38,7 +39,7 @@ async function submit() {
       email: email.value.trim(),
       password: password.value
     })
-    await navigateTo('/')
+    await navigateTo(redirectTarget())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '注册失败'
   } finally {
@@ -63,7 +64,7 @@ async function submit() {
             创建账号
           </h1>
           <p class="auth-sub">
-            20 积分免费开始 · 素材仅用于执行生成任务。
+            素材仅用于执行生成任务。
           </p>
         </div>
       </div>
@@ -97,7 +98,7 @@ async function submit() {
           v-model="agreed"
           type="checkbox"
         >
-        <span>我已阅读并同意<a href="#">服务条款</a>与<a href="#">隐私政策</a></span>
+        <span>我已阅读并同意服务条款与隐私政策</span>
       </label>
 
       <p

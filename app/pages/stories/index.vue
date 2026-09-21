@@ -13,7 +13,7 @@ const error = ref('')
 onMounted(async () => {
   await session.load()
   if (!session.token.value) {
-    await navigateTo('/auth/login')
+    await goLogin()
     return
   }
   try {

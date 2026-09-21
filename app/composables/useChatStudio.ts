@@ -452,7 +452,22 @@ export function createChatStudio() {
   const costText = computed(() => quote.value === null ? '费用待确认' : `${quote.value.amount} ${quote.value.unit}`)
 
   // 超限时不许发：先把"图比模型能收的多"这件事解决掉（换模型或删图）。
-  const canSend = computed(() => !referenceOverflow.value && (!!prompt.value.trim() || referenceCount.value > 0))
+  // 视频还必须先给首帧：以前只等到提交时才抛错，用户在按钮上完全看不出来。
+  const canSend = computed(() =>
+    !referenceOverflow.value
+    && (mode.value !== 'video' || referenceCount.value > 0)
+    && (!!prompt.value.trim() || referenceCount.value > 0)
+  )
+
+  /** 不能发时用一句人话说明还缺什么（按钮 title 与输入区提示共用，避免只说"发不了"）。 */
+  const sendBlockReason = computed(() => {
+    if (referenceOverflow.value) {
+      return `当前模型最多接受 ${referenceMax.value} 张参考图，先删到 ${referenceMax.value} 张或换一个支持多图的模型`
+    }
+    if (mode.value === 'video' && referenceCount.value === 0) return '视频生成需要先添加起始图片（首帧）'
+    if (!prompt.value.trim() && referenceCount.value === 0) return '先描述这一幕，或上传参考图'
+    return ''
+  })
 
   /* ---------------- 会话与消息 ---------------- */
 
@@ -910,7 +925,7 @@ export function createChatStudio() {
       // 有上游原因就带给用户：只说"生成失败"会让「内容被审核拦」和「我们的地址拼错」
       // 看起来一模一样，用户第一反应永远是"是不是你们的 bug"。
       const reason = lastErrorMessage.trim()
-      message.error = message.error || (reason ? `生成失败：${reason}` : '生成失败，积分已退回')
+      message.error = message.error || (reason ? `生成失败：${reason}` : '生成失败，费用状态确认中')
     } else if (status === 'cancelled') {
       message.error = '任务已取消'
     }
@@ -982,7 +997,7 @@ export function createChatStudio() {
     const text = prompt.value.trim()
     if (!session.token.value) {
       openDialog({ reason: 'generate', resume: 'chat-composer' })
-      notice.value = '草稿已保留，登录后即可继续。'
+      notice.value = '当前输入已在本页面保留，登录后即可继续。'
       return
     }
     if (!canSend.value) {
@@ -1379,7 +1394,7 @@ export function createChatStudio() {
     activeTool, activeTemplate, toolInfo, toolTemplates, toolNeedsImage, setTool, setTemplate, tools,
     catalog, characters, selectedCharacter, modelOptions, selectedModel, durationList, sampling,
     selectedLoras, loraOptions,
-    costText, quote, canSend, referenceAllowed,
+    costText, quote, canSend, sendBlockReason, referenceAllowed,
     addReferenceFiles, addReferenceFromAsset, removeReference, clearReferences, setReferenceFromAsset,
     /** 当前视频模型支持的比例（用于 UI 置灰） */
     supportedVideoRatios: computed(() => videoRatios(catalog.value, modelId.value)),

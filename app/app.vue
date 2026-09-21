@@ -464,10 +464,11 @@ watch(() => route.fullPath, () => {
             </p>
           </div>
 
-          <!-- 协议链接固定在侧栏底部稳定位置，不随信息流滚动（首页设计说明第 4 条批注） -->
+          <!-- 协议链接固定在侧栏底部稳定位置，不随信息流滚动（首页设计说明第 4 条批注）。
+               条款正文页尚未上线，这里先渲染为普通文本 —— 保留 # 空链会让用户点了没反应。 -->
           <p class="hg-legal">
-            <a href="#">隐私政策</a>
-            <a href="#">用户协议</a>
+            <span>隐私政策</span>
+            <span>用户协议</span>
           </p>
         </div>
       </aside>
@@ -588,14 +589,14 @@ watch(() => route.fullPath, () => {
               <button
                 type="button"
                 class="hg-login"
-                @click="openDialog({ reason: 'account' })"
+                @click="openDialog({ reason: 'account', mode: 'login' })"
               >
                 登录
               </button>
               <button
                 type="button"
                 class="hg-register"
-                @click="openDialog({ reason: 'account' })"
+                @click="openDialog({ reason: 'account', mode: 'register' })"
               >
                 注册
               </button>

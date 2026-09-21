@@ -1,15 +1,17 @@
 <script setup lang="ts">
 // 未登录时的登录弹窗（效果图 homepage-interactions 面板 04）。
 // 契约：关闭即退回草稿，登录成功后由调用方回到费用确认，不自动扣费。
+import { PASSWORD_HINT, PASSWORD_RE } from '~/utils/password'
+
 const open = defineModel<boolean>('open', { required: true })
 
 const hgApi = useHougongApi()
-const session = useAuthSession()
 const { intent } = useAuthDialog()
 
 const tab = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
+const agreed = ref(false)
 const showPassword = ref(false)
 const pending = ref(false)
 const error = ref('')
@@ -24,13 +26,15 @@ function close() {
 function reset() {
   error.value = ''
   password.value = ''
+  agreed.value = false
   showPassword.value = false
 }
 
+// 打开时停在入口指定的页签：点「注册」直接进注册，不再让用户自己找页签。
 watch(open, (value) => {
   if (value) {
     reset()
-    tab.value = 'login'
+    tab.value = intent.value.mode ?? 'login'
   }
 })
 
@@ -39,6 +43,13 @@ function onKeydown(e: KeyboardEvent) {
 }
 onMounted(() => document.addEventListener('keydown', onKeydown))
 onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+
+// 登录/注册成功后的收尾：resume 是站内路径就跳过去，否则关闭、由调用方原位恢复。
+function afterAuth() {
+  const resume = intent.value.resume
+  if (resume && resume.startsWith('/')) void navigateTo(resume)
+  close()
+}
 
 async function submitLogin() {
   error.value = ''
@@ -49,7 +60,7 @@ async function submitLogin() {
   pending.value = true
   try {
     await hgApi.login(email.value.trim(), password.value)
-    close()
+    afterAuth()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '登录失败，请检查账号与密码'
   } finally {
@@ -64,13 +75,21 @@ async function submitRegister() {
     error.value = '请输入邮箱与密码'
     return
   }
+  if (!PASSWORD_RE.test(password.value)) {
+    error.value = PASSWORD_HINT
+    return
+  }
+  if (!agreed.value) {
+    error.value = '请先阅读并同意服务条款与隐私政策'
+    return
+  }
   pending.value = true
   try {
     await hgApi.register({
       email: email.value.trim(),
       password: password.value
     })
-    close()
+    afterAuth()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '注册失败，请稍后重试'
   } finally {
@@ -194,8 +213,7 @@ async function submitRegister() {
           </button>
 
           <div class="hg-auth-foot">
-            <a href="#">忘记密码</a>
-            <span v-if="intent.reason === 'generate'">当前草稿已保留</span>
+            <span v-if="intent.reason === 'generate'">当前输入已在本页面保留</span>
           </div>
         </form>
 
@@ -225,7 +243,7 @@ async function submitRegister() {
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="new-password"
-              placeholder="密码"
+              placeholder="至少 8 位，含字母与数字"
               aria-label="密码"
             >
             <button
@@ -250,6 +268,14 @@ async function submitRegister() {
             用户名由系统自动生成，注册后可在设置页修改。
           </p>
 
+          <label class="hg-auth-check">
+            <input
+              v-model="agreed"
+              type="checkbox"
+            >
+            <span>我已阅读并同意服务条款与隐私政策</span>
+          </label>
+
           <button
             type="submit"
             class="hg-btn-primary hg-auth-submit"
@@ -260,13 +286,9 @@ async function submitRegister() {
 
           <div class="hg-auth-foot">
             <span />
-            <span>当前草稿已保留</span>
+            <span>当前输入已在本页面保留</span>
           </div>
         </form>
-
-        <p class="hg-auth-note">
-          当前登录态：{{ session.token.value ? '已登录' : '未登录' }}
-        </p>
       </section>
     </div>
   </Teleport>
@@ -428,5 +450,18 @@ async function submitRegister() {
   color: var(--hg3-faint, #6e6b66);
   font-size: 11px;
   text-align: center;
+}
+.hg-auth-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--hg3-muted, #9a9791);
+  font-size: 12px;
+}
+.hg-auth-check input {
+  width: 15px;
+  height: 15px;
+  flex: none;
 }
 </style>

@@ -9,8 +9,25 @@
 export interface AuthDialogIntent {
   /** 触发场景，用于弹窗内的说明文案 */
   reason: 'generate' | 'publish' | 'account'
+  /** 打开时默认停在哪个页签：点「注册」入口应直接进注册，而不是再让用户找页签 */
+  mode?: 'login' | 'register'
   /** 登录成功后要回到的动作（由调用方自己消费，弹窗不自动执行） */
   resume?: string
+}
+
+/**
+ * 去登录页并带上来源：登录成功后回到当前页，不用重新找到原来的入口。
+ *
+ * 用 window.location 取当前路径（这些调用都发生在客户端、session.load() 之后），
+ * 只带站内路径（以 / 开头），避免把外链塞进 redirect 造成开放重定向。
+ */
+export async function goLogin(): Promise<void> {
+  if (!import.meta.client) return
+  const target = window.location.pathname + window.location.search
+  const query = target && target.startsWith('/') && target !== '/auth/login'
+    ? `?redirect=${encodeURIComponent(target)}`
+    : ''
+  await navigateTo(`/auth/login${query}`)
 }
 
 export function useAuthDialog() {

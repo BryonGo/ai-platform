@@ -1,10 +1,17 @@
 <script setup lang="ts">
 // 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）。
+const route = useRoute()
 const email = ref('')
 const password = ref('')
-const remember = ref(true)
 const pending = ref(false)
 const error = ref('')
+
+// 成功后回到来源页（只放行站内路径），没有来源就回首页。
+function redirectTarget(): string {
+  const raw = route.query.redirect
+  const target = typeof raw === 'string' ? raw : ''
+  return target.startsWith('/') ? target : '/'
+}
 
 async function submit() {
   error.value = ''
@@ -15,7 +22,7 @@ async function submit() {
   pending.value = true
   try {
     await useHougongApi().login(email.value.trim(), password.value)
-    await navigateTo('/')
+    await navigateTo(redirectTarget())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '登录失败，请检查账号与密码'
   } finally {
@@ -64,23 +71,6 @@ async function submit() {
           placeholder="输入密码"
         >
       </label>
-
-      <div
-        class="check-row"
-        style="justify-content: space-between"
-      >
-        <label
-          class="check-row"
-          style="margin-top: 0"
-        >
-          <input
-            v-model="remember"
-            type="checkbox"
-          >
-          记住登录
-        </label>
-        <a href="#">忘记密码</a>
-      </div>
 
       <p
         v-if="error"

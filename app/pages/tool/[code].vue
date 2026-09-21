@@ -392,7 +392,7 @@ async function poll(run: ToolRun) {
       run.error = '生成已完成，但产物读取失败，请到作品库查看'
     }
   } else if (run.status === 'failed') {
-    run.error = '生成失败，积分已退回'
+    run.error = '生成失败，费用状态确认中'
   }
 }
 
@@ -702,7 +702,11 @@ useMediaAutoRefresh(async () => {
 
         <div class="cost-row">
           <span>所需积分</span>
-          <strong>{{ cost || 8 }}</strong>
+          <strong v-if="cost > 0">{{ cost }}</strong>
+          <span
+            v-else
+            class="cost-pending"
+          >以实际结算为准</span>
         </div>
 
         <p
@@ -993,6 +997,7 @@ useMediaAutoRefresh(async () => {
 .tpl-pill.active { border-color: var(--hg-accent); color: var(--ink); }
 .cost-row { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 10px; font-size: 14px; color: var(--hg-muted); }
 .cost-row strong { font-size: 20px; color: var(--ink); }
+.cost-pending { font-size: 13px; color: var(--hg-muted); }
 .form-error { margin: 0 0 10px; font-size: 13px; color: #f87171; }
 .submit { width: 100%; }
 .link-btn { padding: 0; border: 0; background: transparent; color: var(--hg-muted); font-size: 13px; text-decoration: underline; cursor: pointer; }

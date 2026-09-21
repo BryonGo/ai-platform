@@ -153,7 +153,7 @@ function addResourceUrl() {
 onMounted(async () => {
   await session.load()
   if (!session.token.value) {
-    navigateTo('/auth/login')
+    goLogin()
     return
   }
   load()

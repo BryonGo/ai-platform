@@ -7,13 +7,17 @@ const characters = ref<CharacterItem[]>([])
 const loading = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+// 封面是限时签名地址（对象存储私有，加了私钥签名后旧地址直接 403）：
+// 过期/加载失败时用自愈信号重新拉一次，拿到新签名地址，碎图自己长回来。
+// 详情页（characters/[id].vue）已挂这个钩子，列表页以前漏了，导致卡片封面一直坏图。
+async function load() {
   await session.load()
   if (!session.token.value) {
-    await navigateTo('/auth/login')
+    await goLogin()
     return
   }
   loading.value = true
+  error.value = ''
   try {
     characters.value = await api.listCharacters()
   } catch (e: unknown) {
@@ -21,7 +25,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
+useMediaAutoRefresh(() => load())
 </script>
 
 <template>

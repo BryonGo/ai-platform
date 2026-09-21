@@ -178,7 +178,7 @@ onMounted(() => {
     <section class="fx-hero">
       <div class="fx-hero-text">
         <h1>创建你自己的 AI 成人幻想</h1>
-        <p>只上传你拥有或已获得明确许可的图片。所有生成内容仅你可见。</p>
+        <p>仅上传你拥有或已获得明确授权的图片。生成完成后可自主决定是否分享。</p>
         <NuxtLink
           v-if="firstTool"
           class="fx-cta"
@@ -187,9 +187,9 @@ onMounted(() => {
           <UIcon name="i-lucide-play" />开始使用
         </NuxtLink>
         <ul class="fx-chips">
-          <li><UIcon name="i-lucide-shield-check" />图像自动删除</li>
-          <li><UIcon name="i-lucide-lock" />私密处理</li>
-          <li><UIcon name="i-lucide-database-zap" />无存储</li>
+          <li><UIcon name="i-lucide-shield-check" />确认后生成</li>
+          <li><UIcon name="i-lucide-lock" />素材仅用于生成任务</li>
+          <li><UIcon name="i-lucide-download" />完成后可预览下载</li>
         </ul>
       </div>
       <div class="fx-hero-art">

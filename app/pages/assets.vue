@@ -624,7 +624,7 @@ onMounted(async () => {
   await session.load()
   document.addEventListener('keydown', onKeydown)
   if (!session.token.value) {
-    void navigateTo('/auth/login')
+    void goLogin()
     return
   }
   void reload()

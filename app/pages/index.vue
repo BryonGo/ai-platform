@@ -194,7 +194,7 @@ function submitLanding() {
   }
   if (!session.token.value) {
     openDialog({ reason: 'generate', resume: 'composer' })
-    notice.value = '草稿已保留，登录后即可继续生成。'
+    notice.value = '当前输入已在本页面保留，登录后即可继续生成。'
     return
   }
   setDraft({
@@ -750,16 +750,18 @@ useMediaAutoRefresh(() => Promise.all([
         <h2 id="explore-title">
           探索灵感
         </h2>
-        <NuxtLink
+        <button
+          type="button"
           class="hg-more"
-          to="/works"
+          :disabled="exploreLoading || exploreDone"
+          @click="loadExplore()"
         >
-          更多作品
+          {{ exploreDone ? '已经到底了' : (exploreLoading ? '加载中…' : '加载更多') }}
           <UIcon
-            name="i-lucide-arrow-right"
+            name="i-lucide-arrow-down"
             aria-hidden="true"
           />
-        </NuxtLink>
+        </button>
       </header>
 
       <div
@@ -883,7 +885,7 @@ useMediaAutoRefresh(() => Promise.all([
         >
           {{ exploreError }} 点击重试
         </button>
-        <span v-else-if="exploreDone">已经到底了，去「更多作品」看看。</span>
+        <span v-else-if="exploreDone">已经到底了。</span>
         <button
           v-else
           type="button"

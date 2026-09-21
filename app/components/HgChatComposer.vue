@@ -42,6 +42,18 @@ function onSend() {
   }
   void studio.send()
 }
+
+/** 主按钮文案：首页是「下一步」（只交接草稿、不建付费任务），创作页才是真提交。 */
+const sendLabel = computed(() => props.variant === 'landing' ? '下一步：确认生成' : '确认生成')
+
+/** 输入区下方的阻断提示：只在「参考图超限」或「视频缺首帧」时出现。
+    空输入不提示 —— 那是初始态，不是错误；常驻提示只会变成噪音。
+    文案统一从 sendBlockReason 取，避免两处各写一份而漂移。 */
+const blockHint = computed(() => {
+  const hardBlock = studio.referenceOverflow.value
+    || (studio.mode.value === 'video' && studio.referenceCount.value === 0)
+  return hardBlock ? studio.sendBlockReason.value : ''
+})
 const isNarrow = useIsNarrow()
 const { onGlowPointerMove } = useGlowPointer()
 const loraOpen = ref(false)
@@ -499,22 +511,26 @@ function patchSampling(patch: Record<string, number | string>) {
             type="button"
             class="hg-btn-primary send"
             :disabled="!studio.canSend.value"
-            :title="studio.canSend.value
-              ? ''
-              : (studio.referenceOverflow.value
-                ? `当前模型最多接受 ${studio.referenceMax.value} 张参考图，先删到 ${studio.referenceMax.value} 张或换一个支持多图的模型`
-                : '先描述这一幕，或上传参考图')"
+            :title="studio.canSend.value ? '' : studio.sendBlockReason.value"
             @click="onSend"
           >
             <UIcon
               name="i-lucide-send"
               aria-hidden="true"
-            />发送
+            />{{ sendLabel }}
           </button>
           <small class="cost-note">{{ studio.costText.value }}</small>
         </div>
       </div>
     </div>
+
+    <p
+      v-if="blockHint"
+      class="composer-hint"
+      role="status"
+    >
+      {{ blockHint }}
+    </p>
 
     <p
       v-if="studio.notice.value"
@@ -920,6 +936,11 @@ function patchSampling(patch: Record<string, number | string>) {
 .composer-notice {
   margin: 8px 0 0;
   color: var(--hg3-warn);
+  font-size: 12px;
+}
+.composer-hint {
+  margin: 8px 0 0;
+  color: var(--hg3-faint);
   font-size: 12px;
 }
 
