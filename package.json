@@ -13,7 +13,9 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "index:frontend": "node scripts/gen-frontend-index.mjs",
+    "index:check": "node scripts/gen-frontend-index.mjs --check"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.127",
