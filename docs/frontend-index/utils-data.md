@@ -54,7 +54,7 @@
 - `dependencyLevels(graph: CanvasGraph, ids: string[]): string[][]` L720 — 把一批节点按**依赖分层**：同一层里的节点互不依赖，可以一起跑
 
 ## app/data/canvas-history.ts
-- `createHistory<T>(limit = 50, isSame: (a: T, b: T) = > boolean = (a, b) = > a =  =  = b): CanvasHistory<T>` L29
+- `createHistory<T>(limit = 50, isSame: (a: T, b: T) => boolean = (a, b) => a =  =  = b): CanvasHistory<T>` L29
 
 ## app/data/canvas-layout.ts
 - `layoutCanvas(nodes: LayoutNode[], edges: LayoutEdge[]): Record<string, LayoutPoint>` L19
@@ -74,7 +74,7 @@
 - `creditsToYuan(credits: number): string` L504 — 分 → ¥（平台 100 分 = 1 元）
 
 ## app/data/canvas-sse.ts
-- `readCanvasEvents(body: ReadableStream<Uint8Array>, onEvent: (event: string, data: Record<string, unknown>) = > void): Promise<void>` L2 — Streaming SSE decoder supporting LF/CRLF, arbitrary chunks and multiline data.
+- `readCanvasEvents(body: ReadableStream<Uint8Array>, onEvent: (event: string, data: Record<string, unknown>) => void): Promise<void>` L2 — Streaming SSE decoder supporting LF/CRLF, arbitrary chunks and multiline data.
 
 ## app/data/canvas-structured.ts
 - `parseStructured(text: string): JsonValue | undefined` L5

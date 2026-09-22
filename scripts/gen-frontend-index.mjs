@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// 前端索引生成器：把 app/ 下的「导出符号 / 组合式函数方法 / 组件契约 / 页面路由 / 类型字段」
-// 抽成给 AI 读的索引文档，避免每次改动都让模型把 useChatStudio.ts(68KB)、useHougongApi.ts(53KB)
-// 这些大文件整份读一遍。
+// 前端索引生成器：把源码里的「导出符号 / 组合式函数方法 / 状态仓库 / 接口模块 / 组件契约 /
+// 页面路由 / 路由表 / 类型字段」抽成给 AI 读的索引文档，避免每次改动都让模型把上千行的大文件
+// 整份读一遍。
+//
+// 同一份脚本在多个仓库通用（ai-platform / gamelora-web 是 Nuxt 的 app/，
+// aicodcms-vue 是 Vite + Vue 的 src/），布局靠下面的 detectLayout() 自动识别，
+// 不要在每个仓库里改路径常量 —— 三份保持一致，改一处就三处一起同步。
 //
 // 设计要点：
 //   1. 索引内容**从源码生成**——符号名、签名、行号、以及函数上方那行中文注释都来自代码本身，
@@ -20,14 +24,29 @@
 // 解析是正则 + 花括号配平的启发式实现，不是完整 TS 解析器：它只负责「找出符号与大致签名」。
 // 少数写法（注释里带花括号、一行里塞多个声明）可能抽不准，此时以源码为准，并把它改写成常见写法。
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, realpathSync } from 'node:fs'
 import { join, relative, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const APP = join(ROOT, 'app')
+
+/** 源码根：Nuxt 用 app/，Vite + Vue 用 src/。 */
+function detectLayout() {
+  const candidates = ['app', 'src']
+  for (const c of candidates) {
+    if (existsSync(join(ROOT, c, 'pages')) || existsSync(join(ROOT, c, 'composables'))) return c
+  }
+  return candidates.find(c => existsSync(join(ROOT, c))) || 'app'
+}
+
+const SRC = detectLayout()
+const APP = join(ROOT, SRC)
 const HUB = join(ROOT, 'docs/FRONTEND-INDEX.md')
 const OUT_DIR = join(ROOT, 'docs/frontend-index')
+
+/** 某个角色可能落在多个目录名上：页面在 Nuxt 是 pages/、在 Vite 是 views/。 */
+const dirs = (...names) => names.map(n => join(APP, n)).filter(existsSync)
+const filesIn = (names, exts = ['.ts', '.vue']) => dirs(...names).flatMap(d => walk(d, exts))
 
 const ARGS = process.argv.slice(2)
 const flag = name => ARGS.includes(name)
@@ -72,7 +91,7 @@ function commentAbove(lines, idx) {
   if (i < 0) return null
   // 块注释的最后一行常常是「说明文字 + */」，不能要求整行只有 */（早期版本因此丢掉了
   // computed<string[]>(...) 这类成员上方那段 JSDoc）。
-  if (/\*\/\s*$/.test(lines[i]) && !/^\s*\/\//.test(lines[i])) {
+  if (/\*\/\s*$/.test(lines[i]) && !lines[i].trimStart().startsWith('//')) {
     let j = i
     let found = false
     while (j >= 0 && i - j <= 40) {
@@ -97,7 +116,7 @@ function commentAbove(lines, idx) {
       .join('\n')
     return { text: oneLine(body), line: j + 1 }
   }
-  if (/^\s*\/\//.test(lines[i])) {
+  if (lines[i].trimStart().startsWith('//')) {
     let j = i
     while (j >= 0 && /^\s*\/\//.test(lines[j])) j--
     const body = lines
@@ -240,7 +259,7 @@ function returnKeys(lines, from, to) {
 /** 从 startLine（0 基，函数声明那行）往下找第一行顶格的 '}'，视为块结束。 */
 function findBlockEnd(lines, startLine) {
   for (let i = startLine + 1; i < lines.length; i++) {
-    if (/^\}/.test(lines[i])) return i
+    if (lines[i].startsWith('}')) return i
   }
   return lines.length - 1
 }
@@ -254,14 +273,17 @@ function findBlockEnd(lines, startLine) {
  * 判断该补逗号还是只补空格，同时丢掉注释（注释里有中文说明，但塞进签名只会变噪音）。
  */
 function joinSig(text) {
+  // 块注释必须在**合并之前**整体剥掉：类型字面量里的 JSDoc 常常跨行，
+  // 逐行剥不掉，会残留成 `/**,`（createQuote 的参数表踩过）。
   const ls = text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .split('\n')
     .map(l => l.trim())
     .filter(Boolean)
   let out = ''
   for (const raw of ls) {
     let l = raw.replace(/\/\*[\s\S]*?\*\//g, ' ').trim()
-    if (!l || /^\/\//.test(l) || /^\*/.test(l)) continue
+    if (!l || l.startsWith('//') || l.startsWith('*')) continue
     l = l.replace(/\/\/.*$/, '').trim()
     if (!l) continue
     const prev = out.trimEnd()
@@ -281,15 +303,21 @@ function joinSig(text) {
  */
 function signatureFrom(lines, startLine) {
   const src = lines.slice(startLine, Math.min(lines.length, startLine + 80)).join('\n')
-  const clean = s =>
-    joinSig(s)
+  const clean = (s) => {
+    // 先把箭头函数保护起来：下面的「= 两侧加空格」会把 `=>` 拆成 `= >`
+    // （subscribeTaskEvents 的签名就这么被写坏过）。
+    const ARROW = '\u0000ARROW\u0000'
+    return joinSig(s)
+      .replace(/=>/g, ARROW)
       .replace(/^(export\s+)?(async\s+)?(function|const)\s+/, '')
       .replace(/\(\s+/g, '(')
       .replace(/\s+\)/g, ')')
       .replace(/\s*:\s*/g, ': ')
       .replace(/\s*,\s*/g, ', ')
       .replace(/\s*=\s*/g, ' = ')
+      .replace(new RegExp(ARROW, 'g'), '=>')
       .trim()
+  }
   const openParen = src.indexOf('(')
   if (openParen < 0) return clean(src.split('\n')[0])
   let depth = 0
@@ -468,7 +496,7 @@ function parseVue(path) {
               doc: oneLine(m[1] || pendingDoc)
             })
             pendingDoc = ''
-          } else if (/^\/\//.test(l)) pendingDoc = oneLine(l.replace(/^\/\/\s?/, ''))
+          } else if (l.startsWith('//')) pendingDoc = oneLine(l.replace(/^\/\/\s?/, ''))
         }
       }
     }
@@ -522,7 +550,7 @@ function parseVue(path) {
 
   const composablesUsed = [
     ...new Set((src.match(/\b(use[A-Z][A-Za-z0-9_]*)\s*\(/g) || []).map(s => s.replace(/\s*\($/, '')))
-  ].filter(n => existsSync(join(APP, 'composables', `${n}.ts`)))
+  ].filter(n => dirs('composables', 'stores').some(d => existsSync(join(d, `${n}.ts`))))
 
   return {
     purpose,
@@ -572,13 +600,277 @@ function parseTypes(path) {
   return out
 }
 
+// ---------------------------------------------------------------- 状态仓库（Pinia）
+
+/**
+ * 解析 Pinia store。两种写法都要认：
+ *   · setup 风格  `export const useXStore = defineStore('app', () => { …; return { … } })`
+ *     —— 与组合式函数同构，直接复用成员解析；返回对象里没有的东西调用方拿不到，按 return 键过滤。
+ *   · 选项风格    `defineStore('userInfo', { state: () => ({…}), getters: {…}, actions: {…} })`
+ *     —— 分别取 state 键、getters 键、actions 名与参数。
+ */
+function parseStoreFile(path) {
+  const src = readFileSync(path, 'utf8')
+  const lines = src.split('\n')
+  const lineOf = lineTable(src)
+  const stores = []
+
+  for (const m of src.matchAll(/(?:export\s+)?const\s+([A-Za-z0-9_$]+)\s*=\s*defineStore\s*\(/g)) {
+    const name = m[1]
+    const idMatch = src.slice(m.index).match(/defineStore\s*\(\s*['"]([^'"]+)['"]/)
+    const id = idMatch ? idMatch[1] : ''
+    const line = lineOf(m.index)
+    const open = src.indexOf('(', m.index)
+    const argStart = open + 1
+    // 第一个参数是 store id，第二个参数才是实现：setup 风格是 `() => {`，选项风格是 `{`
+    // （不能直接在 argStart 处找箭头 —— 那里先是 id 字符串，早期版本因此把 setup 风格
+    // 误判成选项风格，成员一个都没列出来。）
+    const comma = src.indexOf(',', argStart)
+    const afterId = comma >= 0 ? src.slice(comma + 1) : ''
+    const setupArrow = afterId.match(/^\s*(?:async\s*)?\([^)]*\)\s*(?::[^=]+)?=>\s*\{/)
+    if (setupArrow) {
+      const bracePos = comma + 1 + setupArrow[0].length - 1
+      const inner = sliceBalanced(src, bracePos)
+      if (inner) {
+        const from = lineOf(bracePos + 1)
+        const to = lineOf(bracePos + inner.length)
+        const keys = returnKeys(src.split('\n'), from - 1, to)
+        const members = parseMembers(src.split('\n'), from, to).filter(x => !keys || keys.has(x.name))
+        stores.push({ name, id, line, style: 'setup', members, returned: keys ? keys.size : null })
+      }
+      continue
+    }
+    // 选项风格：id 之后是配置对象
+    const objStart = comma >= 0 ? src.indexOf('{', comma) : -1
+    if (objStart < 0) continue
+    const body = sliceBalanced(src, objStart)
+    if (!body) continue
+    const base = lineOf(objStart + 1)
+    const groups = { state: [], getters: [], actions: [] }
+    for (const key of ['state', 'getters', 'actions']) {
+      const at = body.search(new RegExp(`(^|\\n)\\s*${key}\\s*:`))
+      if (at < 0) continue
+      const brace = body.indexOf('{', at)
+      if (brace < 0) continue
+      const inner = sliceBalanced(body, brace)
+      if (!inner) continue
+      const innerBase = base + body.slice(0, brace).split('\n').length - 1
+      groups[key] = objectEntries(inner, innerBase, key === 'actions')
+    }
+    stores.push({ name, id, line, style: 'options', groups })
+  }
+  return { path, src, lines, exports: parseComposableFile(path).exports, stores, size: statSync(path).size }
+}
+
+/** 取对象字面量里的一层键：actions 额外带参数签名。 */
+function objectEntries(inner, baseLine, withSig) {
+  const out = []
+  const rows = inner.split('\n')
+  let depth = 0
+  rows.forEach((raw, i) => {
+    // 只看**一级成员**：inner 是花括号**内部**文本，所以一级成员就是 depth 0；
+    // 方法体里的 `if (...)` / `for (...)` 落在更深的层级，不会被当成 action
+    // （cmsCache / keepAliveNames 那类 store 尤其明显）。
+    if (depth === 0) {
+      const m = raw.match(/^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*[(:]/)
+      if (m) {
+        let sig = ''
+        if (withSig) {
+          const at = raw.indexOf('(')
+          // raw.slice(at) 自带左括号，不要再补一个（早期版本补了，签名成了 `((bool: boolean)`）。
+          // 参数跨行时要继续往下读，读齐了再交给 signatureFrom 做括号配平与返回类型抽取。
+          if (at >= 0) {
+            let acc = raw.slice(at)
+            let j = i
+            const unbalanced = (t) => {
+              let d = 0
+              for (const c of t) {
+                if (c === '(') d++
+                else if (c === ')') d--
+              }
+              return d
+            }
+            while (unbalanced(acc) > 0 && j + 1 < rows.length) {
+              j++
+              acc += ` ${rows[j].trim()}`
+            }
+            sig = signatureFrom([acc], 0)
+          }
+        }
+        out.push({ name: m[1], sig, line: baseLine + i })
+      }
+    }
+    for (const ch of raw) {
+      if (ch === '{' || ch === '(' || ch === '[') depth++
+      else if (ch === '}' || ch === ')' || ch === ']') depth--
+    }
+  })
+  return out
+}
+
+function buildStoresSection() {
+  const files = filesIn(['stores'], ['.ts'])
+  const out = []
+  for (const f of files) {
+    const p = parseStoreFile(f)
+    if (!p.stores.length) continue
+    if (!out.length) out.push('Pinia 状态仓库：state / getters / actions 清单。改状态前先看这里，不用读整个 store。', '')
+    out.push(`## ${rel(f)}`)
+    for (const s of p.stores) {
+      out.push('')
+      out.push(`### \`${s.name}\`${s.id ? `（id: \`${s.id}\`）` : ''} — L${s.line} · ${s.style === 'setup' ? `setup 风格，返回 ${s.returned ?? s.members.length} 个成员` : '选项风格'}`)
+      if (s.style === 'setup') {
+        for (const m of s.members) {
+          const isFn = m.kind === 'fn' || m.kind === 'async fn'
+          const parts = [isFn ? `\`${m.sig || m.name}\`` : `\`${m.name}\``, `L${m.line}`]
+          if (!isFn) parts.push(m.sig ? `${m.kind} \`${m.sig}\`` : m.kind)
+          if (m.paths.length) parts.push(`\`${m.paths.join('`, `')}\``)
+          out.push(`- ${parts.join(' · ')}${m.doc ? ` — ${m.doc}` : ''}`)
+        }
+      } else {
+        for (const key of ['state', 'getters', 'actions']) {
+          const items = s.groups[key]
+          if (!items.length) continue
+          out.push(...wrapLine(`- ${key}: `, items.map(x => `\`${x.name}${x.sig}\` L${x.line}`)))
+        }
+      }
+    }
+    out.push('')
+  }
+  return out.join('\n')
+}
+
+// ---------------------------------------------------------------- 接口模块（src/api）
+
+/** 从接口模块里抽请求路径：`url: '/x'`、`request.get('/x')`、`apiRequest('/x')`、`fetch('/x')`。 */
+function apiPathsOf(body) {
+  const paths = []
+  const push = (p, method) => {
+    let v = p.includes('${') ? p.slice(0, p.indexOf('${')).replace(/[?&]$/, '') + '…' : p
+    v = `${method ? `${method.toUpperCase()} ` : ''}${v}`
+    if (v && !paths.includes(v)) paths.push(v)
+  }
+  for (const m of body.matchAll(/url:\s*[`'"]([^`'"]+)[`'"]/g)) {
+    const after = body.slice(m.index, m.index + 200).match(/method:\s*['"](\w+)['"]/)
+    push(m[1], after ? after[1] : '')
+  }
+  for (const m of body.matchAll(/request\s*\.\s*(get|post|put|delete|patch)\s*\(\s*[`'"]([^`'"]+)[`'"]/g)) push(m[2], m[1])
+  for (const m of body.matchAll(/(?:apiRequest|fetch)\s*(?:<[^>]*>)?\s*\(\s*[`'"]([^`'"]+)[`'"]/g)) push(m[1], '')
+  return paths
+}
+
+function parseApiFile(path) {
+  const src = readFileSync(path, 'utf8')
+  const lines = src.split('\n')
+  const fns = []
+  const reExports = []
+  lines.forEach((l, i) => {
+    const re = l.match(/^export\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/)
+    if (re) {
+      reExports.push({ names: re[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean), from: re[2] })
+      return
+    }
+    const m = l.match(/^export\s+(async\s+)?function\s+([A-Za-z0-9_$]+)/)
+    if (!m) return
+    const end = findBlockEnd(lines, i)
+    fns.push({
+      name: m[2],
+      sig: signatureFrom(lines, i),
+      line: i + 1,
+      doc: commentAbove(lines, i)?.text || '',
+      paths: apiPathsOf(lines.slice(i, end + 1).join('\n'))
+    })
+  })
+  return { path, src, fns, reExports }
+}
+
+function buildApiSection() {
+  const files = filesIn(['api'], ['.ts'])
+  const out = []
+  for (const f of files) {
+    const p = parseApiFile(f)
+    if (!p.fns.length && !p.reExports.length) continue
+    if (!out.length) out.push('后端接口模块：每个文件导出的请求函数、参数、以及它打的接口路径。', '')
+    out.push(`## ${rel(f)}`)
+    for (const fn of p.fns) {
+      out.push(`- \`${fn.sig || fn.name}\` · L${fn.line}${fn.paths.length ? ` · \`${fn.paths.join('`, `')}\`` : ''}${fn.doc ? ` — ${fn.doc}` : ''}`)
+    }
+    for (const r of p.reExports) out.push(`- 转出：${r.names.map(n => `\`${n}\``).join(' · ')} ← \`${r.from}\``)
+    out.push('')
+  }
+  return out.join('\n')
+}
+
+// ---------------------------------------------------------------- 路由表
+
+/**
+ * 抽静态路由表（Vue Router 的 `path/name/component/meta.title` 对象）。
+ * 动态路由（后端下发）不在源码里，这里只反映源码中写死的那部分。
+ */
+function parseRoutes(path) {
+  const src = readFileSync(path, 'utf8')
+  const lines = src.split('\n')
+  const routes = []
+  lines.forEach((l, i) => {
+    const m = l.match(/^\s*path:\s*['"]([^'"]+)['"]/)
+    if (!m) return
+    const win = lines.slice(i, i + 16).join('\n')
+    const name = win.match(/name:\s*['"]([^'"]+)['"]/)
+    const comp = win.match(/component:\s*(?:\(\)\s*=>\s*)?import\s*\(\s*['"]([^'"]+)['"]/)
+    const title = win.match(/title:\s*['"]([^'"]+)['"]/)
+    const hidden = /is_hide:\s*true|isHide:\s*true/.test(win)
+    routes.push({
+      path: m[1],
+      name: name ? name[1] : '',
+      component: comp ? comp[1] : '',
+      title: title ? title[1] : '',
+      hidden,
+      line: i + 1
+    })
+  })
+  return routes
+}
+
+function buildRouterSection() {
+  const files = filesIn(['router'], ['.ts'])
+  const out = []
+  for (const f of files) {
+    const routes = parseRoutes(f)
+    if (!routes.length) continue
+    if (!out.length) out.push('源码里写死的路由表（动态路由由后端下发，不在其中）。', '')
+    out.push(`## ${rel(f)} · ${routes.length} 条`)
+    out.push('')
+    out.push('| path | name | 组件 | meta.title | L |')
+    out.push('| --- | --- | --- | --- | --- |')
+    for (const r of routes) {
+      const comp = r.component.replace(/^\/@\//, 'src/')
+      out.push(`| \`${r.path}\`${r.hidden ? ' *(hidden)*' : ''} | \`${r.name}\` | \`${comp}\` | ${r.title || '—'} | ${r.line} |`)
+    }
+    out.push('')
+  }
+  return out.join('\n')
+}
+
+/** path → 路由记录，供页面分册标注「这个视图挂在哪个路由」。 */
+function routeIndex() {
+  const map = new Map()
+  for (const f of filesIn(['router'], ['.ts'])) {
+    for (const r of parseRoutes(f)) {
+      if (!r.component) continue
+      const key = r.component.replace(/^\/@\//, 'src/').replace(/^~?\//, '')
+      map.set(key, { path: r.path, title: r.title, name: r.name })
+    }
+  }
+  return map
+}
+
 // ---------------------------------------------------------------- 生成各段
 
 function buildComposablesSection() {
-  const files = walk(join(APP, 'composables'), ['.ts'])
+  const files = filesIn(['composables'], ['.ts'])
   const out = []
   out.push(
-    '本文件列出 `app/composables/` 下每个文件的导出符号，以及返回对象型组合式函数（`useXxx()` / `createXxx()`）的**全部成员**。'
+    `本文件列出 \`${SRC}/composables/\` 下每个文件的导出符号，以及返回对象型组合式函数（\`useXxx()\` / \`createXxx()\`）的**全部成员**。`
   )
   out.push('只需要一个符号时不要整份读：`node scripts/gen-frontend-index.mjs --grep <关键词>`。')
   out.push('')
@@ -624,7 +916,7 @@ function buildComposablesSection() {
 }
 
 function buildComponentsSection() {
-  const files = walk(join(APP, 'components'), ['.vue'])
+  const files = filesIn(['components', 'layout'], ['.vue'])
   const out = []
   out.push('组件的对外契约（props / v-model / emits / slots / expose）。改组件前先看这里，不用读整个 `.vue`。')
   out.push('')
@@ -679,7 +971,10 @@ function localDecls(lines) {
   const out = []
   lines.forEach((l, i) => {
     const fn = l.match(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)/)
-    if (fn) { out.push({ name: fn[1], line: i + 1, doc: commentAbove(lines, i)?.text || '' }); return }
+    if (fn) {
+      out.push({ name: fn[1], line: i + 1, doc: commentAbove(lines, i)?.text || '' })
+      return
+    }
     const c = l.match(/^const\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\(|computed|ref|useState|watch|useAsyncData|useFetch)/)
     if (c) out.push({ name: c[1], line: i + 1, doc: commentAbove(lines, i)?.text || '' })
   })
@@ -688,24 +983,29 @@ function localDecls(lines) {
 
 function routeOf(p) {
   let r = rel(p)
-    .replace(/^app\/pages\//, '')
+    .replace(new RegExp(`^${SRC}\\/(pages|views)\\/`), '')
     .replace(/\.vue$/, '')
   r = r.replace(/\/index$/, '')
-  r = r.replace(/\[([^\]]+)\]/g, ':$1')
+  // Nuxt 的动态段 [id] 与可选段 [[tool]]
+  r = r.replace(/\[\[([^\]]+)\]\]/g, ':$1?').replace(/\[([^\]]+)\]/g, ':$1')
   return '/' + r.replace(/^index$/, '')
 }
 
 function buildPagesSection() {
-  const pages = walk(join(APP, 'pages'), ['.vue'])
+  const pages = filesIn(['pages', 'views'], ['.vue'])
+  const routes = routeIndex()
   const out = []
-  out.push('路由、页面职责与它用到的组合式函数。')
+  out.push('页面/视图：路由、职责、用到的组合式函数；大文件另附本文件声明清单。')
   out.push('')
   for (const f of pages) {
     const p = parseVue(f)
     const rp = rel(f)
     const meta = []
     if (p.composablesUsed.length) meta.push(p.composablesUsed.map(s => `\`${s}\``).join(' · '))
-    out.push(`### \`${routeOf(f)}\` — ${rp} · ${p.lines} 行`)
+    // Vite 仓库的视图挂在路由表里，Nuxt 的页面由文件路径决定路由
+    const hit = routes.get(rp)
+    const routeLabel = hit ? hit.path : routeOf(f)
+    out.push(`### \`${routeLabel}\` — ${rp} · ${p.lines} 行${hit && hit.title ? ` · ${hit.title}` : ''}`)
     if (p.purpose) out.push(p.purpose)
     if (meta.length) out.push(`- 用: ${meta.join(' · ')}`)
     if (p.lines > 300) {
@@ -714,8 +1014,18 @@ function buildPagesSection() {
     }
     out.push('')
   }
-  out.push('## 应用外壳与 Nitro 服务端路由')
-  const shell = [join(APP, 'app.vue'), join(APP, 'app.config.ts')].filter(existsSync)
+  out.push('## 应用外壳与服务端路由')
+  // macOS 文件系统大小写不敏感：`App.vue` 会命中 `app.vue`，同一份文件被列两遍，
+  // 而 Linux CI 上不会 —— 那会让 --check 在本地与 CI 得出不同结论。按 realpath 去重。
+  const seenShell = new Set()
+  const shell = [join(APP, 'app.vue'), join(APP, 'app.config.ts'), join(APP, 'App.vue')]
+    .filter(existsSync)
+    .filter((f) => {
+      const key = realpathSync(f)
+      if (seenShell.has(key)) return false
+      seenShell.add(key)
+      return true
+    })
   for (const f of shell) {
     const src = readFileSync(f, 'utf8')
     const n = src.split('\n').length
@@ -729,7 +1039,7 @@ function buildPagesSection() {
   for (const f of walk(join(ROOT, 'server'), ['.ts']))
     out.push(`- \`${rel(f)}\`${fileDoc(readFileSync(f, 'utf8')) ? ` — ${fileDoc(readFileSync(f, 'utf8'))}` : ''}`)
 
-  const others = [...walk(join(APP, 'middleware'), ['.ts']), ...walk(join(APP, 'plugins'), ['.ts'])]
+  const others = [...filesIn(['middleware'], ['.ts']), ...filesIn(['plugins'], ['.ts'])]
   if (others.length) {
     out.push('')
     out.push('## 中间件与插件')
@@ -743,9 +1053,8 @@ function buildPagesSection() {
 
 function buildTypesSection() {
   const files = [
-    ...walk(join(APP, 'composables'), ['.ts']),
-    ...walk(join(APP, 'data'), ['.ts']),
-    ...walk(join(APP, 'config'), ['.ts'])
+    ...filesIn(['composables', 'stores', 'api'], ['.ts']),
+    ...filesIn(['data', 'config'], ['.ts'])
   ]
   const out = []
   out.push('导出的 `interface` / `type` 及**字段名**（不抄字段类型，需要类型时按行号去源码看）。')
@@ -767,9 +1076,7 @@ function buildTypesSection() {
 
 function buildUtilsSection() {
   const files = [
-    ...walk(join(APP, 'utils'), ['.ts']),
-    ...walk(join(APP, 'data'), ['.ts']),
-    ...walk(join(APP, 'config'), ['.ts'])
+    ...filesIn(['utils', 'data', 'config'], ['.ts'])
   ]
   const out = []
   out.push('纯函数、常量表与静态数据（没有响应式状态，可直接在任意上下文调用）。')
@@ -802,7 +1109,7 @@ function buildHubSection(parts) {
   for (const p of parts) out.push(`| ${p.title} | \`${rel(p.path)}\` | ${p.body.split('\n').length} |`)
   out.push('')
   // 大文件体检
-  const all = [...walk(join(APP), ['.ts', '.vue'])]
+  const all = [...walk(APP, ['.ts', '.vue'])]
   const big = all
     .map(f => ({ f, lines: readFileSync(f, 'utf8').split('\n').length }))
     .sort((a, b) => b.lines - a.lines)
@@ -865,13 +1172,16 @@ const TARGETS = [
     path: join(OUT_DIR, 'composables.md'),
     build: buildComposablesSection
   },
+  { tag: 'stores', title: '状态仓库 state/getters/actions', path: join(OUT_DIR, 'stores.md'), build: buildStoresSection },
+  { tag: 'api', title: '接口模块与接口路径', path: join(OUT_DIR, 'api-modules.md'), build: buildApiSection },
   {
     tag: 'components',
     title: '组件契约 props/emits',
     path: join(OUT_DIR, 'components.md'),
     build: buildComponentsSection
   },
-  { tag: 'pages', title: '页面路由', path: join(OUT_DIR, 'pages-routes.md'), build: buildPagesSection },
+  { tag: 'pages', title: '页面与路由', path: join(OUT_DIR, 'pages-routes.md'), build: buildPagesSection },
+  { tag: 'router', title: '路由表', path: join(OUT_DIR, 'router-table.md'), build: buildRouterSection },
   { tag: 'types', title: '类型与字段', path: join(OUT_DIR, 'types.md'), build: buildTypesSection },
   { tag: 'utils', title: '工具函数与静态数据', path: join(OUT_DIR, 'utils-data.md'), build: buildUtilsSection }
 ]
@@ -882,9 +1192,16 @@ function main() {
     process.exit(2)
   }
   const bodies = {}
-  for (const t of TARGETS) if (t.build) bodies[t.tag] = t.build()
+  for (const t of TARGETS) {
+    if (!t.build) continue
+    const body = t.build()
+    // 该角色在本仓库不存在（例如 Nuxt 仓库没有 src/api）就不生成这一册，
+    // 也不要去 --check 一个空文件。
+    if (body && body.trim()) bodies[t.tag] = body
+  }
+  const active = TARGETS.filter(t => t.tag === 'hub' || bodies[t.tag])
   bodies.hub = buildHubSection(
-    TARGETS.filter(t => t.tag !== 'hub').map(t => ({ title: t.title, path: t.path, body: bodies[t.tag] }))
+    active.filter(t => t.tag !== 'hub').map(t => ({ title: t.title, path: t.path, body: bodies[t.tag] }))
   )
 
   // 单文件查询模式
@@ -892,7 +1209,7 @@ function main() {
   if (grep) {
     const kw = grep.toLowerCase()
     let n = 0
-    for (const t of TARGETS) {
+    for (const t of active) {
       for (const l of bodies[t.tag].split('\n')) {
         if (l.toLowerCase().includes(kw)) {
           console.log(`${t.tag}\t${clip(l, kw)}`)
@@ -907,7 +1224,7 @@ function main() {
   if (only) {
     const norm = only.replace(/^\.?\//, '')
     const lines = []
-    for (const t of TARGETS) {
+    for (const t of active) {
       const body = bodies[t.tag].split('\n')
       for (let i = 0; i < body.length; i++) {
         const m = body[i].match(/^(#{2,3})\s+(.*)$/)
@@ -927,7 +1244,7 @@ function main() {
       return
     }
     // 该文件没有任何导出符号（索引里没有标题）时，退回按行匹配
-    const hits = TARGETS.flatMap(t =>
+    const hits = active.flatMap(t =>
       bodies[t.tag]
         .split('\n')
         .filter(l => l.includes(norm))
@@ -943,7 +1260,7 @@ function main() {
 
   let stale = []
   const writes = []
-  for (const t of TARGETS) {
+  for (const t of active) {
     const orig = existsSync(t.path)
       ? readFileSync(t.path, 'utf8')
       : t.tag === 'hub'
@@ -970,15 +1287,15 @@ function main() {
   }
 
   if (flag('--stdout')) {
-    for (const t of TARGETS) console.log(`\n===== ${rel(t.path)} =====\n` + bodies[t.tag])
+    for (const t of active) console.log(`\n===== ${rel(t.path)} =====\n` + bodies[t.tag])
     return
   }
 
   mkdirSync(OUT_DIR, { recursive: true })
   for (const w of writes) writeFileSync(w.path, w.next)
-  const total = TARGETS.reduce((n, t) => n + bodies[t.tag].split('\n').length, 0)
-  console.log(`前端索引已生成（${TARGETS.length} 个文件，索引正文 ${total} 行）：`)
-  for (const t of TARGETS) console.log(`  · ${rel(t.path)}  ${bodies[t.tag].split('\n').length} 行`)
+  const total = active.reduce((n, t) => n + bodies[t.tag].split('\n').length, 0)
+  console.log(`前端索引已生成（${active.length} 个文件，索引正文 ${total} 行）：`)
+  for (const t of active) console.log(`  · ${rel(t.path)}  ${bodies[t.tag].split('\n').length} 行`)
   if (stale.length) console.log(`（本次内容有变化：${stale.join(', ')}）`)
 }
 

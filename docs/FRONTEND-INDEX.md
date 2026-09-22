@@ -28,7 +28,7 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 | --- | --- | --- |
 | 组合式函数方法索引（最重要） | `docs/frontend-index/composables.md` | 360 |
 | 组件契约 props/emits | `docs/frontend-index/components.md` | 243 |
-| 页面路由 | `docs/frontend-index/pages-routes.md` | 141 |
+| 页面与路由 | `docs/frontend-index/pages-routes.md` | 145 |
 | 类型与字段 | `docs/frontend-index/types.md` | 169 |
 | 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 118 |
 

@@ -3,7 +3,7 @@
 <!-- BEGIN GENERATED:pages -->
 <!-- 本区由 npm run index:frontend 生成，勿手改 -->
 
-路由、页面职责与它用到的组合式函数。
+页面/视图：路由、职责、用到的组合式函数；大文件另附本文件声明清单。
 
 ### `/assets` — app/pages/assets.vue · 1805 行
 素材库（/assets）——「我的资产」里的素材分区
@@ -130,12 +130,16 @@
 - 本文件声明 18 个: `works` L8 · `charNames` L9 · `loading` L10 · `error` L11 · `filter` L12 · `published` L17 · `publishedLoading` L18 · `publishOpen` L19 · `publishPending` L20 · `editingWork` L21
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
-## 应用外壳与 Nitro 服务端路由
+## 应用外壳与服务端路由
 - `app/app.vue` · 898 行
   - 本文件声明: `loggedIn` L24 · `navMain` L49 · `recentSessions` L84 · `searchOpen` L87 · `searchQuery` L88 · `searchResults` L103 · `searchEmpty` L125 · `openSearch` L130 · `goSearch` L138
     `onSearchKeydown` L143 · `assetsOpen` L146 · `accountOpen` L147 · `accountWrapRef` L148 · `railOpen` L149 · `railCollapsed` L157 · `isFullBleed` L160 · `credits` L161 · `unread` L162
     `pageName` L178 · `isActive` L185 · `onAccountToggle` L193 · `onDocClick` L197 · `logout` L203 · `loadShellData` L209
 - `app/app.config.ts` · 9 行
+- `app/App.vue` · 898 行
+  - 本文件声明: `loggedIn` L24 · `navMain` L49 · `recentSessions` L84 · `searchOpen` L87 · `searchQuery` L88 · `searchResults` L103 · `searchEmpty` L125 · `openSearch` L130 · `goSearch` L138
+    `onSearchKeydown` L143 · `assetsOpen` L146 · `accountOpen` L147 · `accountWrapRef` L148 · `railOpen` L149 · `railCollapsed` L157 · `isFullBleed` L160 · `credits` L161 · `unread` L162
+    `pageName` L178 · `isActive` L185 · `onAccountToggle` L193 · `onDocClick` L197 · `logout` L203 · `loadShellData` L209
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"

@@ -68,20 +68,20 @@
 - `renameGraph(id: string, title: string): Promise<unknown>` · L307 · `/canvas/graph/rename` — 只改标题
 - `duplicateGraph(id: string, title = ''): Promise<{ graph: CanvasGraphSummary }>` · L317 · `/canvas/graph/duplicate` — 复制一张图（另存一份）
 - `runPlan(id: string): Promise<CanvasPlanNode[]>` · L327 · `/canvas/run/plan?id=…` — 「运行全部」的执行计划：服务端按拓扑序算出**脏**节点，前端只负责循环
-- `runNodeStream(in_: { id: string, nodeId: string, force?: boolean, baseArtifactId?: string, instruction?: string, /**, priority?: number }, handlers: { onDelta?: (text: string) = > void, onArtifact?: (payload: { run?: ServerRun, artifact?: ServerArtifact, artifacts?: ServerArtifact[], cached?: boolean }) = > void, onQueued?: (payload: { run?: ServerRun }) = > void, onError?: (message: string) = > void }, signal?: AbortSignal): Promise<void>` · L338 · `…` — 跑一个节点：响应是 SSE 流
+- `runNodeStream(in_: { id: string, nodeId: string, force?: boolean, baseArtifactId?: string, instruction?: string, priority?: number }, handlers: { onDelta?: (text: string) => void, onArtifact?: (payload: { run?: ServerRun, artifact?: ServerArtifact, artifacts?: ServerArtifact[], cached?: boolean }) => void, onQueued?: (payload: { run?: ServerRun }) => void, onError?: (message: string) => void }, signal?: AbortSignal): Promise<void>` · L338 · `…` — 跑一个节点：响应是 SSE 流
 - `pickArtifact(in_: { id: string, nodeId: string, slot: string, artifactId: string, item?: number }): Promise<number>` · L407 — 选定产物版本（写进图 JSON 并推进 revision，返回新 revision）
 - `reviewArtifact(in_: { id: string, artifactId: string, review: CanvasReview }): Promise<unknown>` · L427 — 审核产物（approved / rejected / pending）
 - `delArtifact(in_: { id: string, artifactId: string }): Promise<unknown>` · L439 · `/canvas/artifact/del` — 删产物（被选定的不允许删 —— 要删先改选）
 - `saveArtifact(in_: { id: string, nodeId: string, slot: string, type?: string, rows?: unknown, text?: string, note?: string }): Promise<ServerArtifact>` · L447 — 手工改完存新版本（分镜表逐行编辑）
-- `subscribeEvents(onEvent: (event: string, data: Record<string, unknown>) = > void, signal: AbortSignal): Promise<void>` · L479 · `…` — 订阅平台事件流（`/platform/events`）：任务完成/失败时刷新整图
+- `subscribeEvents(onEvent: (event: string, data: Record<string, unknown>) => void, signal: AbortSignal): Promise<void>` · L479 · `…` — 订阅平台事件流（`/platform/events`）：任务完成/失败时刷新整图
 - `exportNode(in_: { id: string, nodeId: string }): Promise<{ exportId: string, status: string, total: number, failures?: string[] }>` · L495 — 导出节点运行（打包成 ZIP，异步）
 
 ## app/composables/useCanvasHistory.ts
-- 导出函数/常量：`useCanvasHistory(opts: { graph: Ref<CanvasGraph>, artifacts: Ref<CanvasArtifact[]>, selectedId: Ref<string>, toast: (text: string) = > void, remeasure: () = > void })` L22
+- 导出函数/常量：`useCanvasHistory(opts: { graph: Ref<CanvasGraph>, artifacts: Ref<CanvasArtifact[]>, selectedId: Ref<string>, toast: (text: string) => void, remeasure: () => void })` L22
 - 导出类型 1 个 → 字段见 `types.md`（`CanvasSnapshot`）
 
 ## app/composables/useCanvasRows.ts
-- 导出函数/常量：`useCanvasRows(opts: { graph: Ref<CanvasGraph>, artifacts: Ref<CanvasArtifact[]>, toast: (text: string) = > void })` L15
+- 导出函数/常量：`useCanvasRows(opts: { graph: Ref<CanvasGraph>, artifacts: Ref<CanvasArtifact[]>, toast: (text: string) => void })` L15
 
 ## app/composables/useCanvasSlots.ts
 - 导出函数/常量：`useCanvasSlots()` L15
@@ -315,13 +315,13 @@
   - `modelCatalog(input: { type?: string, family?: string, category?: string } = {}): Promise<{ items: ModelListItem[] }>` · L1313 · `/platform/model/catalog…` — 模型目录（公开，按类型/族/分类过滤）
   - `prepareModelFile(modelId: string, name: string, bytes: number): Promise<{ id: string, url: string, expiresAt: string }>` · L1324 · `/platform/model/file/prepare` — prepareModelFile 模型文件上传第一步：后端签发限时 PUT 地址
   - `completeModelFile(modelId: string): Promise<{ ok: boolean }>` · L1328 · `/platform/model/file/complete` — completeModelFile 模型文件上传收尾（后端校验对象确实落地后置 ok）
-  - `subscribeTaskEvents(onEvent: (event: string, data: Record<string, unknown>) = > void): ()` · L1341 — subscribeTaskEvents 订阅平台任务事件流（GET /api/v1/platform/events，产品中立 SSE）
+  - `subscribeTaskEvents(onEvent: (event: string, data: Record<string, unknown>) => void): ()` · L1341 — subscribeTaskEvents 订阅平台任务事件流（GET /api/v1/platform/events，产品中立 SSE）
 
 ## app/composables/useIsNarrow.ts
 - 导出函数/常量：`useIsNarrow(query = '(max-width: 640px)')` L3 — 窄屏判定：移动端要把模型/参数从 popover 换成底部面板（交互图面板 04）
 
 ## app/composables/useMediaRefresh.ts
-- 导出函数/常量：`signedUrlExpiresAt(url: string): number | null` L42 — 解析签名地址的过期时刻（毫秒） · `isSignedUrl(url: string): boolean` L71 — 是不是（能解析出到期时间的）签名地址 · `signedUrlExpired(url: string, skewMs = REFRESH_SKEW_MS): boolean` L76 — 该地址是否已过期（或将在 skewMs 内过期） · `mediaRefreshEpoch(): Ref<number>` L91 — 当前是否需要刷新（给调试/测试用） · `requestMediaRefresh(reason: string): boolean` L99 — 请求一次"重新取数" · `useMediaAutoRefresh(loader: () = > unknown | Promise<unknown>)` L129 — 页面把"重新取数"挂上来：媒体过期或加载失败时会被调用 · `hasExpiredMediaInDom(root: ParentNode = document): boolean` L138 — DOM 里是否已有过期的签名媒体（切回标签页时扫一遍用）
+- 导出函数/常量：`signedUrlExpiresAt(url: string): number | null` L42 — 解析签名地址的过期时刻（毫秒） · `isSignedUrl(url: string): boolean` L71 — 是不是（能解析出到期时间的）签名地址 · `signedUrlExpired(url: string, skewMs = REFRESH_SKEW_MS): boolean` L76 — 该地址是否已过期（或将在 skewMs 内过期） · `mediaRefreshEpoch(): Ref<number>` L91 — 当前是否需要刷新（给调试/测试用） · `requestMediaRefresh(reason: string): boolean` L99 — 请求一次"重新取数" · `useMediaAutoRefresh(loader: () => unknown | Promise<unknown>)` L129 — 页面把"重新取数"挂上来：媒体过期或加载失败时会被调用 · `hasExpiredMediaInDom(root: ParentNode = document): boolean` L138 — DOM 里是否已有过期的签名媒体（切回标签页时扫一遍用）
 
 ## app/composables/useModelCatalog.ts
 - 导出函数/常量：`quoteImage(catalog: Catalog | null, ratio: string, count = 1): number | null` L55 — 单次生成的报价：与后端计费内核口径一致（图片按画幅，视频按时长优先、回落画幅单档） · `quoteVideo(catalog: Catalog | null, ratio: string, seconds: number): number | null` L61 · `quote(catalog: Catalog | null, mode: ComposerMode, query: PriceQuery): number | null` L70 · `quoteModel(catalog: Catalog | null, option: UserModelOption | undefined, query: PriceQuery)` L83 — 按**所选模型**报价，并返回正确单位 · `durationOptions(model: UserModelOption | undefined, catalog: Catalog | null): number[]` L134 — 该视频模型支持的时长档（秒） · `buildModelOptions(catalog: Catalog | null, mode: ComposerMode): UserModelOption[]` L149 — 构建用户可选的模型清单 · `videoSizeFor(catalog: Catalog | null, modelId: string, ratio: string): [number, number] | null` L210 — 视频输出尺寸：只认**模型自带**的分辨率表（catalog.videoModels[].resolutions） · `videoRatios(catalog: Catalog | null, modelId: string): string[]` L217 — 该视频模型支持哪些比例 · `cloudQualities(catalog: Catalog | null, modelId: string): string[]` L229 — 云端模型支持的清晰度档：来自模型行 capabilities（后台可配） · `cloudRatioOptions(catalog: Catalog | null, modelId: string, quality: string)` L247 — 云端模型在指定清晰度下支持的比例**及其像素尺寸** · `cloudDefaultQuality(catalog: Catalog | null, modelId: string): string` L262 — 后台声明的默认清晰度（为空时调用方回落到第一档） · `cloudDefaultRatio(catalog: Catalog | null, modelId: string): string` L277 — 后台声明的默认画幅（为空时调用方回落到竖屏） · `const PORTRAIT_RATIO = '9:16'` L288 — portraitFallback 竖屏兜底画幅 · `pickRatio(supported: string[], preferred: string): string` L296 — pickRatio 选默认画幅：模型声明的 → 竖屏兜底 → 支持列表第一个 · `cloudRatios(catalog: Catalog | null, modelId: string, quality: string): string[]` L304 — 云端模型在指定清晰度下支持的比例（该档没声明比例时返回空数组=不限制） · `defaultVideoModel(options: UserModelOption[]): string` L315 — 视频模式的默认模型：优先 MiniMax H3（运营主推），否则第一个可用视频模型
@@ -348,7 +348,7 @@
 - `needsImage(code: string): boolean` · L111 — 该工具是否需要先选图（后端 input 形态决定输入面板与必填校验）
 
 ## app/composables/useVersionWatcher.ts
-- 导出函数/常量：`useUpdateBlocker(fn: () = > boolean)` L25 · `useVersionWatcher()` L46
+- 导出函数/常量：`useUpdateBlocker(fn: () => boolean)` L25 · `useVersionWatcher()` L46
 
 ### `useVersionWatcher()` — L46 · 返回 11 个成员
 - `current` · L58 · ref `useState<string>` — 当前页面正在跑的版本（第一次探测时确立基线）
