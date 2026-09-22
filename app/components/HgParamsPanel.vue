@@ -148,24 +148,24 @@ function onCountInput(event: Event) {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 12px;
 }
 .param-row input,
 .param-row select {
   width: 130px;
   padding: 6px 8px;
-  border: 1px solid var(--hg3-line, rgb(255 255 255 / 8%));
+  border: 1px solid var(--hg3-line, #282828);
   border-radius: 8px;
   background: #141519;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 12px;
   outline: none;
 }
 .param-note {
   margin: 2px 0 0;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
   line-height: 1.5;
 }

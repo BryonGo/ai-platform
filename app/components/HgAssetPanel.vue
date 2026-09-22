@@ -251,7 +251,7 @@ function toVideo() {
   cursor: pointer;
 }
 .panel-tools button:hover {
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   color: var(--hg3-ink);
 }
 .stage {

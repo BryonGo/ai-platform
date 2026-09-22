@@ -77,11 +77,11 @@ function choose(item: RowOption) {
   gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgb(255 255 255 / 8%);
+  border-top: 1px solid #282828;
 }
 .row-title {
   flex-shrink: 0;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .row-items {
@@ -102,7 +102,7 @@ function choose(item: RowOption) {
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 8px;
   background: rgb(255 255 255 / 4%);
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 12px;
   white-space: nowrap;
@@ -112,9 +112,9 @@ function choose(item: RowOption) {
   border-color: rgb(255 255 255 / 22%);
 }
 .row-items button.active {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
 }
 .row-items button:disabled {
   opacity: 0.38;
@@ -129,7 +129,7 @@ function choose(item: RowOption) {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   cursor: pointer;
 }
 </style>

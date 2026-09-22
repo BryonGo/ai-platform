@@ -9,47 +9,53 @@
  */
 
 .hg-app {
-  /* 底色与容器 */
-  --hg3-canvas: #101114;
-  --hg3-rail: #25272c;
-  --hg3-rail-active: #141518;
-  --hg3-rail-hover: #2c2f35;
-  --hg3-card: #30333a;
-  --hg3-card-soft: #363940;
-  --hg3-tile: #3b3f47;
-  --hg3-well: #17181b;
+  /* 取值**逐条对齐 _public/prototypes/hougong-oii.html_ 的 :root 与各组件**（1:1）：
+     底色 #0d0d0d、主操作粉 #e832b0（hover #f347bc）、点阵高亮 lime #dbff73、
+     文字 #fafafa / #949494 / #6f6f6f、边框实色 #282828。
+     改这里等于改全站观感 —— 要调请**先改原型再同步**，否则两边会漂。 */
+  --hg3-canvas: #0d0d0d;
+  --hg3-rail: #0d0d0d;
+  --hg3-rail-active: #242424;
+  --hg3-rail-hover: #1b1b1b;
+  --hg3-card: #171717;
+  --hg3-card-soft: #1e1e1e;
+  --hg3-tile: #242424;
+  --hg3-well: #141414;
 
   /* 文字 */
-  --hg3-ink: #f2f0ec;
-  --hg3-muted: #9a9791;
-  --hg3-faint: #6e6b66;
+  --hg3-ink: #fafafa;
+  --hg3-muted: #949494;
+  --hg3-faint: #6f6f6f;
 
-  /* 铜橘主操作 */
-  --hg3-accent: #d9834d;
-  --hg3-accent-hi: #f99749;
-  --hg3-accent-ink: #3a2412;
-  --hg3-accent-soft: rgb(217 131 77 / 14%);
-  --hg3-accent-line: rgb(217 131 77 / 38%);
-  --hg3-glow: rgb(233 150 84 / 45%);
+  /* 主操作：原型是粉色（铜橘是上一版的品牌色，已被这次 1:1 覆盖） */
+  --hg3-accent: #e832b0;
+  --hg3-accent-hi: #f347bc;
+  --hg3-accent-ink: #fff;
+  --hg3-accent-soft: rgb(232 50 176 / 14%);
+  --hg3-accent-line: rgb(232 50 176 / 38%);
+  --hg3-glow: rgb(232 50 176 / 45%);
 
-  /* 线性图标配色（参考图实测：同一功能保持同一颜色） */
-  --hg3-i-orange: #fdbb5d;
-  --hg3-i-coral: #ff707a;
-  --hg3-i-amber: #ffc10f;
-  --hg3-i-green: #22dda3;
-  --hg3-i-blue: #71b6e7;
-  --hg3-i-gray: #868493;
+  /* 侧栏图标：原型是**单色**（跟着导航项自身的前景色走，选中变白），
+     不是每个功能一个彩色。用 inherit 就能拿到同样的效果。 */
+  --hg3-i-orange: inherit;
+  --hg3-i-coral: inherit;
+  --hg3-i-amber: inherit;
+  --hg3-i-green: inherit;
+  --hg3-i-blue: inherit;
+  --hg3-i-violet: inherit;
+  --hg3-i-gray: inherit;
 
   /* 状态色 */
   --hg3-ok: #2edf9a;
   --hg3-run: #65c6fb;
-  --hg3-warn: #ffb454;
+  --hg3-warn: #f347bc;
 
-  --hg3-line: rgb(255 255 255 / 8%);
-  --hg3-line-strong: rgb(255 255 255 / 14%);
+  /* 边框：原型用实色（#282828 / #333），不是半透明白 */
+  --hg3-line: #282828;
+  --hg3-line-strong: #333;
 
-  /* 参考图（1003px 视口）实测侧栏 173px ≈ 17vw，用流体宽度保持同一比例 */
-  --hg3-rail-w: clamp(200px, 17vw, 260px);
+  /* 原型侧栏固定 200px（上一版是 clamp(200px,17vw,260px) 的流体宽度） */
+  --hg3-rail-w: 200px;
   --hg3-topbar-h: 60px;
   --hg3-radius-card: 16px;
   --hg3-radius-input: 20px;
@@ -93,7 +99,7 @@
 
 .hg-rail-collapse:hover {
   color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
 }
 
 /* ---------- 收起态：只留图标 ----------
@@ -112,9 +118,7 @@
 
 .hg-app.rail-collapsed .hg-rail-brand b,
 .hg-app.rail-collapsed .hg-rail-brand small,
-.hg-app.rail-collapsed .hg-rail-cta-label,
 .hg-app.rail-collapsed .hg-nav-label,
-.hg-app.rail-collapsed .hg-nav-caret,
 .hg-app.rail-collapsed .hg-nav-item.sub,
 .hg-app.rail-collapsed .hg-rail-divider,
 .hg-app.rail-collapsed .hg-rail-section,
@@ -123,12 +127,6 @@
 
 .hg-app.rail-collapsed .hg-rail-brand img { grid-row: auto; }
 
-.hg-app.rail-collapsed .hg-rail-cta {
-  width: 38px;
-  height: 38px;
-  margin: 0 auto 12px;
-  gap: 0;
-}
 
 .hg-app.rail-collapsed .hg-nav-item {
   justify-content: center;
@@ -156,7 +154,7 @@
   font-weight: 800;
   letter-spacing: 1px;
   line-height: 1.1;
-  background: linear-gradient(180deg, #ffd79a, var(--hg3-accent));
+  background: linear-gradient(180deg, #ff8ad8, var(--hg3-accent));
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -167,25 +165,6 @@
   letter-spacing: 1.5px;
 }
 
-.hg-rail-cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 42px;
-  margin: 0 14px 14px;
-  border: 0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--hg3-accent-hi), var(--hg3-accent));
-  color: var(--hg3-accent-ink);
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: pointer;
-}
-.hg-rail-cta:hover {
-  filter: brightness(1.06);
-}
 
 .hg-rail-scroll {
   flex: 1;
@@ -259,14 +238,6 @@
   background: #2e3138;
   color: var(--hg3-faint);
   font-size: 10px;
-}
-.hg-nav-caret {
-  flex-shrink: 0;
-  color: var(--hg3-faint);
-  transition: transform 160ms ease;
-}
-.hg-nav-caret.open {
-  transform: rotate(180deg);
 }
 
 .hg-rail-divider {
@@ -383,7 +354,7 @@
   cursor: pointer;
 }
 .hg-publish:hover {
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
 }
 .hg-credits {
   display: inline-flex;
@@ -414,7 +385,7 @@
   text-decoration: none;
 }
 .hg-icon-btn:hover {
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   color: var(--hg3-ink);
 }
 .hg-dot {
@@ -447,7 +418,10 @@
 .hg-content {
   flex: 1;
   min-width: 0;
-  padding: 0 24px 56px;
+  /* 原型的 .page-view 是**全宽**（自己带 26/32/44 内边距），所以这里不再叠一层 24px：
+     叠了的话每个页面都会比原型窄 48px。各页自己用 .page-body 的
+     min(1320px, 100%-48px) 居中；要全宽的页（如技能页）自己覆盖 .page-body 即可。 */
+  padding: 0 0 56px;
 }
 
 /* ---------- 通用件 ---------- */
@@ -765,8 +739,5 @@ video.media-fg {
   background: linear-gradient(135deg, #2b1b1d 0%, #201618 100%);
 }
 .hg-btn-primary {
-  background: linear-gradient(135deg, #f9a04e, #d9713d);
-}
-.hg-rail-cta {
-  background: linear-gradient(135deg, #f9a04e, #d9713d);
+  background: linear-gradient(135deg, #f347bc, #e832b0);
 }

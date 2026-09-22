@@ -112,7 +112,7 @@ const costHint = computed(() => {
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 16px;
   background: #1c1d21;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   box-shadow: 0 24px 70px #000a;
 }
 .dup-dialog h2 {
@@ -124,14 +124,14 @@ const costHint = computed(() => {
   font-weight: 700;
 }
 .dup-dialog h2 svg {
-  color: var(--hg3-warn, #ffb454);
+  color: var(--hg3-warn, #f347bc);
 }
 .dup-task {
   display: grid;
   gap: 6px;
   padding: 12px;
   border-radius: 12px;
-  background: var(--hg3-card, #30333a);
+  background: var(--hg3-card, #171717);
 }
 .dup-task header {
   display: flex;
@@ -146,7 +146,7 @@ const costHint = computed(() => {
   padding: 2px 8px;
   border-radius: 6px;
   background: rgb(255 180 84 / 16%);
-  color: var(--hg3-warn, #ffb454);
+  color: var(--hg3-warn, #f347bc);
   font-size: 11px;
 }
 .dup-line {
@@ -155,17 +155,17 @@ const costHint = computed(() => {
   line-height: 1.6;
 }
 .dup-line.muted {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 .dup-note {
   margin: 0;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 12px;
   line-height: 1.7;
 }
 .dup-dims {
   margin: 0;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .dup-actions {
@@ -177,7 +177,7 @@ const costHint = computed(() => {
 .dup-actions button {
   height: 36px;
   padding: 0 14px;
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid #333;
   border-radius: 10px;
   background: transparent;
   color: inherit;
@@ -186,16 +186,16 @@ const costHint = computed(() => {
   cursor: pointer;
 }
 .dup-actions button:hover {
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
 }
 .dup-actions button.primary {
   border: 0;
-  background: linear-gradient(135deg, var(--hg3-accent-hi, #f99749), var(--hg3-accent, #d9834d));
+  background: linear-gradient(135deg, var(--hg3-accent-hi, #f347bc), var(--hg3-accent, #e832b0));
   color: var(--hg3-accent-ink, #3a2412);
   font-weight: 700;
 }
 .dup-actions button.ghost {
   border-color: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 </style>

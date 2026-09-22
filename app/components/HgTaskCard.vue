@@ -294,13 +294,13 @@ function download(assetId: string) {
   color: var(--hg3-i-coral);
 }
 .status-badge.muted {
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   color: var(--hg3-muted);
 }
 .task-progress {
   height: 4px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   overflow: hidden;
 }
 .task-progress i {
@@ -333,7 +333,7 @@ function download(assetId: string) {
   margin: 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #101114;
+  background: #0d0d0d;
 }
 /* 正在右侧预览的那一张：描边，方便关掉面板后一眼找回 */
 .task-results figure.active {

@@ -67,7 +67,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   padding-bottom: env(safe-area-inset-bottom, 0);
   border-radius: 18px 18px 0 0;
   background: #1c1d21;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   box-shadow: 0 -16px 50px #000a;
 }
 .sheet header {
@@ -89,7 +89,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   cursor: pointer;
 }
 .grabber {

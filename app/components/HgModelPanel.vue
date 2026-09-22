@@ -132,7 +132,7 @@ function priceText(option: UserModelOption) {
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 16px;
   background: #1c1d21;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 .model-scope {
   display: flex;
@@ -143,14 +143,14 @@ function priceText(option: UserModelOption) {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 .model-scope button[aria-pressed='true'] {
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
 }
 .model-search {
   width: 100%;
@@ -188,8 +188,8 @@ function priceText(option: UserModelOption) {
   background: rgb(255 255 255 / 5%);
 }
 .model-row.selected {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
 }
 .model-row:disabled {
   opacity: 0.45;
@@ -206,8 +206,8 @@ function priceText(option: UserModelOption) {
 .model-initial {
   display: grid;
   place-items: center;
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
   font-size: 15px;
   font-weight: 700;
 }
@@ -222,18 +222,18 @@ function priceText(option: UserModelOption) {
   font-weight: 600;
 }
 .model-sub {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 11px;
 }
 .model-price {
   flex-shrink: 0;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 11px;
   white-space: nowrap;
 }
 .model-empty {
   padding: 26px 8px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 13px;
   text-align: center;
 }
@@ -243,12 +243,12 @@ function priceText(option: UserModelOption) {
   justify-content: space-between;
   gap: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgb(255 255 255 / 8%);
-  color: var(--hg3-faint, #6e6b66);
+  border-top: 1px solid #282828;
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .model-panel footer a {
-  color: var(--hg3-accent, #d9834d);
+  color: var(--hg3-accent, #e832b0);
   text-decoration: none;
 }
 </style>

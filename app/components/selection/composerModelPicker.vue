@@ -190,7 +190,7 @@ function browse() {
 .quick-model-panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .quick-model-panel button { cursor: pointer; font: inherit; }
 .quick-model-panel header button { border: 0; background: transparent; color: #aaa; font-size: 24px; width: 28px; }
-.model-search { width: 100%; flex-shrink: 0; padding: 10px 12px; border: 1px solid #414247; border-radius: 8px; background: #141518; color: #eeece5; font-size: 13px; }
+.model-search { width: 100%; flex-shrink: 0; padding: 10px 12px; border: 1px solid #414247; border-radius: 8px; background: #242424; color: #eeece5; font-size: 13px; }
 .model-filters { display: flex; gap: 6px; padding: 12px 0; }
 .model-filters button { border: 0; border-radius: 6px; padding: 6px 12px; background: transparent; color: #a9a9b0; font-size: 12px; }
 .model-filters button[aria-pressed=true] { background: #d7b85924; color: #ecd38c; }

@@ -67,7 +67,7 @@ watch(() => props.image, () => {
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: rgb(255 255 255 / 0.1);
+  background: #282828;
   text-align: left;
   cursor: pointer;
   color: #fff;

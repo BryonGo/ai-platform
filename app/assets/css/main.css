@@ -40,36 +40,42 @@
 @theme static {
   --font-sans: 'MiSans', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
   --font-display: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', serif;
-  --color-amber-300: #fbd36a;
-  --color-amber-400: #fbbf24;
+  --color-amber-300: #f347bc;
+  --color-amber-400: #e832b0;
   --color-amber-500: #f59e0b;
 }
 
 :root {
   color-scheme: dark;
-  --canvas: #0d0e10;
-  --deep: #08090a;
-  --panel: #17181b;
-  --raised: #202125;
-  --ink: #f3f1eb;
-  --muted: #aaa7a0;
-  --faint: #716f6a;
-  --amber: #fbbf24;
-  --amber-soft: #fbd36a;
-  --line: rgb(255 255 255 / 0.1);
-  --rail: 240px;
-  --topbar-h: 68px;
+  /* 全局取值**逐条对齐 _public/prototypes/hougong-oii.html_ 的 :root**（1:1）：
+     底色 #0d0d0d、主操作粉 #e832b0（软色 #f347bc）、文字 #fafafa / #949494 / #6f6f6f、
+     边框实色 #282828。
+     --amber / --amber-soft 保留**变量名**是因为历史页面（钱包 / 设置 / 登录 / 画布…）
+     有 88 处引用；这次只换取值 —— 名字历史遗留，语义现在是「主操作色」。
+     改这里等于改全站观感，要调请先改原型再同步。 */
+  --canvas: #0d0d0d;
+  --deep: #0d0d0d;
+  --panel: #171717;
+  --raised: #242424;
+  --ink: #fafafa;
+  --muted: #949494;
+  --faint: #6f6f6f;
+  --amber: #e832b0;
+  --amber-soft: #f347bc;
+  --line: #282828;
+  --rail: 200px;
+  --topbar-h: 60px;
   /* 兼容历史页面曾用的 --hg-*（现全站深色主题，统一指向深色 token，
      避免 fallback 到浅色造成"白底"页面） */
-  --hg-canvas: #0d0e10;
-  --hg-line: rgb(255 255 255 / 0.1);
-  --hg-amber: rgba(251 191 36 / 0.16);
-  --hg-muted: #aaa7a0;
-  --hg-accent: #fbbf24;
+  --hg-canvas: #0d0d0d;
+  --hg-line: #282828;
+  --hg-amber: rgb(232 50 176 / 0.16);
+  --hg-muted: #949494;
+  --hg-accent: #e832b0;
   --hg-ink: #1a1a1a; /* active 芯片背景（黑底白字） */
   --hg-input: rgb(255 255 255 / 0.05);
-  --hg-card: #17181b;
-  --hg-amber-soft: #fbd36a;
+  --hg-card: #171717;
+  --hg-amber-soft: #f347bc;
 }
 
 @property --edge-angle {
@@ -205,7 +211,7 @@ textarea:focus-visible {
   align-items: stretch;
   overflow-y: auto;
   border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, #17181b, #0d0e10 70%);
+  background: linear-gradient(180deg, #171717, #0d0d0d 70%);
   box-shadow: 18px 0 54px rgb(0 0 0 / 0.2);
 }
 .brand {
@@ -1001,7 +1007,7 @@ textarea:focus-visible {
   flex-shrink: 0;
   border-radius: 5px;
   object-fit: cover;
-  background: rgb(255 255 255 / 0.1);
+  background: #282828;
 }
 .model-thumb-fallback {
   display: grid;
@@ -1057,7 +1063,7 @@ textarea:focus-visible {
   gap: 8px;
   border: 0;
   border-radius: 8px 3px 8px 3px;
-  background: linear-gradient(115deg, #f6b719, #ffd66c);
+  background: linear-gradient(115deg, #c62a97, #f347bc);
   color: #1b1608;
   font-size: 14px;
   font-weight: 700;
@@ -1789,7 +1795,7 @@ textarea:focus-visible {
 }
 .btn-primary {
   border: 0;
-  background: linear-gradient(115deg, #f6b719, #ffd66c);
+  background: linear-gradient(115deg, #c62a97, #f347bc);
   color: #1b1608;
   box-shadow: 0 9px 25px rgb(251 191 36 / 0.18);
 }
@@ -1930,7 +1936,7 @@ textarea:focus-visible {
 .panel-block {
   margin-top: 26px;
   padding: 20px 22px;
-  border: 1px solid rgb(255 255 255 / 0.1);
+  border: 1px solid #282828;
   border-radius: 12px 4px 12px 4px;
   background: linear-gradient(150deg, rgb(30 31 35 / 0.9), rgb(17 18 21 / 0.9));
 }
@@ -2509,7 +2515,7 @@ textarea:focus-visible {
 .modal-progress-bar {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #f6b719, #ffd66c);
+  background: linear-gradient(90deg, #c62a97, #f347bc);
   box-shadow: 0 0 14px rgb(251 191 36 / 0.5);
   transition: width 0.15s linear;
 }
@@ -3100,7 +3106,7 @@ textarea:focus-visible {
   place-items: center;
   border: 0;
   border-radius: 10px 3px 10px 3px;
-  background: linear-gradient(115deg, #f6b719, #ffd66c);
+  background: linear-gradient(115deg, #c62a97, #f347bc);
   color: #1b1608;
   box-shadow: 0 8px 22px rgb(251 191 36 / 0.2);
 }
@@ -3413,7 +3419,7 @@ textarea:focus-visible {
   border: 1px dashed var(--hg-line, rgb(255 255 255 / 0.18));
   border-radius: 1.25rem;
   background: rgb(255 255 255 / 0.025);
-  color: var(--hg-muted, #aaa7a0);
+  color: var(--hg-muted, #949494);
   text-align: center;
   line-height: 2;
   display: grid;

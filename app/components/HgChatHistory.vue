@@ -305,7 +305,7 @@ async function archive(id: string) {
   padding: 5px 8px;
   border: 1px solid var(--hg3-accent-line);
   border-radius: 7px;
-  background: #101114;
+  background: #0d0d0d;
   color: var(--hg3-ink);
   font-family: inherit;
   font-size: 13px;

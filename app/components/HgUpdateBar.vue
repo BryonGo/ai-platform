@@ -62,10 +62,10 @@ const shortVersion = computed(() => {
   gap: 10px;
   max-width: min(92vw, 560px);
   padding: 8px 10px 8px 14px;
-  border: 1px solid var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  border: 1px solid var(--hg3-accent-line, rgb(232 50 176 / 38%));
   border-radius: 999px;
   background: #1c1d21;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-size: 13px;
   box-shadow: 0 12px 32px rgb(0 0 0 / 52%);
   transform: translateX(-50%);
@@ -78,7 +78,7 @@ const shortVersion = computed(() => {
 }
 .update-bar__text em {
   margin-left: 4px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-style: normal;
   font-size: 11px;
 }
@@ -94,16 +94,16 @@ const shortVersion = computed(() => {
 }
 .update-bar__go {
   border: 0;
-  background: linear-gradient(135deg, #f9a04e, #d9713d);
+  background: linear-gradient(135deg, #f347bc, #e832b0);
   color: #241609;
   font-weight: 600;
 }
 .update-bar__later {
   border: 1px solid var(--hg3-line, rgb(255 255 255 / 12%));
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 .update-bar__later:hover {
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 </style>

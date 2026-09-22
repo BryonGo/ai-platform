@@ -376,7 +376,7 @@ useMediaAutoRefresh(() => Promise.all([loadWorks(), loadPublished()]))
 .published-state {
   padding: 1px 8px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   color: var(--hg-muted);
   font-size: 11px;
 }
@@ -386,7 +386,7 @@ useMediaAutoRefresh(() => Promise.all([loadWorks(), loadPublished()]))
 }
 .published-state.is-draft {
   background: rgb(255 180 84 / 16%);
-  color: var(--hg-warn, #ffb454);
+  color: var(--hg-warn, #f347bc);
 }
 .published-item__acts {
   display: flex;

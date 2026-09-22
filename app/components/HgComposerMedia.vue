@@ -66,15 +66,15 @@ function onChange(event: Event) {
   width: 56px;
   height: 56px;
   flex-shrink: 0;
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid #333;
   border-radius: 14px;
   background: rgb(255 255 255 / 5%);
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-size: 20px;
   cursor: pointer;
 }
 .media-box:hover {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
 }
 .media-box.disabled {
   opacity: 0.45;

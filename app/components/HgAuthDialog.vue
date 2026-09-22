@@ -313,7 +313,7 @@ async function submitRegister() {
   border-radius: 18px;
   background: #1c1d21;
   box-shadow: 0 24px 70px #000a;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 .hg-auth-head {
   display: flex;
@@ -328,7 +328,7 @@ async function submitRegister() {
 .hg-auth-head strong {
   font-size: 17px;
   font-weight: 800;
-  background: linear-gradient(180deg, #ffd79a, var(--hg3-accent, #d9834d));
+  background: linear-gradient(180deg, #ff8ad8, var(--hg3-accent, #e832b0));
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -341,12 +341,12 @@ async function submitRegister() {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   cursor: pointer;
 }
 .hg-auth-close:hover {
-  background: rgb(255 255 255 / 8%);
-  color: var(--hg3-ink, #f2f0ec);
+  background: #282828;
+  color: var(--hg3-ink, #fafafa);
 }
 .hg-auth h2 {
   margin: 14px 0 16px;
@@ -357,20 +357,20 @@ async function submitRegister() {
   display: flex;
   gap: 18px;
   margin-bottom: 16px;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid #282828;
 }
 .hg-auth-tabs button {
   position: relative;
   padding: 0 0 10px;
   border: 0;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
 }
 .hg-auth-tabs button.active {
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-weight: 600;
 }
 .hg-auth-tabs button.active::after {
@@ -380,7 +380,7 @@ async function submitRegister() {
   left: 0;
   height: 2px;
   border-radius: 2px;
-  background: var(--hg3-accent, #d9834d);
+  background: var(--hg3-accent, #e832b0);
   content: '';
 }
 .hg-field {
@@ -393,17 +393,17 @@ async function submitRegister() {
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 10px;
   background: #141519;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
 }
 .hg-field:focus-within {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
 }
 .hg-field input {
   flex: 1;
   min-width: 0;
   border: 0;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 14px;
   outline: none;
@@ -415,7 +415,7 @@ async function submitRegister() {
   height: 26px;
   border: 0;
   background: transparent;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   cursor: pointer;
 }
 .hg-auth-error {
@@ -435,7 +435,7 @@ async function submitRegister() {
   justify-content: space-between;
   gap: 12px;
   margin-top: 10px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 12px;
 }
 .hg-auth-foot a {
@@ -443,11 +443,11 @@ async function submitRegister() {
   text-decoration: none;
 }
 .hg-auth-foot a:hover {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 .hg-auth-note {
   margin: 12px 0 0;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
   text-align: center;
 }
@@ -456,7 +456,7 @@ async function submitRegister() {
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 12px;
 }
 .hg-auth-check input {

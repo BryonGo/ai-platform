@@ -663,7 +663,7 @@ useMediaAutoRefresh(() => load())
   place-items: center;
   width: 100%;
   aspect-ratio: 4 / 3;
-  background: linear-gradient(160deg, #26272c, #17181b);
+  background: linear-gradient(160deg, #26272c, #171717);
   color: var(--amber-soft);
   font-size: clamp(48px, 7vw, 96px);
   font-weight: 800;
@@ -674,7 +674,7 @@ useMediaAutoRefresh(() => load())
   place-items: center;
   width: 100%;
   height: 100%;
-  background: linear-gradient(160deg, #2b2b31, #17181b);
+  background: linear-gradient(160deg, #2b2b31, #171717);
   color: var(--amber-soft);
   font-weight: 700;
 }

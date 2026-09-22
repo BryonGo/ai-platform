@@ -77,7 +77,7 @@ const emit = defineEmits<{ remove: [index: number] }>()
   width: 56px;
   height: 56px;
   flex-shrink: 0;
-  border: 1px solid var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  border: 1px solid var(--hg3-accent-line, rgb(232 50 176 / 38%));
   border-radius: 14px;
   background: rgb(255 255 255 / 5%);
 }

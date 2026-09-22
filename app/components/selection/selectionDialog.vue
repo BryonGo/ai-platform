@@ -78,7 +78,7 @@ const emit = defineEmits<{
   color: #fff; opacity: 0.6;
   background: transparent; cursor: pointer; font-size: 16px;
 }
-.sel-dialog__close:hover { opacity: 1; background: rgb(255 255 255 / 0.1); }
+.sel-dialog__close:hover { opacity: 1; background: #282828; }
 .sel-dialog__filters {
   display: flex;
   justify-content: flex-start;

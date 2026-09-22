@@ -168,7 +168,7 @@ onUnmounted(() => {
 .hg-confirm {
   width: min(420px, 100%);
   padding: 20px;
-  border: 1px solid var(--hg3-line, rgb(255 255 255 / 8%));
+  border: 1px solid var(--hg3-line, #282828);
   border-radius: 12px;
   background: var(--hg3-panel, #16171b);
   box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
@@ -178,7 +178,7 @@ onUnmounted(() => {
   margin: 0 0 8px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 
 .hg-confirm__msg {
@@ -249,7 +249,7 @@ onUnmounted(() => {
   border: 1px solid var(--hg3-line, rgb(255 255 255 / 10%));
   border-radius: 8px;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-size: 13px;
   cursor: pointer;
 }

@@ -66,7 +66,7 @@ const cover = computed(() => props.character.coverUrl || props.character.image |
   place-items: center;
   width: 100%;
   aspect-ratio: 3 / 4;
-  background: linear-gradient(160deg, #26272c, #17181b);
+  background: linear-gradient(160deg, #26272c, #171717);
   color: var(--amber-soft);
   font-size: clamp(40px, 6vw, 72px);
   font-weight: 800;

@@ -172,7 +172,7 @@ watch(() => props.open, (o) => {
 .lora-card {
   position: relative;
   border: 1px solid transparent; border-radius: 10px; overflow: hidden;
-  background: rgb(255 255 255 / 0.1);
+  background: #282828;
 }
 .lora-card.selected { border-color: rgb(246 83 140 / 0.82); }
 .lora-card__main {
@@ -189,7 +189,7 @@ watch(() => props.open, (o) => {
 }
 .lora-card__weight {
   display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px; border-top: 1px solid rgb(255 255 255 / 0.1);
+  padding: 6px 10px; border-top: 1px solid #282828;
 }
 .lora-card__weight span { color: rgb(255 255 255 / 0.75); font-size: 11px; flex-shrink: 0; }
 .lora-card__weight input {

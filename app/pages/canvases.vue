@@ -349,7 +349,7 @@ onMounted(() => { void load() })
 
 .cl-input {
   padding: 7px 10px;
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid #333;
   border-radius: 8px;
   color: inherit;
   font: inherit;
@@ -362,7 +362,7 @@ onMounted(() => { void load() })
 
 .cl-btn {
   padding: 7px 12px;
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid #333;
   border-radius: 8px;
   color: inherit;
   font: inherit;
@@ -410,7 +410,7 @@ onMounted(() => { void load() })
   align-items: center;
   justify-content: space-between;
   padding: 12px 4px;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid #282828;
 }
 
 .cl-main {

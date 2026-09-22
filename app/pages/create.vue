@@ -366,7 +366,7 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
   margin: 0;
   overflow: hidden;
   border-radius: 10px;
-  background: #101114;
+  background: #0d0d0d;
 }
 .msg-attachments img {
   display: block;

@@ -233,7 +233,7 @@ watch(open, (v) => {
   background: var(--hg3-panel, #16171b);
   box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
   overflow: auto;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 .publish-head {
   display: flex;
@@ -265,7 +265,7 @@ watch(open, (v) => {
   gap: 12px;
   align-items: center;
   padding: 10px;
-  border: 1px solid var(--hg3-line, rgb(255 255 255 / 8%));
+  border: 1px solid var(--hg3-line, #282828);
   border-radius: 12px;
   background: rgb(255 255 255 / 3%);
 }
@@ -281,7 +281,7 @@ watch(open, (v) => {
   display: grid;
   place-items: center;
   gap: 4px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .publish-cover__meta {
@@ -291,15 +291,15 @@ watch(open, (v) => {
   overflow-wrap: anywhere;
 }
 .publish-cover__meta small {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 .publish-cover__tag {
   display: inline-block;
   margin-right: 6px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
   font-size: 11px;
 }
 .publish-field {
@@ -308,10 +308,10 @@ watch(open, (v) => {
   font-size: 13px;
 }
 .publish-field > span {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
 }
 .publish-field em {
-  color: var(--hg3-accent-hi, #f99749);
+  color: var(--hg3-accent-hi, #f347bc);
   font-style: normal;
 }
 .publish-field input,
@@ -321,8 +321,8 @@ watch(open, (v) => {
   padding: 9px 11px;
   border: 1px solid var(--hg3-line, rgb(255 255 255 / 10%));
   border-radius: 10px;
-  background: var(--hg3-well, #17181b);
-  color: var(--hg3-ink, #f2f0ec);
+  background: var(--hg3-well, #171717);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 13px;
   resize: vertical;
@@ -330,7 +330,7 @@ watch(open, (v) => {
 .publish-field input:focus,
 .publish-field textarea:focus,
 .publish-field select:focus {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
   outline: none;
 }
 .publish-field--inline {
@@ -338,7 +338,7 @@ watch(open, (v) => {
   align-items: center;
 }
 .publish-hint {
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .publish-actions {
@@ -350,7 +350,7 @@ watch(open, (v) => {
 .publish-btn {
   height: 36px;
   padding: 0 16px;
-  border: 1px solid var(--hg3-line-strong, rgb(255 255 255 / 14%));
+  border: 1px solid var(--hg3-line-strong, #333);
   border-radius: 10px;
   background: transparent;
   color: inherit;
@@ -360,8 +360,8 @@ watch(open, (v) => {
   cursor: pointer;
 }
 .publish-btn:hover:not(:disabled) {
-  border-color: var(--hg3-accent, #d9834d);
-  color: var(--hg3-accent-hi, #f99749);
+  border-color: var(--hg3-accent, #e832b0);
+  color: var(--hg3-accent-hi, #f347bc);
 }
 .publish-btn:disabled {
   opacity: 0.5;
@@ -369,7 +369,7 @@ watch(open, (v) => {
 }
 .publish-btn--primary {
   border-color: transparent;
-  background: linear-gradient(135deg, var(--hg3-accent-hi, #f99749), var(--hg3-accent, #d9834d));
+  background: linear-gradient(135deg, var(--hg3-accent-hi, #f347bc), var(--hg3-accent, #e832b0));
   color: var(--hg3-accent-ink, #3a2412);
   font-weight: 800;
 }

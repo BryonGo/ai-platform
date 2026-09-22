@@ -140,7 +140,7 @@ function onKeydown(event: KeyboardEvent) {
   outline: none;
 }
 .handle:focus-visible .knob {
-  box-shadow: 0 0 0 3px var(--hg3-accent-soft, rgb(217 131 77 / 14%));
+  box-shadow: 0 0 0 3px var(--hg3-accent-soft, rgb(232 50 176 / 14%));
 }
 .knob {
   position: absolute;

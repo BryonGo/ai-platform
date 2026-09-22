@@ -113,7 +113,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   width: min(980px, 100%);
   max-height: calc(100dvh - 48px);
   margin: 0;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 .hg-preview header {
   display: flex;
@@ -130,7 +130,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   font-size: 15px;
 }
 .hg-preview .meta small {
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-size: 12px;
 }
 .hg-preview .tools {
@@ -144,7 +144,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   height: 34px;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 999px;
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   color: inherit;
   cursor: pointer;
 }
@@ -176,11 +176,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 }
 .stage-empty {
   padding: 40px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 13px;
 }
 .hg-preview figcaption {
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
   text-align: center;
 }

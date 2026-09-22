@@ -43,7 +43,7 @@
   font-size: 9.5px;
   letter-spacing: 0.1em;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 5px;
   white-space: nowrap;
 }
@@ -107,7 +107,7 @@
   text-overflow: ellipsis;
 }
 
-.cg-graph-item:hover { background: rgb(255 255 255 / 8%); }
+.cg-graph-item:hover { background: #282828; }
 .cg-graph-item.is-current {
   background: var(--hg3-accent-soft);
   box-shadow: inset 0 0 0 1px var(--hg3-accent-line);
@@ -123,7 +123,7 @@
   border-radius: 0 0 7px 7px;
 }
 
-.cg-graph-all:hover { color: var(--hg3-ink); background: rgb(255 255 255 / 8%); }
+.cg-graph-all:hover { color: var(--hg3-ink); background: #282828; }
 
 
 
@@ -227,11 +227,11 @@
   padding: 0 10px;
   font-size: 11.5px;
   color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   border-radius: 999px;
 }
 
-.cg-selbar button:hover { background: rgb(255 255 255 / 14%); }
+.cg-selbar button:hover { background: #333; }
 .cg-selbar button.is-danger { color: var(--hg3-i-coral); }
 
 .cg-zoom {
@@ -342,7 +342,7 @@
   padding: 2px 7px;
   font-size: 10.5px;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -407,7 +407,7 @@
   padding: 5px 10px;
   font-size: 11px;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border: 1px solid transparent;
   border-radius: 999px;
 }
@@ -481,7 +481,7 @@
   height: 20px;
   font-size: 9.5px;
   color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
   border-radius: 5px;
 }
 
@@ -646,7 +646,7 @@
 }
 
 .cg-menu-row > button:hover:not(:disabled),
-.cg-menu-subrow:hover:not(:disabled) { background: rgb(255 255 255 / 8%); }
+.cg-menu-subrow:hover:not(:disabled) { background: #282828; }
 .cg-menu-row.is-danger > button { color: var(--hg3-i-coral); }
 .cg-menu-row.is-disabled > button { opacity: 0.42; cursor: not-allowed; }
 .cg-menu-row > button i, .cg-menu-subrow i { font-size: 13px; }
@@ -737,7 +737,7 @@
   padding: 1px 6px;
   font-size: 10.5px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   color: var(--hg3-muted);
 }
 
@@ -765,7 +765,7 @@
   background: transparent;
   border-radius: 6px;
 }
-.cg-slot:hover { background: rgb(255 255 255 / 8%); }
+.cg-slot:hover { background: #282828; }
 .cg-slot.is-on { background: rgb(255 255 255 / 13%); }
 .cg-slot-label { color: var(--hg3-ink); }
 .cg-slot-note { margin-left: auto; color: var(--hg3-muted); font-size: 10.5px; }
@@ -791,7 +791,7 @@
 
 .cg-node-menu-btn:hover {
   color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
 }
 
 .cg-node-menu {
@@ -817,7 +817,7 @@
   border-radius: 6px;
 }
 
-.cg-node-menu button:hover { background: rgb(255 255 255 / 8%); }
+.cg-node-menu button:hover { background: #282828; }
 .cg-node-menu button.is-danger { color: var(--hg3-i-coral); }
 
 .cg-node-ports {
@@ -1118,7 +1118,7 @@
 .cg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cg-btn--ghost {
   color: var(--hg3-ink);
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
 }
 
 .cg-versions { display: inline-flex; gap: 3px; margin-left: auto; }
@@ -1132,7 +1132,7 @@
   padding: 0 4px;
   font-size: 10px;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 6px;
 }
 
@@ -1151,7 +1151,7 @@
   padding: 0 8px;
   font-size: 10.5px;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 999px;
 }
 
@@ -1167,7 +1167,7 @@
   padding: 1px 6px;
   font-size: 10px;
   color: var(--hg3-muted);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 999px;
   white-space: nowrap;
   overflow: hidden;
@@ -1251,7 +1251,7 @@
   height: 26px;
   flex: none;
   font-size: 14px;
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 8px;
 }
 
@@ -1459,7 +1459,7 @@
   height: 54px;
   font-size: 10px;
   color: var(--hg3-faint);
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-radius: 6px;
 }
 .cg-ref-item figcaption { margin-top: 3px; font-size: 10px; line-height: 1.35; color: var(--hg3-muted); }
