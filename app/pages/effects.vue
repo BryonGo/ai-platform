@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>`
+// 只把**本文件导入的** `vXxx` 当成指令注册。少了这一行，视频卡进视口不会自动播，
+// 控制台只丢一句 "Failed to resolve directive: auto-play-video"，画面看着"就是不动"。
+import { vAutoPlayVideo } from '~/composables/useAutoPlayVideo'
 // 全部效果（/effects）—— 布局对着参考站 undress.xxx 的 All Effects 页做的：
 // 顶部一条「新功能」提示 → 大横幅（标题 + 开始使用 + 三个小标签）→ 横排精选
 // → 「视频效果 N / 图像效果 N」+ 搜索 → 标签行 → 五列竖版卡片（缩略图 + 角标 + 名称在下方）。
@@ -12,12 +16,12 @@
 //
 // 数据仍然全部来自后端目录（GET /hougong/tools）：运营在后台停用工具，这里立刻消失；
 // 封面图、角标、标签也在后台填（没填就用图标兜底，不留空框）。
-useSeoMeta({ title: '全部效果 · 后宫' })
+useSeoMeta({ title: '技能 · 后宫' })
 
 const catalog = useToolCatalog()
-const tab = ref<'image' | 'video'>('image')
-const search = ref('')
-const activeTag = ref('all')
+// 分类页签：全部 / 图片 / 视频。默认「全部」——
+// 原来默认落在图片，第一次进来的人根本不知道视频那半边还有东西。
+const tab = ref<'all' | 'image' | 'video'>('all')
 
 const tools = computed(() => catalog.tools.value)
 
@@ -91,72 +95,21 @@ const effects = computed<EffectCard[]>(() => {
   return out
 })
 
-/** 横幅按钮指向第一个可用效果（没有效果时按钮不渲染）。 */
-const firstTool = computed(() => effects.value[0])
-
-const inTab = (e: EffectCard) => (tab.value === 'video' ? e.category === 'video' : e.category !== 'video')
-
-/** 横排精选：优先挑工具卡（参考站那一排就是 脱衣/换脸/文字转图像/快速编辑/图像放大）。 */
-const strip = computed(() => {
-  const cards = effects.value.filter(e => e.isTool && inTab(e))
-  const rest = effects.value.filter(e => e.isTool && !inTab(e))
-  const others = effects.value.filter(e => !e.isTool)
-  return [...cards, ...rest, ...others].slice(0, 5)
-})
+const inTab = (e: EffectCard) =>
+  tab.value === 'all' ? true : (tab.value === 'video' ? e.category === 'video' : e.category !== 'video')
 
 const counts = computed(() => ({
   image: effects.value.filter(e => e.category !== 'video').length,
   video: effects.value.filter(e => e.category === 'video').length
 }))
 watch(counts, (c) => {
-  if (c.video === 0 && tab.value === 'video') tab.value = 'image'
+  // 只兜「当前页签变成了空分组」，不动「全部」
+  if (c.video === 0 && tab.value === 'video') tab.value = 'all'
 }, { immediate: true })
 
-/**
- * 标签行：全部 + 角标（热门/新品…）+ 标签（最多 12 个）。
- *
- * 顺序按"第一次出现的顺序"排，不按出现次数：按钮顺序一变，用户下一次就找不到
- * 上次点的那个标签了（脱衣这类主力效果排在最前也符合直觉）。
- */
-const tagList = computed(() => {
-  const badges = [...new Set(effects.value.filter(inTab).map(e => e.badge).filter(Boolean))] as string[]
-  const seen = new Set<string>()
-  for (const e of effects.value.filter(inTab)) {
-    for (const t of e.tags) {
-      if (seen.size >= 12) break
-      seen.add(t)
-    }
-  }
-  return [
-    ...badges.map(b => ({ kind: 'badge' as const, value: b })),
-    ...[...seen].map(t => ({ kind: 'tag' as const, value: t }))
-  ]
-})
-
-const shown = computed(() => {
-  let list = effects.value.filter(inTab)
-  const q = search.value.trim().toLowerCase()
-  if (q) {
-    list = list.filter(e =>
-      `${e.name} ${e.summary} ${e.code} ${e.tags.join(' ')}`.toLowerCase().includes(q)
-    )
-  }
-  const tag = activeTag.value
-  if (tag !== 'all') {
-    const hit = tagList.value.find(t => t.value === tag)
-    list = hit?.kind === 'badge'
-      ? list.filter(e => e.badge === tag)
-      : list.filter(e => e.tags.includes(tag))
-  }
-  return list
-})
-
-/** 切页签时清掉可能已经不存在的筛选项，避免"点了标签再切页签，结果空列表"。 */
-watch(tab, () => {
-  if (activeTag.value !== 'all' && !tagList.value.some(t => t.value === activeTag.value)) {
-    activeTag.value = 'all'
-  }
-})
+// 列表只按页签筛。搜索与标签行随旧版面一起撤了 —— 原型上这一页就是
+// 「标题 + 分类页签 + 卡片」，多出来的工具条会把注意力从卡片上拽走。
+const shown = computed(() => effects.value.filter(inTab))
 
 onMounted(() => {
   catalog.ensure()
@@ -165,131 +118,43 @@ onMounted(() => {
 
 <template>
   <div class="page-body fx">
-    <!-- 顶部：新功能提示（让老用户一眼看到上新） -->
+    <h1 class="fx-title">
+      技能
+    </h1>
+
+    <!-- 分类页签：全部 / 图片 / 视频。下划线选中态，和资产页的页签同一套。 -->
     <div
-      v-if="strip.length"
-      class="fx-news"
-    >
-      <UIcon name="i-lucide-sparkles" />
-      新工具：{{ strip[0]!.name }}
-    </div>
-
-    <!-- 大横幅 -->
-    <section class="fx-hero">
-      <div class="fx-hero-text">
-        <h1>创建你自己的 AI 成人幻想</h1>
-        <p>仅上传你拥有或已获得明确授权的图片。生成完成后可自主决定是否分享。</p>
-        <NuxtLink
-          v-if="firstTool"
-          class="fx-cta"
-          :to="`/tool/${firstTool.code}`"
-        >
-          <UIcon name="i-lucide-play" />开始使用
-        </NuxtLink>
-        <ul class="fx-chips">
-          <li><UIcon name="i-lucide-shield-check" />确认后生成</li>
-          <li><UIcon name="i-lucide-lock" />素材仅用于生成任务</li>
-          <li><UIcon name="i-lucide-download" />完成后可预览下载</li>
-        </ul>
-      </div>
-      <div class="fx-hero-art">
-        <div class="fx-hero-card">
-          <UIcon :name="strip[0]?.icon || 'i-lucide-image'" />
-          <span>效果预览</span>
-        </div>
-        <div class="fx-hero-card fx-hero-card--after">
-          <UIcon name="i-lucide-wand-sparkles" />
-          <span>生成结果</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- 横排：图像效果 -->
-    <section v-if="strip.length">
-      <h2 class="fx-h2">
-        {{ tab === 'video' ? '视频效果' : '图像效果' }}
-      </h2>
-      <div class="fx-strip">
-        <NuxtLink
-          v-for="tool in strip"
-          :key="tool.key"
-          class="fx-strip-card"
-          :to="tool.template ? `/tool/${tool.code}?template=${tool.template}` : `/tool/${tool.code}`"
-        >
-          <div class="fx-thumb fx-thumb--sm">
-            <img
-              v-if="tool.cover"
-              class="media-fg"
-              :src="tool.cover"
-              alt=""
-              loading="lazy"
-            >
-            <div
-              v-else
-              class="fx-thumb-fallback"
-            >
-              <UIcon :name="tool.icon || 'i-lucide-sparkles'" />
-            </div>
-            <span
-              v-if="tool.badge"
-              class="fx-badge"
-            >{{ tool.badge }}</span>
-          </div>
-          <span class="fx-strip-name">{{ tool.name }}</span>
-        </NuxtLink>
-      </div>
-    </section>
-
-    <!-- 工具条：数量 + 搜索 -->
-    <div class="fx-toolbar">
-      <div class="fx-counts">
-        <button
-          v-if="counts.video > 0"
-          type="button"
-          :class="{ active: tab === 'video' }"
-          @click="tab = 'video'"
-        >
-          视频效果 <b>{{ counts.video }}</b>
-        </button>
-        <button
-          type="button"
-          :class="{ active: tab === 'image' }"
-          @click="tab = 'image'"
-        >
-          图像效果 <b>{{ counts.image }}</b>
-        </button>
-      </div>
-      <label class="fx-search">
-        <UIcon name="i-lucide-search" />
-        <input
-          v-model="search"
-          type="search"
-          placeholder="搜索效果、模板、关键词…"
-          aria-label="搜索效果"
-        >
-      </label>
-    </div>
-
-    <!-- 标签行 -->
-    <div
-      v-if="tagList.length"
-      class="fx-tags"
+      class="fx-tabs"
+      role="tablist"
+      aria-label="技能分类"
     >
       <button
         type="button"
-        :class="{ active: activeTag === 'all' }"
-        @click="activeTag = 'all'"
+        role="tab"
+        :aria-selected="tab === 'all'"
+        :class="{ active: tab === 'all' }"
+        @click="tab = 'all'"
       >
-        <UIcon name="i-lucide-layout-grid" />全部
+        全部
       </button>
       <button
-        v-for="tag in tagList"
-        :key="tag.kind + tag.value"
         type="button"
-        :class="{ active: activeTag === tag.value }"
-        @click="activeTag = tag.value"
+        role="tab"
+        :aria-selected="tab === 'image'"
+        :class="{ active: tab === 'image' }"
+        @click="tab = 'image'"
       >
-        <UIcon :name="tag.kind === 'badge' ? 'i-lucide-flame' : 'i-lucide-tag'" />{{ tag.value }}
+        图片
+      </button>
+      <button
+        v-if="counts.video > 0"
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'video'"
+        :class="{ active: tab === 'video' }"
+        @click="tab = 'video'"
+      >
+        视频
       </button>
     </div>
 
@@ -345,13 +210,24 @@ onMounted(() => {
             v-if="tool.badge"
             class="fx-badge"
           >{{ tool.badge }}</span>
-          <span
-            v-if="tool.isTool && tool.optionCount"
-            class="fx-tpl"
-          >{{ tool.optionCount }} 个玩法</span>
         </div>
-        <div class="fx-name">
-          {{ tool.name }}
+        <div class="fx-body">
+          <strong class="fx-name">{{ tool.name }}</strong>
+          <!-- 一句话说明：光有名字看不出这个技能到底做什么（后端目录的 summary） -->
+          <p
+            v-if="tool.summary"
+            class="fx-desc"
+          >
+            {{ tool.summary }}
+          </p>
+          <div class="fx-foot">
+            <span class="fx-tag">
+              {{ tool.category === 'video' ? '视频' : '图片' }}<template v-if="tool.isTool && tool.optionCount"> · {{ tool.optionCount }} 个玩法</template>
+            </span>
+            <!-- 整张卡就是链接，「试试看」只是它的视觉落点；放进 <a> 里的真按钮是无效嵌套，
+                 所以这里用 span 呈现（点哪儿都是进这个技能）。 -->
+            <span class="fx-try">试试看</span>
+          </div>
         </div>
       </NuxtLink>
     </div>
@@ -379,66 +255,112 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.fx { max-width: 1180px; }
-.fx-news { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 6px 12px; border: 1px solid var(--hg-line); border-radius: 999px; background: var(--hg-card); color: var(--hg-muted); font-size: 13px; }
-.fx-news svg { color: var(--hg-accent); }
+/* 本页样式**逐条抄自 public/prototypes/hougong-oii.html**（1:1，不做站内色板适配）。
+   字面值保持原样：--pink #e832b0 / --lime #dbff73 / 底色 #0d0d0d / 边框 #242424 …
+   原型里对应的类是 .page-view / .page-title / .tabs / .skill-grid / .skill-card /
+   .skill-cover / .skill-badge / .skill-body / .skill-foot / .skill-try。
+   改动本页观感时请**先改原型再同步到这里**，否则两边会漂。 */
+.fx {
+  /* 原型 .page-view 是**全宽 + 26/32/44 内边距**；而站内通用的 .page-body 是
+     「min(1320px, 100%-48px) 居中 + 44px 顶距」。要 1:1 就得把那一层取消掉。 */
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 26px 32px 44px;
+}
 
-/* 大横幅 */
-.fx-hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; padding: 32px; border: 1px solid var(--hg-line); border-radius: 16px; background: linear-gradient(120deg, #1a1a1f 0%, #141416 60%); }
-.fx-hero-text h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.25; }
-.fx-hero-text p { margin: 0 0 20px; max-width: 460px; color: var(--hg-muted); line-height: 1.7; }
-.fx-cta { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 10px; background: var(--hg-accent); color: #1a1205; font-weight: 600; text-decoration: none; }
-.fx-chips { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0 0; padding: 0; list-style: none; color: var(--hg-muted); font-size: 13px; }
-.fx-chips li { display: flex; align-items: center; gap: 6px; }
-.fx-hero-art { position: relative; min-height: 180px; }
-.fx-hero-card { position: absolute; inset: 0 30% 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--hg-line); border-radius: 12px; background: #101012; color: var(--hg-muted); font-size: 13px; }
-.fx-hero-card--after { inset: 12% 0 0 30%; border-color: color-mix(in srgb, var(--hg-accent) 50%, transparent); background: #17161b; }
-.fx-hero-card svg { width: 28px; height: 28px; }
+/* 原型 .page-title */
+.fx-title { margin: 0 0 18px; font-size: 22px; font-weight: 650; color: #fafafa; }
 
-.fx-h2 { margin: 28px 0 14px; font-size: 18px; }
-.fx-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
-.fx-strip-card { display: flex; flex-direction: column; gap: 8px; color: var(--ink); text-decoration: none; }
-.fx-strip-name { font-size: 14px; }
+/* 原型 .tabs / .tabs button */
+.fx-tabs { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; font-size: 13px; }
+.fx-tabs button {
+  position: relative;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #8a8a8a;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fx-tabs button:hover { color: #d8d8d8; }
+.fx-tabs button.active { color: #fff; font-weight: 600; }
+.fx-tabs button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: -3px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #e832b0;
+  content: '';
+}
 
-/* 缩略图 */
-.fx-thumb { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border: 1px solid var(--hg-line); border-radius: 12px; background: #141416; }
-.fx-thumb--sm { aspect-ratio: 4 / 5; }
-/* 缩略图同样不裁：框高不变，素材等比完整显示（卡片视频是 736x1280，框是 3:4/4:5）。
-   左右留黑边好过把动作裁掉 —— 用户口径："高度一样，等比处理"。 */
+/* 原型 .skill-grid */
+.fx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+
+/* 原型 .skill-card */
+.fx-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #242424;
+  border-radius: 14px;
+  background: rgb(20 20 20 / 80%);
+  color: #fafafa;
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.fx-card:hover { border-color: #ffffff33; transform: translateY(-2px); }
+
+/* 原型 .skill-cover */
+.fx-thumb { position: relative; overflow: hidden; aspect-ratio: 3 / 4; background: #0d0d0d; }
+/* 素材等比完整显示（卡片视频是 736x1280，框是 3:4）：左右留黑边好过把动作裁掉 */
 .fx-thumb img, .fx-thumb video { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
-.fx-thumb-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #141416 70%); color: var(--hg-muted); }
+.fx-thumb-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #0d0d0d 70%); color: #949494; }
 .fx-thumb-fallback svg { width: 34px; height: 34px; }
-.fx-card:hover .fx-thumb { border-color: var(--hg-accent); }
-.fx-badge { position: absolute; top: 8px; right: 8px; padding: 3px 8px; border-radius: 6px; background: var(--hg-accent); color: #1a1205; font-size: 11px; font-weight: 600; }
-.fx-tpl { position: absolute; bottom: 8px; left: 8px; padding: 3px 8px; border-radius: 6px; background: #000000a6; color: #fff; font-size: 11px; }
 
-/* 工具条 */
-.fx-toolbar { display: flex; align-items: center; gap: 16px; margin: 26px 0 14px; }
-.fx-counts { display: flex; gap: 8px; }
-.fx-counts button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 1px solid var(--hg-line); border-radius: 10px; background: transparent; color: var(--hg-muted); cursor: pointer; }
-.fx-counts button.active { border-color: var(--hg-accent); color: var(--ink); }
-.fx-counts b { color: var(--ink); }
-.fx-search { display: flex; flex: 1; align-items: center; gap: 8px; max-width: 420px; margin-left: auto; padding: 9px 12px; border: 1px solid var(--hg-line); border-radius: 10px; color: var(--hg-muted); }
-.fx-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; }
-
-/* 标签行 */
-.fx-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-.fx-tags button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--hg-line); border-radius: 999px; background: transparent; color: var(--hg-muted); font-size: 13px; cursor: pointer; }
-.fx-tags button.active { border-color: var(--hg-accent); background: color-mix(in srgb, var(--hg-accent) 16%, transparent); color: var(--ink); }
-
-/* 五列网格 */
-.fx-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 14px; }
-.fx-card { display: flex; flex-direction: column; gap: 8px; color: var(--ink); text-decoration: none; }
-.fx-name { font-size: 14px; }
-
-@media (max-width: 1100px) {
-  .fx-hero { grid-template-columns: 1fr; }
-  .fx-hero-art { display: none; }
-  .fx-strip, .fx-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* 原型 .skill-badge（绿底 lime 字） */
+.fx-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #3a4c13;
+  color: #dbff73;
+  font-size: 10px;
+  line-height: 16px;
 }
-@media (max-width: 640px) {
-  .fx-strip, .fx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fx-toolbar { flex-direction: column; align-items: stretch; }
-  .fx-search { max-width: none; margin-left: 0; }
+
+/* 原型 .skill-body / .skill-body strong / .skill-body p */
+.fx-body { display: flex; flex: 1; flex-direction: column; gap: 5px; padding: 11px 12px 6px; }
+.fx-name { font-size: 13px; font-weight: 600; color: #f0f0f0; }
+.fx-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #8f8f8f;
+  font-size: 12px;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
+
+/* 原型 .skill-foot / .skill-tag / .skill-try */
+.fx-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px 11px; }
+.fx-tag { color: #6f6f6f; font-size: 11px; }
+.fx-try {
+  height: 30px;
+  margin-left: auto;
+  padding: 0 16px;
+  border: 1px solid #ffffff1f;
+  border-radius: 99px;
+  background: #1e1e1e;
+  color: #e8e8e8;
+  font-size: 12px;
+  line-height: 28px;
+}
+.fx-card:hover .fx-try { border-color: #ffffff3d; background: #2a2a2a; }
 </style>
