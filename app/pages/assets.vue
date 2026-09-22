@@ -13,6 +13,14 @@
 // 再统一 reload —— 中途失败不会留下"删了一半看不出来"的状态。
 import { safeHref } from '~/composables/useSafeUrl'
 
+/** 资产页的三个页签。三个都是「我有什么」的不同侧面，收在一页里翻。 */
+const PANES = [
+  { id: 'library', label: '我的资产' },
+  { id: 'actors', label: '演员库' },
+  { id: 'trash', label: '回收站' }
+] as const
+const pane = ref<'library' | 'actors' | 'trash'>('library')
+
 const api = useHougongApi()
 const session = useAuthSession()
 
@@ -647,455 +655,495 @@ useMediaAutoRefresh(() => reload())
     class="assets-page"
     :class="{ 'has-pick': picked.length > 0, 'is-managing': manageMode }"
   >
-    <AssetSectionNav />
-
     <header class="assets-head">
       <div class="assets-head__text">
         <p class="assets-kicker">
           我的资产
         </p>
-        <h1>素材</h1>
-        <p class="assets-sub">
-          这里是你上传与生成的全部图片、视频。点「批量管理」后可勾选多个素材，批量删除、
-          隐藏或恢复到可用状态，也可以打成工程包一次带走；同一张图重复上传过多次时，
-          用「清理重复」一次收拾干净。
-        </p>
+        <h1>资产</h1>
       </div>
       <!-- 加载中不显示上一次的数字：切筛选时旧数字会让人以为筛选没生效 -->
-      <div class="assets-head__stat">
+      <div
+        v-if="pane === 'library'"
+        class="assets-head__stat"
+      >
         <strong>{{ firstLoading ? '…' : total }}</strong>
         <span>{{ showHidden ? '个已隐藏' : '个可用素材' }}</span>
       </div>
     </header>
 
-    <!-- 筛选：全部走服务端，翻页后依然准 -->
-    <section
-      class="assets-toolbar"
-      aria-label="素材筛选"
+    <!-- 页内三页签：我的资产 / 演员库 / 回收站。
+         原来这三块是三个**独立页面**（assets / characters / works），跨页跳会丢上下文，
+         而且侧栏已经各有入口；收进一页后「我有什么」在一个地方就能翻完。 -->
+    <div
+      class="assets-panes"
+      role="tablist"
+      aria-label="资产分区"
     >
-      <div
-        class="assets-tabs"
-        role="group"
-        aria-label="素材类型"
+      <button
+        v-for="p in PANES"
+        :key="p.id"
+        type="button"
+        role="tab"
+        :aria-selected="pane === p.id"
+        :class="{ active: pane === p.id }"
+        @click="pane = p.id"
       >
-        <button
-          v-for="t in kindTabs"
-          :key="t.id"
-          type="button"
-          class="assets-tab"
-          :class="{ active: kind === t.id }"
-          :aria-pressed="kind === t.id"
-          @click="kind = t.id"
-        >
-          <UIcon :name="t.icon" />
-          {{ t.label }}
-        </button>
-      </div>
-
-      <!-- 批量管理入口：勾选框以前只在 hover 时出现，桌面端用户找不到怎么多选 -->
-      <div class="assets-manage">
-        <button
-          type="button"
-          class="assets-btn"
-          :class="{ 'assets-btn--primary': manageMode }"
-          :aria-pressed="manageMode"
-          @click="manageMode = !manageMode; if (!manageMode) clearPick()"
-        >
-          <UIcon :name="manageMode ? 'i-lucide-x' : 'i-lucide-check-square'" />
-          {{ manageMode ? '退出批量' : '批量管理' }}
-        </button>
-        <button
-          type="button"
-          class="assets-btn"
-          :disabled="dedupeBusy"
-          title="同内容重复的素材：保留每组最新一条 + 被任务引用过的行"
-          @click="askDedupe"
-        >
-          <UIcon name="i-lucide-copy" />
-          {{ dedupeBusy ? '统计中…' : '清理重复' }}
-        </button>
-      </div>
-
-      <div class="assets-filters">
-        <label class="assets-search">
-          <UIcon name="i-lucide-search" />
-          <input
-            v-model="keyword"
-            type="search"
-            placeholder="搜索文件名或资产 ID"
-            aria-label="搜索素材"
-          >
-        </label>
-
-        <label class="assets-select">
-          <span>来源</span>
-          <select
-            v-model="origin"
-            aria-label="来源筛选"
-          >
-            <option
-              v-for="o in originOptions"
-              :key="o.id"
-              :value="o.id"
-            >
-              {{ o.label }}
-            </option>
-          </select>
-        </label>
-
-        <label class="assets-select">
-          <span>排序</span>
-          <select
-            v-model="sort"
-            aria-label="排序方式"
-          >
-            <option
-              v-for="s in sortOptions"
-              :key="s.id"
-              :value="s.id"
-            >
-              {{ s.label }}
-            </option>
-          </select>
-        </label>
-
-        <label class="assets-switch">
-          <input
-            v-model="showHidden"
-            type="checkbox"
-          >
-          <span>只看已隐藏</span>
-        </label>
-
-        <label class="assets-switch">
-          <input
-            v-model="onlyDuplicates"
-            type="checkbox"
-          >
-          <span>只看重复</span>
-        </label>
-      </div>
-    </section>
+        {{ p.label }}
+      </button>
+    </div>
 
     <p
-      v-if="error"
-      class="assets-alert"
-      role="alert"
+      v-if="pane === 'library'"
+      class="assets-intro"
     >
-      {{ error }}
-    </p>
-    <p
-      v-else-if="notice"
-      class="assets-note"
-    >
-      {{ notice }}
+      这里是你上传与生成的全部图片、视频。点「批量管理」后可勾选多个素材，批量删除、
+      隐藏或恢复到可用状态，也可以打成工程包一次带走；同一张图重复上传过多次时，
+      用「清理重复」一次收拾干净。
     </p>
 
-    <!-- 导出状态：异步任务，成功给下载链接，失败/部分失败必须显示原因 -->
-    <div
-      v-if="exportError"
-      class="assets-alert"
-      role="alert"
-    >
-      导出失败：{{ exportError }}
-    </div>
-    <div
-      v-if="exportTask"
-      class="export-panel"
-    >
-      <div class="export-panel__head">
-        <strong>工程包</strong>
-        <span class="export-panel__state">{{ exportTask.status }}</span>
-        <span class="export-panel__count">{{ exportTask.done }}/{{ exportTask.total }} · 失败 {{ exportTask.failed }}</span>
-      </div>
-      <a
-        v-if="exportTask.status === 'succeeded' && exportTask.downloadUrl"
-        :href="safeHref(exportTask.downloadUrl)"
-        class="assets-btn assets-btn--primary"
-        download
-      >下载 ZIP</a>
-      <span
-        v-else-if="exportTask.status === 'failed'"
-        class="export-panel__err"
-      >{{ exportTask.errorMessage || exportTask.errorCode }}</span>
-      <ul
-        v-if="exportTask.failures?.length"
-        class="export-failures"
-      >
-        <li
-          v-for="f in exportTask.failures"
-          :key="f.path + f.reason"
-        >
-          <code>{{ f.path }}</code> —— {{ f.reason }}
-        </li>
-      </ul>
-    </div>
-
-    <!-- 骨架屏：首屏结构与真实网格一致，避免"先空一块再跳出来" -->
-    <div
-      v-if="firstLoading"
-      class="assets-grid"
-      aria-hidden="true"
-    >
-      <div
-        v-for="i in 8"
-        :key="i"
-        class="asset-card asset-card--skeleton"
-      >
-        <div class="asset-card__media" />
-        <div class="asset-card__body">
-          <span class="sk-line" />
-          <span class="sk-line sk-line--short" />
-        </div>
-      </div>
-    </div>
+    <HgActorLibrary v-if="pane === 'actors'" />
 
     <div
-      v-else-if="items.length"
-      class="assets-grid"
+      v-else-if="pane === 'trash'"
+      class="assets-trash"
     >
-      <article
-        v-for="(a, index) in items"
-        :key="a.id"
-        class="asset-card"
-        :class="{ 'is-picked': isPicked(a.id), 'is-hidden': a.hidden }"
+      <p>回收站是空的</p>
+      <small>后端还没有软删回收站接口：现在「删除」是直接删，删掉就找不回来了。要真做回收站，需要后端先给软删 + 恢复 + 彻底删除三个动作。</small>
+    </div>
+
+    <!-- ↓↓↓ 素材库这一整段只在「我的资产」页签下渲染 ↓↓↓ -->
+    <template v-if="pane === 'library'">
+      <!-- 筛选：全部走服务端，翻页后依然准 -->
+      <section
+        class="assets-toolbar"
+        aria-label="素材筛选"
       >
         <div
-          class="asset-card__media"
-          @click="onMediaClick(a)"
-          @touchstart.passive="onPressStart(a, index)"
-          @touchend="onPressEnd"
-          @touchmove="onPressEnd"
+          class="assets-tabs"
+          role="group"
+          aria-label="素材类型"
         >
-          <img
-            v-if="isImage(a) && !brokenIds[a.id]"
-            class="media-fg"
-            :src="a.url"
-            :alt="displayName(a)"
-            loading="lazy"
-            @error="onImgError(a.id)"
-          >
-          <video
-            v-else-if="isVideo(a)"
-            :src="a.url"
-            muted
-            playsinline
-            preload="metadata"
-          />
-          <div
-            v-else
-            class="asset-card__file"
-          >
-            <UIcon :name="isImage(a) ? 'i-lucide-image-off' : 'i-lucide-file'" />
-          </div>
-
           <button
+            v-for="t in kindTabs"
+            :key="t.id"
             type="button"
-            class="asset-card__pick"
-            :aria-pressed="isPicked(a.id)"
-            :aria-label="isPicked(a.id) ? `取消选择 ${displayName(a)}` : `选择 ${displayName(a)}`"
-            @click.stop="togglePick(a.id, index, $event.shiftKey)"
+            class="assets-tab"
+            :class="{ active: kind === t.id }"
+            :aria-pressed="kind === t.id"
+            @click="kind = t.id"
           >
-            <UIcon :name="isPicked(a.id) ? 'i-lucide-check' : 'i-lucide-plus'" />
+            <UIcon :name="t.icon" />
+            {{ t.label }}
           </button>
-
-          <span
-            v-if="isVideo(a)"
-            class="asset-card__play"
-            aria-hidden="true"
-          ><UIcon name="i-lucide-play" /></span>
-          <span
-            v-if="a.hidden"
-            class="asset-card__flag"
-          >已隐藏</span>
-          <!-- 同内容重复份数：一眼看出「这张图我传了好几遍」 -->
-          <span
-            v-if="(a.duplicateCount || 0) > 1"
-            class="asset-card__dup"
-            :title="`库里共有 ${a.duplicateCount} 份相同内容`"
-          >重复 ×{{ a.duplicateCount }}</span>
         </div>
 
-        <div class="asset-card__body">
-          <strong :title="displayName(a)">{{ displayName(a) }}</strong>
-          <p class="asset-card__meta">
-            <span class="asset-card__tag">{{ typeLabel(a) }}</span>
-            <span>{{ dimsOf(a) }}</span>
-            <span>{{ sizeText(a.bytes) }}</span>
-          </p>
-          <p class="asset-card__date">
-            {{ a.origin === 'generated' ? '生成' : '上传' }} · {{ dateText(a.createdAt) }}
-          </p>
-        </div>
-
-        <div class="asset-card__actions">
+        <!-- 批量管理入口：勾选框以前只在 hover 时出现，桌面端用户找不到怎么多选 -->
+        <div class="assets-manage">
           <button
             type="button"
-            :disabled="downloadingId === a.id"
-            @click="download(a)"
+            class="assets-btn"
+            :class="{ 'assets-btn--primary': manageMode }"
+            :aria-pressed="manageMode"
+            @click="manageMode = !manageMode; if (!manageMode) clearPick()"
           >
-            {{ downloadingId === a.id ? '获取中…' : '下载' }}
+            <UIcon :name="manageMode ? 'i-lucide-x' : 'i-lucide-check-square'" />
+            {{ manageMode ? '退出批量' : '批量管理' }}
           </button>
           <button
             type="button"
-            :disabled="busyId === a.id"
-            @click="toggleHiddenOne(a)"
+            class="assets-btn"
+            :disabled="dedupeBusy"
+            title="同内容重复的素材：保留每组最新一条 + 被任务引用过的行"
+            @click="askDedupe"
           >
-            {{ a.hidden ? '恢复' : '隐藏' }}
-          </button>
-          <button
-            type="button"
-            class="danger"
-            @click="askDelete(a)"
-          >
-            删除
+            <UIcon name="i-lucide-copy" />
+            {{ dedupeBusy ? '统计中…' : '清理重复' }}
           </button>
         </div>
-      </article>
-    </div>
 
-    <!-- 三种空态各不相同：没素材 / 筛选没结果 / 隐藏区是空的。给的动作也不一样。 -->
-    <div
-      v-else
-      class="assets-empty"
-    >
-      <UIcon
-        class="assets-empty__icon"
-        :name="hasFilter ? 'i-lucide-search-x' : (showHidden ? 'i-lucide-eye-off' : 'i-lucide-image-plus')"
-      />
-      <template v-if="showHidden">
-        <h2>还没有隐藏的素材</h2>
-        <p>被隐藏的素材不会出现在创作时的选择器里，但依然保存在这里。</p>
-      </template>
-      <template v-else-if="hasFilter">
-        <h2>没有符合条件的素材</h2>
-        <p>换个类型、来源或关键词再试试。</p>
-        <button
-          type="button"
-          class="assets-btn"
-          @click="kind = 'all'; origin = 'all'; keyword = ''; showHidden = false"
-        >
-          清除筛选条件
-        </button>
-      </template>
-      <template v-else>
-        <h2>还没有素材</h2>
-        <p>在创作页上传参考图，或生成一张作品，产物会自动出现在这里。</p>
-        <NuxtLink
-          to="/create"
-          class="assets-btn assets-btn--primary"
-        >
-          去创作
-        </NuxtLink>
-      </template>
-    </div>
+        <div class="assets-filters">
+          <label class="assets-search">
+            <UIcon name="i-lucide-search" />
+            <input
+              v-model="keyword"
+              type="search"
+              placeholder="搜索文件名或资产 ID"
+              aria-label="搜索素材"
+            >
+          </label>
 
-    <!-- 无限滚动哨兵 -->
-    <div
-      ref="sentinel"
-      class="assets-sentinel"
-      aria-hidden="true"
-    />
-    <p
-      v-if="loadingMore"
-      class="assets-more"
-    >
-      加载中…
-    </p>
-    <p
-      v-else-if="items.length && done"
-      class="assets-more"
-    >
-      已经到底了 · 共 {{ total }} 个素材
-    </p>
+          <label class="assets-select">
+            <span>来源</span>
+            <select
+              v-model="origin"
+              aria-label="来源筛选"
+            >
+              <option
+                v-for="o in originOptions"
+                :key="o.id"
+                :value="o.id"
+              >
+                {{ o.label }}
+              </option>
+            </select>
+          </label>
 
-    <!-- 批量操作条：有选择才出现，固定在底部，不遮住最后一行 -->
-    <Transition name="batchbar">
-      <div
-        v-if="picked.length"
-        class="asset-batchbar"
-        role="region"
-        aria-label="批量操作"
+          <label class="assets-select">
+            <span>排序</span>
+            <select
+              v-model="sort"
+              aria-label="排序方式"
+            >
+              <option
+                v-for="s in sortOptions"
+                :key="s.id"
+                :value="s.id"
+              >
+                {{ s.label }}
+              </option>
+            </select>
+          </label>
+
+          <label class="assets-switch">
+            <input
+              v-model="showHidden"
+              type="checkbox"
+            >
+            <span>只看已隐藏</span>
+          </label>
+
+          <label class="assets-switch">
+            <input
+              v-model="onlyDuplicates"
+              type="checkbox"
+            >
+            <span>只看重复</span>
+          </label>
+        </div>
+      </section>
+
+      <p
+        v-if="error"
+        class="assets-alert"
+        role="alert"
       >
-        <span class="asset-batchbar__count">
-          <template v-if="batchBusy && batchProgress">
-            处理中 <strong>{{ batchProgress.done }}</strong>/{{ batchProgress.total }}
-          </template>
-          <template v-else>
-            已选 <strong>{{ picked.length }}</strong> 个
-          </template>
-        </span>
-        <!-- 隐藏/恢复没有确认弹窗，进度就在批量条上显示 -->
+        {{ error }}
+      </p>
+      <p
+        v-else-if="notice"
+        class="assets-note"
+      >
+        {{ notice }}
+      </p>
+
+      <!-- 导出状态：异步任务，成功给下载链接，失败/部分失败必须显示原因 -->
+      <div
+        v-if="exportError"
+        class="assets-alert"
+        role="alert"
+      >
+        导出失败：{{ exportError }}
+      </div>
+      <div
+        v-if="exportTask"
+        class="export-panel"
+      >
+        <div class="export-panel__head">
+          <strong>工程包</strong>
+          <span class="export-panel__state">{{ exportTask.status }}</span>
+          <span class="export-panel__count">{{ exportTask.done }}/{{ exportTask.total }} · 失败 {{ exportTask.failed }}</span>
+        </div>
+        <a
+          v-if="exportTask.status === 'succeeded' && exportTask.downloadUrl"
+          :href="safeHref(exportTask.downloadUrl)"
+          class="assets-btn assets-btn--primary"
+          download
+        >下载 ZIP</a>
         <span
-          v-if="batchBusy && batchProgress && batchProgress.total > 1"
-          class="asset-batchbar__track"
-          role="progressbar"
-          :aria-valuemin="0"
-          :aria-valuemax="batchProgress.total"
-          :aria-valuenow="batchProgress.done"
-        ><span :style="{ width: `${batchPercent}%` }" /></span>
-        <div class="asset-batchbar__acts">
-          <button
-            type="button"
-            class="assets-btn"
-            :disabled="batchBusy"
-            @click="pickAllLoaded"
+          v-else-if="exportTask.status === 'failed'"
+          class="export-panel__err"
+        >{{ exportTask.errorMessage || exportTask.errorCode }}</span>
+        <ul
+          v-if="exportTask.failures?.length"
+          class="export-failures"
+        >
+          <li
+            v-for="f in exportTask.failures"
+            :key="f.path + f.reason"
           >
-            {{ picked.length >= items.length ? '取消全选' : '全选已加载' }}
-          </button>
-          <button
-            v-if="pickedVisible"
-            type="button"
-            class="assets-btn"
-            :disabled="batchBusy"
-            @click="runBatch('hide')"
-          >
-            隐藏
-          </button>
-          <button
-            v-if="pickedHidden"
-            type="button"
-            class="assets-btn"
-            :disabled="batchBusy"
-            @click="runBatch('unhide')"
-          >
-            恢复
-          </button>
-          <button
-            type="button"
-            class="assets-btn"
-            :disabled="batchBusy"
-            @click="askPublish"
-          >
-            发布作品
-          </button>
-          <button
-            type="button"
-            class="assets-btn"
-            :disabled="exporting"
-            @click="runExport"
-          >
-            {{ exporting ? '打包中…' : '导出 ZIP' }}
-          </button>
-          <button
-            type="button"
-            class="assets-btn assets-btn--danger"
-            :disabled="batchBusy"
-            @click="askDelete()"
-          >
-            删除
-          </button>
-          <button
-            type="button"
-            class="assets-btn assets-btn--quiet"
-            :disabled="batchBusy"
-            @click="clearPick"
-          >
-            取消选择
-          </button>
+            <code>{{ f.path }}</code> —— {{ f.reason }}
+          </li>
+        </ul>
+      </div>
+
+      <!-- 骨架屏：首屏结构与真实网格一致，避免"先空一块再跳出来" -->
+      <div
+        v-if="firstLoading"
+        class="assets-grid"
+        aria-hidden="true"
+      >
+        <div
+          v-for="i in 8"
+          :key="i"
+          class="asset-card asset-card--skeleton"
+        >
+          <div class="asset-card__media" />
+          <div class="asset-card__body">
+            <span class="sk-line" />
+            <span class="sk-line sk-line--short" />
+          </div>
         </div>
       </div>
-    </Transition>
+
+      <div
+        v-else-if="items.length"
+        class="assets-grid"
+      >
+        <article
+          v-for="(a, index) in items"
+          :key="a.id"
+          class="asset-card"
+          :class="{ 'is-picked': isPicked(a.id), 'is-hidden': a.hidden }"
+        >
+          <div
+            class="asset-card__media"
+            @click="onMediaClick(a)"
+            @touchstart.passive="onPressStart(a, index)"
+            @touchend="onPressEnd"
+            @touchmove="onPressEnd"
+          >
+            <img
+              v-if="isImage(a) && !brokenIds[a.id]"
+              class="media-fg"
+              :src="a.url"
+              :alt="displayName(a)"
+              loading="lazy"
+              @error="onImgError(a.id)"
+            >
+            <video
+              v-else-if="isVideo(a)"
+              :src="a.url"
+              muted
+              playsinline
+              preload="metadata"
+            />
+            <div
+              v-else
+              class="asset-card__file"
+            >
+              <UIcon :name="isImage(a) ? 'i-lucide-image-off' : 'i-lucide-file'" />
+            </div>
+
+            <button
+              type="button"
+              class="asset-card__pick"
+              :aria-pressed="isPicked(a.id)"
+              :aria-label="isPicked(a.id) ? `取消选择 ${displayName(a)}` : `选择 ${displayName(a)}`"
+              @click.stop="togglePick(a.id, index, $event.shiftKey)"
+            >
+              <UIcon :name="isPicked(a.id) ? 'i-lucide-check' : 'i-lucide-plus'" />
+            </button>
+
+            <span
+              v-if="isVideo(a)"
+              class="asset-card__play"
+              aria-hidden="true"
+            ><UIcon name="i-lucide-play" /></span>
+            <span
+              v-if="a.hidden"
+              class="asset-card__flag"
+            >已隐藏</span>
+            <!-- 同内容重复份数：一眼看出「这张图我传了好几遍」 -->
+            <span
+              v-if="(a.duplicateCount || 0) > 1"
+              class="asset-card__dup"
+              :title="`库里共有 ${a.duplicateCount} 份相同内容`"
+            >重复 ×{{ a.duplicateCount }}</span>
+          </div>
+
+          <div class="asset-card__body">
+            <strong :title="displayName(a)">{{ displayName(a) }}</strong>
+            <p class="asset-card__meta">
+              <span class="asset-card__tag">{{ typeLabel(a) }}</span>
+              <span>{{ dimsOf(a) }}</span>
+              <span>{{ sizeText(a.bytes) }}</span>
+            </p>
+            <p class="asset-card__date">
+              {{ a.origin === 'generated' ? '生成' : '上传' }} · {{ dateText(a.createdAt) }}
+            </p>
+          </div>
+
+          <div class="asset-card__actions">
+            <button
+              type="button"
+              :disabled="downloadingId === a.id"
+              @click="download(a)"
+            >
+              {{ downloadingId === a.id ? '获取中…' : '下载' }}
+            </button>
+            <button
+              type="button"
+              :disabled="busyId === a.id"
+              @click="toggleHiddenOne(a)"
+            >
+              {{ a.hidden ? '恢复' : '隐藏' }}
+            </button>
+            <button
+              type="button"
+              class="danger"
+              @click="askDelete(a)"
+            >
+              删除
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <!-- 三种空态各不相同：没素材 / 筛选没结果 / 隐藏区是空的。给的动作也不一样。 -->
+      <div
+        v-else
+        class="assets-empty"
+      >
+        <UIcon
+          class="assets-empty__icon"
+          :name="hasFilter ? 'i-lucide-search-x' : (showHidden ? 'i-lucide-eye-off' : 'i-lucide-image-plus')"
+        />
+        <template v-if="showHidden">
+          <h2>还没有隐藏的素材</h2>
+          <p>被隐藏的素材不会出现在创作时的选择器里，但依然保存在这里。</p>
+        </template>
+        <template v-else-if="hasFilter">
+          <h2>没有符合条件的素材</h2>
+          <p>换个类型、来源或关键词再试试。</p>
+          <button
+            type="button"
+            class="assets-btn"
+            @click="kind = 'all'; origin = 'all'; keyword = ''; showHidden = false"
+          >
+            清除筛选条件
+          </button>
+        </template>
+        <template v-else>
+          <h2>还没有素材</h2>
+          <p>在创作页上传参考图，或生成一张作品，产物会自动出现在这里。</p>
+          <NuxtLink
+            to="/create"
+            class="assets-btn assets-btn--primary"
+          >
+            去创作
+          </NuxtLink>
+        </template>
+      </div>
+
+      <!-- 无限滚动哨兵 -->
+      <div
+        ref="sentinel"
+        class="assets-sentinel"
+        aria-hidden="true"
+      />
+      <p
+        v-if="loadingMore"
+        class="assets-more"
+      >
+        加载中…
+      </p>
+      <p
+        v-else-if="items.length && done"
+        class="assets-more"
+      >
+        已经到底了 · 共 {{ total }} 个素材
+      </p>
+
+      <!-- 批量操作条：有选择才出现，固定在底部，不遮住最后一行 -->
+      <Transition name="batchbar">
+        <div
+          v-if="picked.length"
+          class="asset-batchbar"
+          role="region"
+          aria-label="批量操作"
+        >
+          <span class="asset-batchbar__count">
+            <template v-if="batchBusy && batchProgress">
+              处理中 <strong>{{ batchProgress.done }}</strong>/{{ batchProgress.total }}
+            </template>
+            <template v-else>
+              已选 <strong>{{ picked.length }}</strong> 个
+            </template>
+          </span>
+          <!-- 隐藏/恢复没有确认弹窗，进度就在批量条上显示 -->
+          <span
+            v-if="batchBusy && batchProgress && batchProgress.total > 1"
+            class="asset-batchbar__track"
+            role="progressbar"
+            :aria-valuemin="0"
+            :aria-valuemax="batchProgress.total"
+            :aria-valuenow="batchProgress.done"
+          ><span :style="{ width: `${batchPercent}%` }" /></span>
+          <div class="asset-batchbar__acts">
+            <button
+              type="button"
+              class="assets-btn"
+              :disabled="batchBusy"
+              @click="pickAllLoaded"
+            >
+              {{ picked.length >= items.length ? '取消全选' : '全选已加载' }}
+            </button>
+            <button
+              v-if="pickedVisible"
+              type="button"
+              class="assets-btn"
+              :disabled="batchBusy"
+              @click="runBatch('hide')"
+            >
+              隐藏
+            </button>
+            <button
+              v-if="pickedHidden"
+              type="button"
+              class="assets-btn"
+              :disabled="batchBusy"
+              @click="runBatch('unhide')"
+            >
+              恢复
+            </button>
+            <button
+              type="button"
+              class="assets-btn"
+              :disabled="batchBusy"
+              @click="askPublish"
+            >
+              发布作品
+            </button>
+            <button
+              type="button"
+              class="assets-btn"
+              :disabled="exporting"
+              @click="runExport"
+            >
+              {{ exporting ? '打包中…' : '导出 ZIP' }}
+            </button>
+            <button
+              type="button"
+              class="assets-btn assets-btn--danger"
+              :disabled="batchBusy"
+              @click="askDelete()"
+            >
+              删除
+            </button>
+            <button
+              type="button"
+              class="assets-btn assets-btn--quiet"
+              :disabled="batchBusy"
+              @click="clearPick"
+            >
+              取消选择
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </template>
+    <!-- ↑↑↑ 素材库结束 ↑↑↑ -->
 
     <HgConfirmDialog
       v-model:open="confirmOpen"
@@ -1200,6 +1248,68 @@ useMediaAutoRefresh(() => reload())
   color: var(--hg3-muted);
   font-size: 13.5px;
   line-height: 1.7;
+}
+/* 页内三页签（我的资产 / 演员库 / 回收站）：下划线选中态，
+   和技能页的分类页签同一套视觉，翻到哪一页一眼看得出来。 */
+.assets-panes {
+  display: flex;
+  gap: 22px;
+  margin: 4px 0 18px;
+  border-bottom: 1px solid var(--hg-line);
+}
+.assets-panes button {
+  position: relative;
+  padding: 0 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--hg3-muted);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.assets-panes button.active {
+  color: var(--hg3-ink);
+  font-weight: 600;
+}
+.assets-panes button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--hg3-accent);
+  content: '';
+}
+/* 原来那段说明挂在小标题下，现在是页签下的一行，不要 62ch 那么宽 */
+.assets-intro {
+  margin: 0 0 18px;
+  max-width: 72ch;
+  color: var(--hg3-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.assets-trash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 44px 24px;
+  border: 1px dashed var(--hg-line);
+  border-radius: 14px;
+  text-align: center;
+}
+.assets-trash p {
+  margin: 0;
+  color: var(--hg3-muted);
+  font-size: 13px;
+}
+.assets-trash small {
+  max-width: 420px;
+  color: var(--hg3-faint);
+  font-size: 11.5px;
+  line-height: 18px;
 }
 .assets-head__stat {
   display: grid;
@@ -1586,7 +1696,7 @@ useMediaAutoRefresh(() => reload())
   display: block;
   height: 10px;
   border-radius: 6px;
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
 }
 .sk-line--short {
   width: 55%;
