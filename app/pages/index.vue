@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import {
   EXPLORE_CATEGORIES,
-  TOOL_TABS,
   type ToolKind,
   type ContinueItem,
   type ExploreCategory,
   type ExploreWork
 } from '~/data/hougong-home'
-import type { HougongTask, PublicationWork, WorkItem } from '~/composables/useHougongApi'
-import { looksLikeVideoUrl, vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
+import type { HougongTask, WorkItem } from '~/composables/useHougongApi'
+import { vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
+import { toExploreWork } from '~/utils/work-feed'
 
 const hgApi = useHougongApi()
 const session = useAuthSession()
@@ -31,8 +31,6 @@ const notice = ref('')
  * 目录为空就**如实为空**、整块不渲染：以前空目录会回落一屏写死的示例工具，
  * 名字和入口都是编的，点进去后端只会拒绝 —— 那是拿假货撑门面。 */
 const toolCatalog = useToolCatalog()
-const toolTab = ref<'all' | ToolKind>('all')
-const toolQuery = ref('')
 
 /** 统一的展示结构：目录项映射成它，模板只认这几个字段。 */
 interface ToolCard {
@@ -49,10 +47,22 @@ interface ToolCard {
    */
   coverVideo?: string
   kinds: ToolKind[]
+  /** 一句话说明（悬停卡里显示），取后端目录的 summary。 */
+  summary: string
+  /**
+   * 色底。快捷片的每个技能一个颜色（参考站就是这么分的）。
+   *
+   * 目前**由前端按序号循环取**：后端目录还没有颜色字段。等 hougong_tool 补了色值，
+   * 这里换成 `tool.tint` 即可，取色逻辑只在这一处。
+   */
+  tint: string
 }
 
+/** 快捷片色板：按目录顺序循环取色。 */
+const QUICK_TINTS = ['#ff4fc3', '#a855f7', '#4f8cff', '#2dd4bf', '#eab308', '#a3e635', '#fb923c', '#8b5cf6']
+
 const toolCards = computed<ToolCard[]>(() => {
-  const fromCatalog: ToolCard[] = toolCatalog.tools.value.map(tool => ({
+  const fromCatalog: ToolCard[] = toolCatalog.tools.value.map((tool, index) => ({
     key: `tool:${tool.code}`,
     to: `/tool/${tool.code}`,
     label: tool.name,
@@ -63,7 +73,10 @@ const toolCards = computed<ToolCard[]>(() => {
     cover: tool.cover || tool.coverBefore || '',
     coverBefore: tool.coverBefore || '',
     coverVideo: tool.coverVideo || '',
-    kinds: [tool.category as ToolKind]
+    kinds: [tool.category as ToolKind],
+    summary: tool.summary || '',
+    // 取模后一定命中，但 noUncheckedIndexedAccess 下索引结果是 string|undefined，兜一手
+    tint: QUICK_TINTS[index % QUICK_TINTS.length] || '#ff4fc3'
   }))
   // 目录为空就**如实为空**，不再回落 HOME_TOOLS 那批写死的示例工具。
   //
@@ -73,18 +86,22 @@ const toolCards = computed<ToolCard[]>(() => {
   return fromCatalog
 })
 
-const filteredTools = computed(() => {
-  const keyword = toolQuery.value.trim().toLowerCase()
-  return toolCards.value
-    .filter(tool => toolTab.value === 'all' || tool.kinds.includes(toolTab.value))
-    .filter(tool => !keyword || tool.label.toLowerCase().includes(keyword))
-})
+/**
+ * 首页快捷片：**只铺前 8 个**（上 5 下 3），第 9 格固定是「跳转」箭头 → 技能页。
+ *
+ * 数量改这一个常量就够；和参考站的分法一致（多出来的技能在技能页里找）。
+ */
+const QUICK_COUNT = 8
+const quickTools = computed(() => toolCards.value.slice(0, QUICK_COUNT))
 
-/** 视频工具未上线时不展示「视频」页签，避免空分组。 */
-const toolTabs = computed(() => {
-  const hasVideo = toolCards.value.some(t => t.kinds.includes('video'))
-  return TOOL_TABS.filter(tab => tab.id !== 'video' || hasVideo)
-})
+/** 悬停卡：鼠标停在某一格上时显示「封面 + 名称 + 说明」。 */
+const hoverTool = ref<ToolCard | null>(null)
+
+/** 点快捷片 = 选中该技能；输入框上方随即出现技能胶囊（配了模板的还会有模板）。 */
+function pickQuickTool(tool: ToolCard) {
+  const code = tool.key.replace('tool:', '')
+  studio.setTool(studio.activeTool.value === code ? '' : code)
+}
 
 /** 进行中的任务数（来自真实作品状态） */
 const runningWorks = ref(0)
@@ -300,33 +317,6 @@ const PAGE_SIZE = 4
  * 都没有就不打角标 —— 不打无意义的角标比硬凑一个诚实。
  * 时长角标这里给不出（作品摘要没有时长字段），留给真正带视频元数据的接口。
  */
-function toExploreWork(work: PublicationWork): ExploreWork {
-  const likes = work.stats?.likes ?? 0
-  const publishedMs = Number(work.publishedAt || 0) * 1000 // 后端是 Unix 秒
-  const badge: ExploreWork['badge'] = likes >= 5
-    ? '热门'
-    : (publishedMs && Date.now() - publishedMs < 7 * 24 * 3600 * 1000 ? '最新' : undefined)
-  // 视频作品的「封面」就是那段 mp4：后端现在会把 kind/videoUrl 一起下发，
-  // 卡片据此走 <video>。老后端没有 kind 时退回嗅探扩展名，避免又出现坏图。
-  const isVideo = work.kind === 'video'
-    || (!work.kind && looksLikeVideoUrl(work.coverUrl || ''))
-  const videoUrl = work.videoUrl || (isVideo ? (work.coverUrl || '') : '')
-  return {
-    id: String(work.id),
-    title: work.title || '未命名作品',
-    author: work.author?.displayName || '',
-    avatar: work.author?.avatarUrl || undefined,
-    // 视频不给 cover：让卡片专心走 videoUrl，免得 <img> 又拿到 mp4
-    cover: isVideo ? '' : (work.coverUrl || ''),
-    kind: isVideo ? 'video' : 'image',
-    videoUrl: isVideo ? videoUrl : '',
-    category: '推荐',
-    tags: (work.tags || []).map(tag => tag.name),
-    badge,
-    badgeBaked: false,
-    mock: false
-  }
-}
 
 async function loadExplore(reset = false) {
   // 未登录：整块不出现，也不发请求 —— 没有凭据的探索流只会换回 401，再被渲染成
@@ -454,28 +444,21 @@ useMediaAutoRefresh(() => Promise.all([
 <template>
   <div class="home">
     <!-- 创作区 -->
+    <!-- 点阵背景：和原型同一层（body 级那套在 app 壳里没有，这里给首页单独铺一层）。 -->
+    <div
+      class="home-dots"
+      aria-hidden="true"
+    />
+
     <section
       class="hero"
       aria-labelledby="hero-title"
     >
-      <div
-        class="hero-art"
-        aria-hidden="true"
-      >
-        <span class="hero-glow" />
-        <!-- 背景主视觉：妲己九尾（2048×960，由黑底 JPEG 亮度键控转出带 alpha 的 WebP）。
-             构图已按安全区确认：主视觉在横向 50%~70%、纵向上 30% 以内；
-             左侧渐隐区只放烟雾，下方 64% 被输入框覆盖且自身向下淡出。
-             换图时保持同一构图约定即可（见 docs/HERO-BACKGROUND-SPEC.md）。 -->
-        <img
-          src="/images/daji-hero-alpha.webp"
-          alt=""
-        >
+      <div class="creation-guide">
+        <h1 id="hero-title">
+          今天，想创作什么？
+        </h1>
       </div>
-
-      <h1 id="hero-title">
-        今天，想创作什么？
-      </h1>
 
       <div class="composer-row">
         <div class="h3-composer">
@@ -493,116 +476,72 @@ useMediaAutoRefresh(() => Promise.all([
           </p>
         </div>
       </div>
-    </section>
 
-    <!-- 全部工具 -->
-    <section
-      v-if="toolCards.length"
-      class="section"
-      aria-labelledby="tools-title"
-    >
-      <header class="hg-section-head">
-        <h2 id="tools-title">
-          全部工具
-        </h2>
-        <NuxtLink
-          class="hg-more"
-          to="/effects"
+      <!-- 技能快捷片：**紧贴输入框正下方**（不是另起一个带标题的区块），
+           上排 5 个 + 下排 3 个 + 第 9 格一个跳转箭头 → 技能页。
+           鼠标停在哪一格就浮一张「封面 + 名称 + 说明」的卡。
+           为什么不用 grid：grid 做不到「不满的那一行居中」，这里必须 flex。 -->
+      <div
+        v-if="quickTools.length"
+        class="quick-grid"
+      >
+        <button
+          v-for="tool in quickTools"
+          :key="tool.key"
+          type="button"
+          class="quick-chip"
+          :class="{ active: studio.activeTool.value === tool.key.replace('tool:', '') }"
+          :style="{ '--tint': tool.tint }"
+          @click="pickQuickTool(tool)"
+          @mouseenter="hoverTool = tool"
+          @mouseleave="hoverTool = null"
+          @focus="hoverTool = tool"
+          @blur="hoverTool = null"
         >
-          全部工具
+          <img
+            v-if="tool.cover"
+            class="quick-thumb"
+            :src="tool.cover"
+            alt=""
+            loading="lazy"
+          >
+          <span
+            v-else
+            class="quick-thumb quick-thumb-fallback"
+          >
+            <UIcon
+              :name="tool.icon"
+              aria-hidden="true"
+            />
+          </span>
+          <span class="quick-name">{{ tool.label }}</span>
+
+          <!-- 悬停卡挂在这一格里面：absolute + bottom:100%，
+               就近定位祖先就是这格，不用 JS 算坐标（也就不会在滚动时飘）。 -->
+          <span
+            v-if="hoverTool?.key === tool.key"
+            class="quick-pop"
+            aria-hidden="true"
+          >
+            <img
+              v-if="tool.cover"
+              :src="tool.cover"
+              alt=""
+            >
+            <strong>{{ tool.label }}</strong>
+            <small>{{ tool.summary }}</small>
+          </span>
+        </button>
+
+        <NuxtLink
+          class="quick-jump"
+          to="/effects"
+          aria-label="查看全部技能"
+        >
           <UIcon
             name="i-lucide-arrow-right"
             aria-hidden="true"
           />
-        </NuxtLink>
-      </header>
-      <div class="tool-filter">
-        <div
-          class="tool-tabs"
-          role="tablist"
-          aria-label="工具分类"
-        >
-          <button
-            v-for="tab in toolTabs"
-            :key="tab.id"
-            type="button"
-            role="tab"
-            :aria-selected="toolTab === tab.id"
-            :class="{ active: toolTab === tab.id }"
-            @click="toolTab = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
-        <label class="tool-search">
-          <UIcon
-            name="i-lucide-search"
-            aria-hidden="true"
-          />
-          <input
-            v-model="toolQuery"
-            type="search"
-            placeholder="搜索工具"
-            aria-label="搜索工具"
-          >
-        </label>
-      </div>
-
-      <div class="tool-grid">
-        <NuxtLink
-          v-for="tool in filteredTools"
-          :key="tool.key"
-          :to="tool.to"
-          class="hg-card tool-card"
-        >
-          <div class="hg-media r2x3 fit-contain">
-            <!-- 后台配了循环预览视频就走视频：卡片进视口静音自动播，cover 当封面帧。
-                 视频优先于对比滑块 —— 有视频时那张"效果图"就是它的封面。 -->
-            <video
-              v-if="tool.coverVideo"
-              v-auto-play-video
-              class="media-fg"
-              :src="tool.coverVideo"
-              :poster="tool.cover || undefined"
-              muted
-              loop
-              playsinline
-              preload="none"
-            />
-            <!-- 后台配了「原图 + 效果图」一对就出对比滑块（/effects 与工具页同一套逻辑）；
-                 只有一张就退回单图。 -->
-            <HgCompareSlider
-              v-else-if="tool.coverBefore && tool.cover"
-              fit="contain"
-              :before="tool.coverBefore"
-              :after="tool.cover"
-              :alt="tool.label"
-              :label="`${tool.label} 原图与效果对比`"
-            />
-            <img
-              v-else-if="tool.cover"
-              class="media-fg"
-              :src="tool.cover"
-              :alt="tool.label"
-              loading="lazy"
-            >
-            <span
-              v-if="tool.kinds.includes('video')"
-              class="media-play"
-              aria-hidden="true"
-            >
-              <UIcon name="i-lucide-play" />
-            </span>
-          </div>
-          <div class="card-foot">
-            <span class="card-icon">
-              <UIcon
-                :name="tool.icon"
-                aria-hidden="true"
-              />
-            </span>
-            <span class="card-label">{{ tool.label }}</span>
-          </div>
         </NuxtLink>
       </div>
     </section>
@@ -922,64 +861,36 @@ useMediaAutoRefresh(() => Promise.all([
 /* 创作区几何全部来自参考图实测（1003px 视口）：
    标题 y101-168（44px）、输入框 x190-890 / y218-406（700x188）、
    上传框 78x90、工具条 y350-390、生成按钮在框外右侧 x900-980 / y348-384。 */
+.home { position: relative; isolation: isolate; }
+/* 点阵背景：原型 .dot-background 的同一套（21px 网格 + 中心径向渐隐蒙版） */
+.home-dots {
+  position: fixed;
+  inset: 0 0 0 200px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle, #ffffffb3 0 0.6px, transparent 0.7px);
+  background-size: 21px 21px;
+  mask-image: radial-gradient(ellipse 180vmin 90vmin at 50% 50%, #0000008f 0%, #0000005c 46%, #0003 56%, transparent 86%);
+}
 .hero {
+  width: min(calc(100% - clamp(32px, 5vw, 88px)), 800px);
+  margin: 0 auto;
   position: relative;
-  padding-top: 45px;
+}
+.creation-guide {
+  margin: 0 auto 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 .hero h1 {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 8px;
+  margin: 0;
   text-align: center;
-  font-size: clamp(28px, 4.4vw, 44px);
-  font-weight: 800;
-  line-height: 1.5;
-  letter-spacing: -0.5px;
-}
-/* 人物作为背景层：随视口缩放（cover，不拉伸），左侧与底部渐隐，
-   输入器居中叠在上面——参照即梦首页。 */
-.hero-art {
-  position: absolute;
-  top: -10px;
-  right: 0;
-  bottom: 0;
-  z-index: 0;
-  width: min(54%, 820px);
-  overflow: hidden;
-  pointer-events: none;
-}
-.hero-art img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  /* 背景化：等比 cover 取景到头部+上身，绝不拉伸 */
-  object-fit: cover;
-  object-position: 58% 0%;
-  /* 两级渐隐：纵向把底边切断处藏掉（素材是半身像，底边是硬切）；
-     横向只做很轻的一段（素材本身已是带 alpha 的抠像，左侧烟雾是画面内容，
-     压太狠会把烟雾吃掉；34% 的硬渐隐是给不透底素材用的）；
-     右侧/顶部/左侧的收口已经**烘焙进素材自身**（见 docs 的素材说明）：
-     CSS 渐隐在到达 box 边界前仍留有可观不透明度，素材右缘又恰有较亮的烟雾与星点，
-     结果会在内容列右边界留下一条可见竖缝；把 smoothstep 做进 alpha 才能精确收到 0。 */
-  -webkit-mask-image:
-    linear-gradient(180deg, #000 40%, transparent 92%),
-    linear-gradient(90deg, transparent 0%, #000 12%);
-  mask-image:
-    linear-gradient(180deg, #000 40%, transparent 92%),
-    linear-gradient(90deg, transparent 0%, #000 12%);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-.hero-glow {
-  position: absolute;
-  top: -70px;
-  right: -60px;
-  width: 430px;
-  height: 430px;
-  border-radius: 999px;
-  background: radial-gradient(circle, var(--hg3-glow), transparent 62%);
-  filter: blur(46px);
-  opacity: 0.7;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.15;
+  color: #fafafa;
 }
 
 /* 输入框 + 框外生成按钮：整行宽度＝参考图的 790px（700 + 10 + 约 78） */
@@ -988,9 +899,8 @@ useMediaAutoRefresh(() => Promise.all([
   z-index: 1;
   display: flex;
   align-items: flex-end;
-  gap: 10px;
-  /* 对话框在首页居中；比例参照即梦：宽 ≈ 内容 92%、上限 1180 */
-  width: min(1180px, 92%);
+  /* hero 已经限成 800px 居中了，输入框跟着 hero 通栏走，不再单独 max-width */
+  width: 100%;
   margin: 0 auto;
 }
 .h3-composer {
@@ -1055,68 +965,137 @@ useMediaAutoRefresh(() => Promise.all([
   font-size: 12px;
 }
 
+/* ---------------- 技能快捷片 ----------------
+ * flex + 按内容宽度收缩：文字短的卡片窄、文字长的卡片宽，不留整格空白，
+ * 整行靠 justify-content:center 居中换行。
+ */
+.quick-grid {
+  /* 与输入框**同宽同位置**：输入框是 .composer-row 的 min(1180px, 92%) + margin auto，
+     快捷片跟着它走，否则会铺满整个 hero（比输入框宽出一截，看着像另一块东西）。 */
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: min(1180px, 92%);
+  margin: 12px auto 0;
+  /* 把整排卡片 + 悬停浮层提成一个比输入框（z-index:1）更高的层，
+     否则 hover 时 .quick-chip 的 translateY 会新建堆叠上下文，把浮层关在输入框下面 */
+  position: relative;
+  z-index: 2;
+}
+.quick-chip {
+  /* 色底 = 该技能的颜色叠在深底上；没有 --tint 时回落中性白（--tint 由脚本注入） */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 按内容宽度收缩：文字短卡片就窄，不再占满 1/5 留下大片空白 */
+  width: auto;
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 4px 12px 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--tint, #fff) 30%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--tint, #fff) 13%, #141414);
+  color: var(--hg3-ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.18s;
+}
+.quick-chip:hover {
+  background: color-mix(in srgb, var(--tint, #fff) 22%, #141414);
+  border-color: color-mix(in srgb, var(--tint, #fff) 62%, transparent);
+  transform: translateY(-1px);
+}
+.quick-chip.active {
+  border-color: color-mix(in srgb, var(--tint, var(--hg3-accent)) 85%, transparent);
+  background: color-mix(in srgb, var(--tint, var(--hg3-accent)) 26%, #141414);
+}
+/* 方形小图：参考站那排是小方块，不是 16:9 缩略图 */
+.quick-thumb {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  object-fit: cover;
+  border: 1px solid #282828;
+}
+.quick-thumb-fallback {
+  display: grid;
+  place-items: center;
+  background: #1e1e1e;
+  color: color-mix(in srgb, var(--tint, #fff) 80%, #fff);
+  font-size: 16px;
+}
+.quick-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 跳转格：**不占一整格宽**、也**不带按钮框**。原来它和别的格一样宽（约 154px）
+ * 却只画 16px 的箭头 —— 既离上一张远、右边又多出一片空白，看起来「左右留边不一样」。
+ * 收窄到 48px 后就紧贴最后一张，整行左右留边也就相等了。 */
+.quick-jump {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 40px;
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--hg3-faint);
+  cursor: pointer;
+  transition: color 0.18s;
+}
+.quick-jump:hover {
+  color: var(--hg3-ink);
+}
+.quick-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 236px;
+  padding: 8px;
+  border: 1px solid var(--hg3-line-strong);
+  border-radius: 14px;
+  background: rgb(26 26 26 / 95%);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 80%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.quick-pop img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  object-fit: cover;
+}
+.quick-pop strong {
+  font-size: 13px;
+  color: var(--hg3-ink);
+}
+.quick-pop small {
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--hg3-muted);
+}
+/* 触屏没有 hover，浮层只会挡住自己 */
+@media (hover: none) {
+  .quick-pop { display: none; }
+}
 .section {
   position: relative;
 }
 
-.tool-filter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-.tool-tabs {
-  display: flex;
-  gap: 18px;
-}
-.tool-tabs button {
-  position: relative;
-  padding: 0 0 8px;
-  border: 0;
-  background: transparent;
-  color: var(--hg3-muted);
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.tool-tabs button.active {
-  color: var(--hg3-ink);
-  font-weight: 600;
-}
-.tool-tabs button.active::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--hg3-accent);
-  content: '';
-}
-.tool-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 200px;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--hg3-line);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 4%);
-  color: var(--hg3-faint);
-}
-.tool-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 12px;
-  outline: none;
-}
 .media-play {
   position: absolute;
   bottom: 6px;
@@ -1161,11 +1140,6 @@ useMediaAutoRefresh(() => Promise.all([
   border-radius: 999px;
   background: currentcolor;
 }
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
 .card-foot {
   display: flex;
   align-items: center;
@@ -1176,22 +1150,6 @@ useMediaAutoRefresh(() => Promise.all([
   display: grid;
   gap: 6px;
   padding: 12px 14px 14px;
-}
-.card-icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  background: var(--hg3-tile);
-  color: var(--hg3-ink);
-}
-.card-label {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .continue-grid {
@@ -1205,7 +1163,7 @@ useMediaAutoRefresh(() => Promise.all([
   place-items: center;
   width: 100%;
   height: 100%;
-  background: linear-gradient(160deg, #26272c, #17181b);
+  background: linear-gradient(160deg, #26272c, #171717);
   color: var(--hg3-accent);
   font-size: 34px;
   font-weight: 800;
@@ -1253,7 +1211,7 @@ useMediaAutoRefresh(() => Promise.all([
   cursor: pointer;
 }
 .more-button:hover {
-  background: rgb(255 255 255 / 8%);
+  background: #282828;
 }
 .continue-status {
   display: flex;
@@ -1410,13 +1368,6 @@ useMediaAutoRefresh(() => Promise.all([
 /* 参考图在 1003px 视口下就是 5 列工具 / 4 列探索 / 3 列继续创作，
    因此断点压到 900 以下才降列，避免比效果图更早换行。 */
 @media (max-width: 900px) {
-  .hero-art {
-    width: 210px;
-    opacity: 0.55;
-  }
-  .tool-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
   .explore-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1426,9 +1377,6 @@ useMediaAutoRefresh(() => Promise.all([
 }
 @media (max-width: 640px) {
   /* 手机端两列 9:16 竖版封面（交互图面板 02） */
-  .tool-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
   .explore-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

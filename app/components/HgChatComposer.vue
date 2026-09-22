@@ -211,7 +211,10 @@ function patchSampling(patch: Record<string, number | string>) {
 </script>
 
 <template>
-  <div class="chat-composer">
+  <div
+    class="chat-composer"
+    :class="{ 'is-landing': variant === 'landing' }"
+  >
     <div
       class="mode-switch hg-material-quick"
       role="tablist"
@@ -515,9 +518,10 @@ function patchSampling(patch: Record<string, number | string>) {
             @click="onSend"
           >
             <UIcon
-              name="i-lucide-send"
+              name="i-lucide-arrow-up"
               aria-hidden="true"
-            />{{ sendLabel }}
+            />
+            <span v-if="variant !== 'landing'">{{ sendLabel }}</span>
           </button>
           <small class="cost-note">{{ studio.costText.value }}</small>
         </div>
@@ -616,6 +620,70 @@ function patchSampling(patch: Record<string, number | string>) {
   margin: 0 auto;
   padding: 0 20px 16px;
 }
+
+/* ===== 首页 landing 变体：几何**逐条照 public/prototypes/hougong-oii.html** =====
+   .chat-composer ≈ .composer（240px 高、24 圆角、渐变描边、padding 12）
+   .mode-switch ≈ .nuxt-mode-switch（方角 12、#171717、选中 #302730 白字）
+   .toolbar ≈ .composer-footer（绝对定位贴底）
+   .send ≈ .send（32px 粉色圆）
+   这些只对 variant=landing 生效，创作页（chat）原样不动。 */
+.chat-composer.is-landing {
+  max-width: none;
+  padding: 0;
+}
+.chat-composer.is-landing .mode-switch {
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #171717;
+}
+.chat-composer.is-landing .mode-switch button {
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  color: #8f8f8f;
+  font-size: 12px;
+  font-weight: 400;
+}
+.chat-composer.is-landing .mode-switch button.active {
+  border: 0;
+  background: #302730;
+  color: #fff;
+  font-weight: 500;
+}
+.chat-composer.is-landing .box {
+  height: 240px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  background:
+    linear-gradient(#151515, #151515) padding-box,
+    linear-gradient(#ffffff3d, #ffffff17) border-box;
+  box-shadow: none;
+}
+.chat-composer.is-landing .toolbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  margin-top: 0;
+}
+.chat-composer.is-landing .send {
+  height: 32px;
+  width: 32px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 50%;
+  /* 图标是 1em 尺寸、字号决定箭头大小；文字已用 v-if 去掉，字号不会带出文字 */
+  font-size: 22px;
+}
+.chat-composer.is-landing .send :deep(svg) {
+  width: 22px;
+  height: 22px;
+}
+
 .mode-switch {
   display: inline-flex;
   gap: 6px;
@@ -669,7 +737,7 @@ function patchSampling(patch: Record<string, number | string>) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
   border-color: var(--hg3-line-strong);
   color: var(--hg3-ink);
 }
@@ -766,13 +834,13 @@ function patchSampling(patch: Record<string, number | string>) {
   height: 16px;
   border: 0;
   border-radius: 999px;
-  background: var(--hg3-accent-hi, #f99749);
+  background: var(--hg3-accent-hi, #f347bc);
   appearance: none;
   cursor: grab;
 }
 .duration-value {
   width: 52px;
-  color: var(--hg3-accent-hi, #f99749);
+  color: var(--hg3-accent-hi, #f347bc);
   font-size: 12px;
   text-align: right;
 }
@@ -886,19 +954,19 @@ function patchSampling(patch: Record<string, number | string>) {
   gap: 14px;
   margin-bottom: 8px;
   padding: 0 4px 8px;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid #282828;
 }
 .mention-tabs button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--hg3-muted, #9a9791);
+  color: var(--hg3-muted, #949494);
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 .mention-tabs button.active {
-  color: var(--hg3-accent-hi, #f99749);
+  color: var(--hg3-accent-hi, #f347bc);
   font-weight: 600;
 }
 .mention-list {
@@ -950,7 +1018,7 @@ function patchSampling(patch: Record<string, number | string>) {
   min-width: min(420px, 86vw);
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgb(255 255 255 / 8%);
+  border-top: 1px solid #282828;
 }
 .size-head {
   display: flex;
@@ -959,7 +1027,7 @@ function patchSampling(patch: Record<string, number | string>) {
 }
 .size-head .row-title,
 .size-line .row-title {
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
 }
 .size-head .row-close {
@@ -970,12 +1038,12 @@ function patchSampling(patch: Record<string, number | string>) {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   cursor: pointer;
 }
 .size-head .row-close:hover {
-  background: rgb(255 255 255 / 8%);
-  color: var(--hg3-ink, #f2f0ec);
+  background: #282828;
+  color: var(--hg3-ink, #fafafa);
 }
 /* 比例用网格而不是横排：形状对比才有意义（21:9 与 9:16 并排一眼就分得出）。
    列宽自适应，13 个比例（Grok）也不会挤成一条。 */
@@ -995,7 +1063,7 @@ function patchSampling(patch: Record<string, number | string>) {
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 10px;
   background: rgb(255 255 255 / 4%);
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -1005,9 +1073,9 @@ function patchSampling(patch: Record<string, number | string>) {
   border-color: rgb(255 255 255 / 22%);
 }
 .ratio-cell.active {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
 }
 .size-line {
   display: flex;
@@ -1026,7 +1094,7 @@ function patchSampling(patch: Record<string, number | string>) {
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 8px;
   background: rgb(255 255 255 / 4%);
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -1035,14 +1103,14 @@ function patchSampling(patch: Record<string, number | string>) {
   border-color: rgb(255 255 255 / 22%);
 }
 .res-pill.active {
-  border-color: var(--hg3-accent-line, rgb(217 131 77 / 38%));
-  background: var(--hg3-accent-soft, rgb(217 131 77 / 14%));
-  color: var(--hg3-accent-hi, #f99749);
+  border-color: var(--hg3-accent-line, rgb(232 50 176 / 38%));
+  background: var(--hg3-accent-soft, rgb(232 50 176 / 14%));
+  color: var(--hg3-accent-hi, #f347bc);
 }
 /* 大小右对齐、等宽数字：换比例时数字跳动不会带着整行抖 */
 .size-value {
   margin-left: auto;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
