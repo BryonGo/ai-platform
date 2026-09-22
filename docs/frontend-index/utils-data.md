@@ -20,6 +20,9 @@
 - `const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/` L6 — 密码强度基线：与后端同一口径（≥8 位且同时含字母与数字）
 - `const PASSWORD_HINT = '至少 8 位，且需同时包含字母与数字'` L7
 
+## app/utils/work-feed.ts
+- `toExploreWork(work: PublicationWork): ExploreWork` L16 — 后端作品 → 前台展示结构
+
 ## app/data/canvas-graph.ts
 - `newId(prefix: string): string` L191 — 节点 id：`n_<kind>_<序号>`
 - `defaultParams(kind: CanvasNodeKind): Record<string, unknown>` L197 — 节点默认参数：按类型声明取默认值（select 取第一项，frames 取中间档）

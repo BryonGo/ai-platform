@@ -108,6 +108,11 @@
   `graphs?`(我的图（最近更新在前）)
 - emits: `undo` · `redo` · `zoom-in` · `zoom-out` · `new` · `fit` · `arrange` · `save` · `run-all` · `switch-graph` · `open-graphs`
 
+### HgActorLibrary — app/components/HgActorLibrary.vue · 232 行
+演员库 —— 挂在「资产」页里的一个页签（不单独占侧栏一项，与设计稿一致）
+- props: —
+- 用: `useHougongApi`
+
 ### HgAssetPanel — app/components/HgAssetPanel.vue · 352 行
 - props: —
 - 用: `useChatStudio` · `useHougongApi`
@@ -125,7 +130,7 @@
 - props: `title?`=''
 - v-model: `open`
 
-### HgChatComposer — app/components/HgChatComposer.vue · 1050 行
+### HgChatComposer — app/components/HgChatComposer.vue · 1118 行
 - props: `variant?`='chat'
 - emits: `submit` · 用: `useChatStudio` · `useIsNarrow` · `useGlowPointer` · `useHougongApi`
 - 本文件声明 25 个: `paramsOpen` L9 · `ratioUnsupported` L22 · `onSend` L38 · `sendLabel` L47 · `blockHint` L52 · `loraOpen` L59 · `openLora` L62 · `imageRefOpen` L70 · `promptEditorRef` L71

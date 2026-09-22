@@ -5,17 +5,17 @@
 
 页面/视图：路由、职责、用到的组合式函数；大文件另附本文件声明清单。
 
-### `/assets` — app/pages/assets.vue · 1805 行
+### `/assets` — app/pages/assets.vue · 1915 行
 素材库（/assets）——「我的资产」里的素材分区
 - 用: `useHougongApi`
-- 本文件声明 78 个: `items` L39 · `total` L40 · `pageNo` L41 · `firstLoading` L42 · `loadingMore` L43 · `done` L44 · `error` L45 · `notice` L46 · `brokenIds` L48 · `kind` L50 · `origin` L51 · `sort` L52
-  `keyword` L53 · `showHidden` L54 · `onlyDuplicates` L61 · `manageMode` L68 · `picked` L70 · `hasFilter` L73 · `pickedVisible` L78 · `pickedHidden` L81 · `fetchPage` L89 · `reload` L119
-  `loadMore` L130 · `sentinel` L138 · `stopObserver` L141 · `isPicked` L169 · `togglePick` L174 · `pickAllLoaded` L193 · `clearPick` L201 · `onPressStart` L210 · `onPressEnd` L218
-  `onMediaClick` L224 · `preview` L234 · `previewOpen` L235 · `openPreview` L237 · `closePreview` L243 · `busyId` L248 · `toggleHiddenOne` L250 · `downloadingId` L268 · `download` L270
-  `batchBusy` L289 · `confirmOpen` L290 · `confirmTitle` L291 · `confirmMessage` L292 · `pendingSingle` L293 · `batchProgress` L295 · `chunkSizeFor` L306 · `batchPercent` L311 · `batchInChunks` L318
-  `askDelete` L333 · `doDelete` L345 · `runBatch` L376 · `dedupeOpen` L422 · `dedupeBusy` L423 · `dedupePlan` L424 · `dedupeMessage` L425 · `askDedupe` L435 · `doDedupe` L450 · `publishOpen` L474
-  `publishPending` L475 · `publishCover` L477 · `askPublish` L479 · `submitPublish` L492 · `exporting` L522 · `exportTask` L523 · `exportError` L524 · `extOf` L526 · `relPathOf` L539
-  `runExport` L543 · `typeLabel` L577 · `isImage` L580 · `isVideo` L583 · `displayName` L588 · `dateText` L593 · `sizeText` L598 · `dimsOf` L605 · `onImgError` L609 · `onKeydown` L614
+- 本文件声明 79 个: `pane` L22 · `items` L47 · `total` L48 · `pageNo` L49 · `firstLoading` L50 · `loadingMore` L51 · `done` L52 · `error` L53 · `notice` L54 · `brokenIds` L56 · `kind` L58 · `origin` L59
+  `sort` L60 · `keyword` L61 · `showHidden` L62 · `onlyDuplicates` L69 · `manageMode` L76 · `picked` L78 · `hasFilter` L81 · `pickedVisible` L86 · `pickedHidden` L89 · `fetchPage` L97 · `reload` L127
+  `loadMore` L138 · `sentinel` L146 · `stopObserver` L149 · `isPicked` L177 · `togglePick` L182 · `pickAllLoaded` L201 · `clearPick` L209 · `onPressStart` L218 · `onPressEnd` L226
+  `onMediaClick` L232 · `preview` L242 · `previewOpen` L243 · `openPreview` L245 · `closePreview` L251 · `busyId` L256 · `toggleHiddenOne` L258 · `downloadingId` L276 · `download` L278
+  `batchBusy` L297 · `confirmOpen` L298 · `confirmTitle` L299 · `confirmMessage` L300 · `pendingSingle` L301 · `batchProgress` L303 · `chunkSizeFor` L314 · `batchPercent` L319 · `batchInChunks` L326
+  `askDelete` L341 · `doDelete` L353 · `runBatch` L384 · `dedupeOpen` L430 · `dedupeBusy` L431 · `dedupePlan` L432 · `dedupeMessage` L433 · `askDedupe` L443 · `doDedupe` L458 · `publishOpen` L482
+  `publishPending` L483 · `publishCover` L485 · `askPublish` L487 · `submitPublish` L500 · `exporting` L530 · `exportTask` L531 · `exportError` L532 · `extOf` L534 · `relPathOf` L547
+  `runExport` L551 · `typeLabel` L585 · `isImage` L588 · `isVideo` L591 · `displayName` L596 · `dateText` L601 · `sizeText` L606 · `dimsOf` L613 · `onImgError` L617 · `onKeydown` L622
 
 ### `/auth/login` — app/pages/auth/login.vue · 100 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
@@ -71,17 +71,17 @@
 对话创作页（/create）
 - 本文件声明 8 个: `streamRef` L8 · `historyOpen` L9 · `pinned` L10 · `sessionTitle` L12 · `resultTotal` L14 · `scrollToBottom` L16 · `onJumpLatest` L25 · `onScroll` L30
 
-### `/effects` — app/pages/effects.vue · 445 行
-全部效果（/effects）—— 布局对着参考站 undress.xxx 的 All Effects 页做的： 顶部一条「新功能」提示 → 大横幅（标题 +…
+### `/effects` — app/pages/effects.vue · 367 行
+vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
 - 用: `useToolCatalog`
-- 本文件声明 12 个: `tab` L18 · `search` L19 · `activeTag` L20 · `tools` L22 · `isOption` L52 · `effects` L56 · `firstTool` L95 · `inTab` L97 · `strip` L100 · `counts` L107 · `tagList` L121 · `shown` L136
+- 本文件声明 7 个: `tab` L24 · `tools` L26 · `isOption` L56 · `effects` L60 · `inTab` L98 · `counts` L101 · `shown` L112
 
-### `/` — app/pages/index.vue · 1440 行
+### `/` — app/pages/index.vue · 1388 行
 - 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft` · `useToolCatalog`
-- 本文件声明 33 个: `notice` L27 · `toolTab` L34 · `toolQuery` L35 · `toolCards` L54 · `filteredTools` L76 · `toolTabs` L84 · `runningWorks` L90 · `loggedIn` L100 · `continueItems` L142
-  `continueLoading` L143 · `relativeTime` L145 · `submitLanding` L184 · `loadContinue` L229 · `exploreCategory` L282 · `exploreItems` L283 · `explorePage` L284 · `exploreLoading` L285
-  `exploreDone` L286 · `exploreError` L287 · `exploreReady` L288 · `sentinel` L289 · `toExploreWork` L303 · `loadExplore` L331 · `switchCategory` L381 · `exploreVisible` L386 · `remixWork` L405
-  `previewOpen` L417 · `previewSrc` L418 · `previewTitle` L419 · `previewAuthor` L420 · `previewKind` L422 · `openPreview` L424 · `openContinuePreview` L433
+- 本文件声明 31 个: `notice` L27 · `toolCards` L64 · `quickTools` L95 · `hoverTool` L98 · `pickQuickTool` L101 · `runningWorks` L107 · `loggedIn` L117 · `continueItems` L159 · `continueLoading` L160
+  `relativeTime` L162 · `submitLanding` L201 · `loadContinue` L246 · `exploreCategory` L299 · `exploreItems` L300 · `explorePage` L301 · `exploreLoading` L302 · `exploreDone` L303
+  `exploreError` L304 · `exploreReady` L305 · `sentinel` L306 · `loadExplore` L321 · `switchCategory` L371 · `exploreVisible` L376 · `remixWork` L395 · `previewOpen` L407 · `previewSrc` L408
+  `previewTitle` L409 · `previewAuthor` L410 · `previewKind` L412 · `openPreview` L414 · `openContinuePreview` L423
 
 ### `/notifications` — app/pages/notifications.vue · 203 行
 - 用: `useHougongApi`
@@ -112,6 +112,9 @@
   `onMaskDown` L264 · `onMaskMove` L274 · `onMaskUp` L281 · `exportMask` L287 · `swapSlots` L305 · `submit` L311 · `poll` L376 · `resolveOutputs` L399 · `isVideoUrl` L415 · `outputLabel` L421
   `download` L430
 
+### `/tv` — app/pages/tv.vue · 255 行
+- 用: `useHougongApi`
+
 ### `/wallet` — app/pages/wallet.vue · 672 行
 - 用: `useHougongApi`
 - 本文件声明 32 个: `loading` L5 · `error` L6 · `wallet` L9 · `claiming` L10 · `claimNotice` L11 · `invite` L13 · `copied` L14 · `membership` L16 · `tab` L18 · `transactions` L19 · `ledger` L20
@@ -131,15 +134,15 @@
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 898 行
-  - 本文件声明: `loggedIn` L24 · `navMain` L49 · `recentSessions` L84 · `searchOpen` L87 · `searchQuery` L88 · `searchResults` L103 · `searchEmpty` L125 · `openSearch` L130 · `goSearch` L138
-    `onSearchKeydown` L143 · `assetsOpen` L146 · `accountOpen` L147 · `accountWrapRef` L148 · `railOpen` L149 · `railCollapsed` L157 · `isFullBleed` L160 · `credits` L161 · `unread` L162
-    `pageName` L178 · `isActive` L185 · `onAccountToggle` L193 · `onDocClick` L197 · `logout` L203 · `loadShellData` L209
+- `app/app.vue` · 841 行
+  - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
+    `accountWrapRef` L136 · `railOpen` L137 · `railCollapsed` L145 · `isFullBleed` L148 · `credits` L149 · `unread` L150 · `pageName` L170 · `isActive` L179 · `onAccountToggle` L187
+    `onDocClick` L191 · `logout` L197 · `loadShellData` L203
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 898 行
-  - 本文件声明: `loggedIn` L24 · `navMain` L49 · `recentSessions` L84 · `searchOpen` L87 · `searchQuery` L88 · `searchResults` L103 · `searchEmpty` L125 · `openSearch` L130 · `goSearch` L138
-    `onSearchKeydown` L143 · `assetsOpen` L146 · `accountOpen` L147 · `accountWrapRef` L148 · `railOpen` L149 · `railCollapsed` L157 · `isFullBleed` L160 · `credits` L161 · `unread` L162
-    `pageName` L178 · `isActive` L185 · `onAccountToggle` L193 · `onDocClick` L197 · `logout` L203 · `loadShellData` L209
+- `app/App.vue` · 841 行
+  - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
+    `accountWrapRef` L136 · `railOpen` L137 · `railCollapsed` L145 · `isFullBleed` L148 · `credits` L149 · `unread` L150 · `pageName` L170 · `isActive` L179 · `onAccountToggle` L187
+    `onDocClick` L191 · `logout` L197 · `loadShellData` L203
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"
