@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
-import { canvasFeatureEnabled, FEATURES } from '~/config/features'
+import { FEATURES } from '~/config/features'
 import AppAgeGate from './components/AppAgeGate.vue'
 
 useHead({
@@ -16,12 +16,6 @@ useSeoMeta({
 const route = useRoute()
 const session = useAuthSession()
 const hgApi = useHougongApi()
-
-/** 登录态。侧栏里有几项是「进入后才有的东西」（登录才能看的探索流、只有自己才有的
- *  最近会话），未登录时它们要么指向一个不存在的区块、要么只能拿示例数据充数 ——
- *  两种都是假装，所以直接不出现。会话恢复是异步的，因此必须用 computed 而不是
- *  在 setup 里读一次快照，否则 cookie 换回 token 后侧栏不会更新。 */
-const loggedIn = computed(() => !!session.token.value)
 
 /* 侧栏底部展示的版本号：客户端（前台产物）与服务端（Go API）各一个。
    两条发布链彼此独立，并排显示用于一眼核对「这次是不是只发了半边」；
@@ -43,36 +37,30 @@ const { open: authOpen, openDialog } = useAuthDialog()
 const emblemSrc = '/mock/home/emblem.png'
 
 /* 导航图标为彩色线性图标：色值取自参考图逐像素实测，同一功能保持同一颜色 */
-/* 「画布」是产品侧并发开发中的功能，生产先用 canvasFeatureEnabled() 屏蔽入口
-   （见 config/features.ts）；直接访问 /canvas 另由 canvas-gate.global.ts 拦回首页。 */
-const canvasOn = canvasFeatureEnabled()
-const navMain = computed(() => [
+/* 一级导航：平铺，不再分「我的资产」组。
+ *
+ * 2026-09-22 收口：按原型（public/prototypes/hougong-oii.html）重排 ——
+ *   工作室 · 首页 · 技能 · 资产 · TV 频道 · 我的发布
+ * 三处改名与两处撤下的理由：
+ *   - 「全部工具」→「技能」：前台叫法是"技能"，和 /skill 的语义一致（路由暂时仍走 /effects）。
+ *   - 「素材」→「资产」：页内本来就是"资产/素材"混用，统一成资产。
+ *   - 「画布」撤下入口（`canvasFeatureEnabled()` 生产为关），/canvas 路由与页面都还在，
+ *     直接敲 URL 依旧可用（另见 middleware/canvas-gate.global.ts）。
+ *   - 「我的画布」同样撤下入口，/canvases 路由与页面保留。
+ *   - 「探索」是首页区块的锚点，区块本身滚得到，不再单独占一个导航项。
+ *   - 角色资产（/characters）的入口不进侧栏：它要收进「资产」页里当「演员库」页签
+ *     （见 config/features.ts 的 characterAssets）。
+ */
+const navMain = [
   { to: '/', label: '首页', icon: 'i-lucide-house', color: 'var(--hg3-i-orange)' },
-  { to: '/effects', label: '全部工具', icon: 'i-lucide-layout-grid', color: 'var(--hg3-i-coral)' },
-  ...(canvasOn
-    ? [{ to: '/canvas', label: '画布', icon: 'i-lucide-brush', color: 'var(--hg3-i-amber)' }]
-    : []),
-  // 「探索」是首页那个区块的锚点（/#explore），而那个区块未登录时不渲染 ——
-  // 留着它就是一个点了没反应的入口。
-  ...(loggedIn.value
-    ? [{ to: '/#explore', label: '探索', icon: 'i-lucide-compass', color: 'var(--hg3-i-green)' }]
-    : [])
-])
-// 「我的资产」下的入口。
-//
-// 图片/视频原来是两个平级入口，但它们指向**同一个页面**（只差一个 kind 查询参数），
-// 而页面本身叫「素材」—— 三套叫法互相不一致。现在收敛成：一个「素材」入口，
-// 图片/视频在页面内做成页签（一处管理、多选可跨类型）。
-const navAssets = [
-  // 「我的画布」放在最前：创作者找"我建过的那张图"比找素材更频繁
-  // （此前唯一入口在画布编辑器顶栏的下拉里，人不在编辑器就找不到 —— 2026-09-20 补）。
-  { to: '/canvases', label: '我的画布', icon: 'i-lucide-layout-dashboard', color: 'var(--hg3-i-blue)' },
-  { to: '/assets', label: '素材', icon: 'i-lucide-images', color: 'var(--hg3-i-blue)' },
-  // 角色资产的入口按 FEATURES.characterAssets 决定是否出现；页面与接口都还在，
-  // 直接访问 /characters 依旧可用（见 config/features.ts）。
-  { to: '/characters', label: '角色资产', icon: 'i-lucide-user-round', color: 'var(--hg3-i-green)', feature: 'characterAssets' as const },
-  { to: '/works', label: '我的发布', icon: 'i-lucide-send', color: 'var(--hg3-i-amber)' }
-].filter(item => !item.feature || FEATURES[item.feature])
+  // 工作室 = 创作工作台（/create）。原先它是侧栏顶部的「创作」主按钮，
+  // 现在按原型改成一级导航项，位置就在「首页」下面。
+  { to: '/create', label: '工作室', icon: 'i-lucide-sparkles', color: 'var(--hg3-i-coral)' },
+  { to: '/effects', label: '技能', icon: 'i-lucide-layout-grid', color: 'var(--hg3-i-amber)' },
+  { to: '/assets', label: '资产', icon: 'i-lucide-images', color: 'var(--hg3-i-blue)' },
+  { to: '/tv', label: 'TV 频道', icon: 'i-lucide-tv', color: 'var(--hg3-i-green)' },
+  { to: '/works', label: '我的发布', icon: 'i-lucide-send', color: 'var(--hg3-i-violet)' }
+]
 const navBottom = [
   { to: '/notifications', label: '通知', icon: 'i-lucide-bell', color: 'var(--hg3-i-coral)' },
   { to: '/settings', label: '设置', icon: 'i-lucide-settings', color: 'var(--hg3-i-gray)' }
@@ -88,17 +76,18 @@ const searchOpen = ref(false)
 const searchQuery = ref('')
 /** 工具搜索的数据源：与首页/效果页同一份目录（useState 共享，不会多打接口）。 */
 const toolCatalog = useToolCatalog()
+// 搜索页列表是**平铺的静态清单**：里面没有需要按开关过滤的项（角色资产已收进资产页），
+// 所以不再挂 feature 过滤 —— 挂着一个永远为真的 filter 只会让人以为这里还有什么开关。
 const SEARCH_PAGES = [
   { label: '创作首页', to: '/' },
-  { label: '对话创作', to: '/create' },
-  { label: '全部工具', to: '/effects' },
-  { label: '我的资产', to: '/assets' },
-  { label: '我的画布', to: '/canvases' },
-  { label: '角色资产', to: '/characters', feature: 'characterAssets' as const },
+  { label: '工作室', to: '/create' },
+  { label: '技能', to: '/effects' },
+  { label: '资产', to: '/assets' },
+  { label: 'TV 频道', to: '/tv' },
   { label: '我的发布', to: '/works' },
   { label: '钱包与账单', to: '/wallet' },
   { label: '设置', to: '/settings' }
-].filter(item => !item.feature || FEATURES[item.feature])
+]
 
 const searchResults = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -143,7 +132,6 @@ function goSearch(to: string) {
 function onSearchKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') searchOpen.value = false
 }
-const assetsOpen = ref(true)
 const accountOpen = ref(false)
 const accountWrapRef = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
@@ -163,11 +151,15 @@ const unread = ref(0)
 
 const PAGE_NAMES: Record<string, string> = {
   '/': '首页',
-  '/create': '对话创作',
-  '/effects': '全部工具',
+  '/create': '工作室',
+  '/effects': '技能',
+  // 技能详情页（/tool/<code>）：原来没有任何键命中，面包屑一直回落成「创作」。
+  '/tool': '技能',
+  '/canvases': '我的画布',
   '/canvas': '画布',
-  '/assets': '素材',
+  '/assets': '资产',
   '/characters': '角色资产',
+  '/tv': 'TV 频道',
   '/works': '我的发布',
   '/wallet': '钱包与账单',
   '/notifications': '通知',
@@ -178,6 +170,8 @@ const PAGE_NAMES: Record<string, string> = {
 const pageName = computed(() => {
   const path = route.path.replace(/\/$/, '') || '/'
   if (PAGE_NAMES[path]) return PAGE_NAMES[path]
+  // 前缀匹配取首个命中，所以**更长的键必须排在更短的键前面**（'/canvases' 要在 '/canvas' 前），
+  // 否则 /canvases 会被 '/canvas' 抢先匹配，面包屑显示成「画布」。
   const hit = Object.keys(PAGE_NAMES).find(key => key !== '/' && path.startsWith(key))
   return hit ? PAGE_NAMES[hit] : '创作'
 })
@@ -283,18 +277,6 @@ watch(() => route.fullPath, () => {
           <small>AI 创作平台</small>
         </NuxtLink>
 
-        <button
-          type="button"
-          class="hg-rail-cta"
-          @click="navigateTo('/create')"
-        >
-          <UIcon
-            name="i-lucide-plus"
-            aria-hidden="true"
-          />
-          <span class="hg-rail-cta-label">创作</span>
-        </button>
-
         <div class="hg-rail-scroll">
           <nav class="hg-nav">
             <template
@@ -330,47 +312,8 @@ watch(() => route.fullPath, () => {
                 <span class="hg-nav-label">{{ item.label }}</span>
               </button>
             </template>
-
-            <button
-              type="button"
-              class="hg-nav-item"
-              :class="{ active: navAssets.some(item => isActive(item.to)) }"
-              :aria-expanded="assetsOpen"
-              title="我的资产"
-              @click="assetsOpen = !assetsOpen"
-            >
-              <UIcon
-                name="i-lucide-folder"
-                style="color: var(--hg3-i-blue)"
-                aria-hidden="true"
-              />
-              <span class="hg-nav-label">我的资产</span>
-              <UIcon
-                name="i-lucide-chevron-down"
-                class="hg-nav-caret"
-                :class="{ open: !assetsOpen }"
-                aria-hidden="true"
-              />
-            </button>
-            <template v-if="assetsOpen">
-              <NuxtLink
-                v-for="item in navAssets"
-                :key="item.label"
-                class="hg-nav-item sub"
-                :class="{ active: isActive(item.to) }"
-                :to="item.to"
-              >
-                <UIcon
-                  :name="item.icon"
-                  :style="{ color: item.color }"
-                  aria-hidden="true"
-                />
-                <span class="hg-nav-label">{{ item.label }}</span>
-              </NuxtLink>
-            </template>
-            <!-- 搜索：原排在「首页」之上、与一级导航混在一起，位置抢了首页的头部。
-                 它是查找入口而不是导航目的地，下移到「我的资产」整组之后 ——
-                 既不再顶在最上面，也仍在侧栏可见区内。 -->
+            <!-- 搜索：它是查找入口而不是导航目的地，所以排在一级导航之后，
+                 不跟「首页 / 工作室 / 技能…」混在一起抢位置。 -->
             <button
               type="button"
               class="hg-nav-item"
@@ -740,17 +683,17 @@ watch(() => route.fullPath, () => {
   gap: 10px;
   height: 42px;
   padding: 0 12px;
-  border: 1px solid var(--hg3-line-strong, rgb(255 255 255 / 14%));
+  border: 1px solid var(--hg3-line-strong, #333);
   border-radius: 11px;
   background: #141519;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
 }
 .hg-search-field input {
   flex: 1;
   min-width: 0;
   border: 0;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 14px;
   outline: none;
@@ -768,7 +711,7 @@ watch(() => route.fullPath, () => {
 }
 .hg-search-hint {
   margin: 12px 4px 4px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 12px;
 }
 .hg-search-results {
@@ -780,7 +723,7 @@ watch(() => route.fullPath, () => {
 }
 .hg-search-results h3 {
   margin: 8px 6px 4px;
-  color: var(--hg3-faint, #6e6b66);
+  color: var(--hg3-faint, #6f6f6f);
   font-size: 11px;
   font-weight: 500;
 }
@@ -792,14 +735,14 @@ watch(() => route.fullPath, () => {
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
 .hg-search-results button:hover {
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
 }
 .hg-topbar-left {
   display: flex;
@@ -835,7 +778,7 @@ watch(() => route.fullPath, () => {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
   font-family: inherit;
   font-size: 13px;
   text-align: left;
@@ -856,16 +799,16 @@ watch(() => route.fullPath, () => {
   cursor: pointer;
 }
 .hg-login {
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid #333;
   background: transparent;
-  color: var(--hg3-ink, #f2f0ec);
+  color: var(--hg3-ink, #fafafa);
 }
 .hg-login:hover {
-  background: rgb(255 255 255 / 6%);
+  background: #1e1e1e;
 }
 .hg-register {
   border: 0;
-  background: linear-gradient(135deg, var(--hg3-accent-hi, #f99749), var(--hg3-accent, #d9834d));
+  background: linear-gradient(135deg, var(--hg3-accent-hi, #f347bc), var(--hg3-accent, #e832b0));
   color: var(--hg3-accent-ink, #3a2412);
   font-weight: 700;
 }
