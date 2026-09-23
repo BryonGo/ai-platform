@@ -349,16 +349,17 @@
 - `needsImage(code: string): boolean` · L111 — 该工具是否需要先选图（后端 input 形态决定输入面板与必填校验）
 
 ## app/composables/useTurnstile.ts
-- 导出函数/常量：`useTurnstile()` L64
+- 导出函数/常量：`useTurnstile()` L90
 - 导出类型 1 个 → 字段见 `types.md`（`VerificationConfig`）
 
-### `useTurnstile()` — L64 · 返回 7 个成员
-- `required` · L68 · ref `ref` — required=true 表示本站在提交前必须拿到 token
-- `ready` · L70 · ref `ref` — ready=true 表示 widget 已经渲染出来，用户可以点它
-- `token` · L72 · ref `ref` — token 是 Cloudflare 回调给的凭据，提交时放进 cf-turnstile-response
-- `error` · L74 · ref `ref` — error 是非阻塞提示（脚本加载失败等），不挡页面其它内容
-- `init()` · L98 · `/pub/verification/config`
-- `reset()` · L117 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
+### `useTurnstile()` — L90 · 返回 8 个成员
+- `required` · L94 · ref `ref` — required=true 表示本站在提交前必须拿到 token
+- `ready` · L96 · ref `ref` — ready=true 表示 widget 已经渲染出来，用户可以点它
+- `token` · L98 · ref `ref` — token 是 Cloudflare 回调给的凭据，提交时放进 cf-turnstile-response
+- `error` · L100 · ref `ref` — error 是非阻塞提示（脚本加载失败等），不挡页面其它内容
+- `siteKey` · L102 · ref `ref` — siteKey 供模板绑定 `data-sitekey`（与后台同样的声明式写法）
+- `init()` · L138 · `/pub/verification/config`
+- `reset()` · L158 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
 
 ## app/composables/useVersionWatcher.ts
 - 导出函数/常量：`useUpdateBlocker(fn: () => boolean)` L25 · `useVersionWatcher()` L46

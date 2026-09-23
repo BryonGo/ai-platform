@@ -17,11 +17,11 @@
   `publishPending` L483 · `publishCover` L485 · `askPublish` L487 · `submitPublish` L500 · `exporting` L530 · `exportTask` L531 · `exportError` L532 · `extOf` L534 · `relPathOf` L547
   `runExport` L551 · `typeLabel` L585 · `isImage` L588 · `isVideo` L591 · `displayName` L596 · `dateText` L601 · `sizeText` L606 · `dimsOf` L613 · `onImgError` L617 · `onKeydown` L622
 
-### `/auth/login` — app/pages/auth/login.vue · 134 行
+### `/auth/login` — app/pages/auth/login.vue · 138 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
 - 用: `useTurnstile` · `useHougongApi`
 
-### `/auth/register` — app/pages/auth/register.vue · 163 行
+### `/auth/register` — app/pages/auth/register.vue · 166 行
 注册：契约对齐 /api/v1/account/auth/register
 - 用: `useTurnstile` · `useHougongApi`
 
