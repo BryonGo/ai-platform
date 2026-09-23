@@ -94,14 +94,27 @@ const toolCards = computed<ToolCard[]>(() => {
 const QUICK_COUNT = 8
 const quickTools = computed(() => toolCards.value.slice(0, QUICK_COUNT))
 
+/**
+ * 按「上排 5 / 下排（其余 + 跳转格）」切成两行，行内卡片**按文字自适应宽度**。
+ *
+ * 卡片不再等宽（原来 `width: calc((100% - 32px) / 5)` 固定 5 列等宽）：等宽时
+ * 「脱衣」两个字的卡和「裸体姿势视频」一样宽，短名字右侧空一大截，用户反馈
+ * 「字的空白太多」。改成 hug 内容后整排明显更紧凑。
+ *
+ * 但 hug 宽度后**不能靠 flex 自然换行**决定行：换行位置取决于文案长度，
+ * 会随目录内容在 6+2 / 5+3 之间跳，「上 5 下 3」的节奏就没了 —— 所以这里显式分两行。
+ * 每行自身仍 flex-wrap：窄屏放不下时行内自己换，不会横向溢出。
+ */
+const quickRows = computed(() => [quickTools.value.slice(0, 5), quickTools.value.slice(5)])
+
 /** 悬停卡：鼠标停在某一格上（或键盘把焦点移到它上面）时显示「封面 + 名称 + 说明」。 */
 const hoverTool = ref<ToolCard | null>(null)
 
 /* 悬停卡是 .quick-grid 里**独立的一层**，不再挂在卡片内部。
  *
- * 挂卡片内部就只能用 `left: 50% + translateX(-50%)` 居中，而浮层宽 236px、窄视口
- * （约 700-880px，此时侧栏已收起、快捷片贴着视口左边）下卡片列宽只有 152-184px，
- * 于是最左/最右一格的浮层会顶出视口 —— hover 一下凭空多出一条横向滚动条。
+ * 挂卡片内部就只能用 `left: 50% + translateX(-50)` 居中，而浮层比单张卡片宽，
+ * 窄视口（约 700-880px，此时侧栏已收起、快捷片贴着视口左边）下最左/最右一格的
+ * 浮层会顶出视口 —— hover 一下凭空多出一条横向滚动条。
  * 现在位置由 placeQuickPop() 按原型的算法算好并夹进视口。 */
 const quickGridEl = ref<HTMLElement | null>(null)
 const quickPopEl = ref<HTMLElement | null>(null)
@@ -559,6 +572,7 @@ useMediaAutoRefresh(() => Promise.all([
 
       <!-- 技能快捷片：**紧贴输入框正下方**（不是另起一个带标题的区块），
            上排 5 个 + 下排 3 个 + 第 9 格一个跳转箭头 → 技能页。
+           卡片**按文字自适应宽度**（等宽时短名字右侧空一大截），两行由 quickRows 显式切好。
            鼠标停在哪一格、或键盘聚焦到哪一格，就浮一张「封面 + 名称 + 说明」的卡。
            为什么不用 grid：grid 做不到「不满的那一行居中」，这里必须 flex。 -->
       <div
@@ -566,50 +580,58 @@ useMediaAutoRefresh(() => Promise.all([
         ref="quickGridEl"
         class="quick-grid"
       >
-        <button
-          v-for="tool in quickTools"
-          :key="tool.key"
-          type="button"
-          class="quick-chip"
-          :class="{ active: isQuickToolActive(tool) }"
-          :style="{ '--tint': tool.tint }"
-          :aria-pressed="isQuickToolActive(tool)"
-          :aria-describedby="tool.summary ? `quick-summary-${tool.key.replace('tool:', '')}` : undefined"
-          @click="pickQuickTool(tool)"
-          @mouseenter="openQuickPop($event, tool)"
-          @mouseleave="closeQuickPop"
-          @focus="openQuickPop($event, tool)"
-          @blur="closeQuickPop"
+        <div
+          v-for="(row, rowIndex) in quickRows"
+          :key="`quick-row-${rowIndex}`"
+          class="quick-row"
         >
-          <img
-            v-if="tool.cover"
-            class="quick-thumb"
-            :src="tool.cover"
-            alt=""
-            loading="lazy"
+          <button
+            v-for="tool in row"
+            :key="tool.key"
+            type="button"
+            class="quick-chip"
+            :class="{ active: isQuickToolActive(tool) }"
+            :style="{ '--tint': tool.tint }"
+            :aria-pressed="isQuickToolActive(tool)"
+            :aria-describedby="tool.summary ? `quick-summary-${tool.key.replace('tool:', '')}` : undefined"
+            @click="pickQuickTool(tool)"
+            @mouseenter="openQuickPop($event, tool)"
+            @mouseleave="closeQuickPop"
+            @focus="openQuickPop($event, tool)"
+            @blur="closeQuickPop"
           >
-          <span
-            v-else
-            class="quick-thumb quick-thumb-fallback"
+            <img
+              v-if="tool.cover"
+              class="quick-thumb"
+              :src="tool.cover"
+              alt=""
+              loading="lazy"
+            >
+            <span
+              v-else
+              class="quick-thumb quick-thumb-fallback"
+            >
+              <UIcon
+                :name="tool.icon"
+                aria-hidden="true"
+              />
+            </span>
+            <span class="quick-name">{{ tool.label }}</span>
+          </button>
+
+          <!-- 跳转格跟最后一排一起居中（不足一排时也居中，正是当初不用 grid 的原因）。 -->
+          <NuxtLink
+            v-if="rowIndex === quickRows.length - 1"
+            class="quick-jump"
+            to="/effects"
+            aria-label="查看全部技能"
           >
             <UIcon
-              :name="tool.icon"
+              name="i-lucide-arrow-right"
               aria-hidden="true"
             />
-          </span>
-          <span class="quick-name">{{ tool.label }}</span>
-        </button>
-
-        <NuxtLink
-          class="quick-jump"
-          to="/effects"
-          aria-label="查看全部技能"
-        >
-          <UIcon
-            name="i-lucide-arrow-right"
-            aria-hidden="true"
-          />
-        </NuxtLink>
+          </NuxtLink>
+        </div>
 
         <!-- 技能说明的等价副本：浮层只在 :hover 出现，触屏上整套 (hover: none) 规则把它藏了，
              只留一个按钮名等于把说明丢掉。这里给读屏/触屏一份（由卡片的 aria-describedby 引用；
@@ -1066,19 +1088,28 @@ useMediaAutoRefresh(() => Promise.all([
   font-size: 12px;
 }
 
-/* ---------------- 技能快捷片：等宽五列，不足一行的卡片居中 ---------------- */
+/* ---------------- 技能快捷片：卡片按文字收窄，两行都居中 ---------------- */
 .quick-grid {
-  /* 与输入框同宽同位置。 */
+  /* 与输入框同宽同位置；行本身在 .quick-row 里居中。 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 12px auto 0;
+  /* 把整排卡片 + 悬停浮层提成一个比输入框（z-index:1）更高的层，
+     否则 hover 时新建的堆叠上下文会把浮层关在输入框下面 */
+  position: relative;
+  z-index: 2;
+}
+/* 一行快捷片：**hug 文字宽度**（不再 5 列等宽），整行居中；
+   窄屏放不下时行内自己换行，不会横向溢出。 */
+.quick-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  margin: 12px auto 0;
-  /* 把整排卡片 + 悬停浮层提成一个比输入框（z-index:1）更高的层，
-     否则 hover 时 .quick-chip 的 translateY 会新建堆叠上下文，把浮层关在输入框下面 */
-  position: relative;
-  z-index: 2;
 }
 .quick-chip {
   /* 色底 = 该技能的颜色叠在深底上；没有 --tint 时回落中性白（--tint 由脚本注入） */
@@ -1086,8 +1117,8 @@ useMediaAutoRefresh(() => Promise.all([
   display: flex;
   align-items: center;
   gap: 8px;
-  width: calc((100% - 32px) / 5);
-  flex: 0 0 calc((100% - 32px) / 5);
+  /* 宽度 = 缩略图 + 文字 + 内边距，字短就窄 —— 等宽时「脱衣」右侧空一大截（用户反馈） */
+  flex: 0 0 auto;
   height: 40px;
   padding: 4px 12px 4px 6px;
   border: 1px solid color-mix(in srgb, var(--tint, #fff) 30%, transparent);
@@ -1097,12 +1128,13 @@ useMediaAutoRefresh(() => Promise.all([
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.18s, border-color 0.18s, transform 0.18s;
+  transition: background 0.18s, border-color 0.18s;
 }
+/* hover 只变色，**不位移**：原来 translateY(-1px) 会让这张卡比左右邻居高出 1px，
+   边框跟整排对不齐（用户反馈「外面的框和里面的框对不上」）。 */
 .quick-chip:hover {
   background: color-mix(in srgb, var(--tint, #fff) 22%, #141414);
   border-color: color-mix(in srgb, var(--tint, #fff) 62%, transparent);
-  transform: translateY(-1px);
 }
 .quick-chip.active {
   border-color: color-mix(in srgb, var(--tint, var(--hg3-accent)) 85%, transparent);
@@ -1159,7 +1191,10 @@ useMediaAutoRefresh(() => Promise.all([
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 236px;
+  /* 宽度**跟着内容走**（图铺满内容宽，见下面 img 的说明）：原来 236px 是被标题/说明
+     撑出来的，比 150px 的图宽一截；收窄到 176 后图、文字、外框三者同宽，
+     浮层高度也回到 ~290px，不再顶到上面的标题。 */
+  width: 176px;
   /* 兜底：视口比浮层还窄时不撑出横向滚动条（脚本量到的宽也会跟着变小） */
   max-width: calc(100vw - 24px);
   padding: 8px;
@@ -1189,7 +1224,9 @@ useMediaAutoRefresh(() => Promise.all([
 }
 .quick-pop img {
   display: block;
-  width: min(100%, 150px);
+  /* **铺满浮层内容宽**：原来 `min(100%, 150px)` 让图比下面的标题/说明窄一截、
+     还靠左放，看着就是「外面的框和里面的框对不上、下面的文字把框撑宽了」。 */
+  width: 100%;
   aspect-ratio: 3 / 4;
   border-radius: 9px;
   object-fit: cover;
@@ -1507,10 +1544,6 @@ useMediaAutoRefresh(() => Promise.all([
   text-align: center;
 }
 
-/* 与原型一致：宽屏五列快捷片，窄屏依次减列。 */
-@media (max-width: 800px) {
-  .quick-chip { flex-basis: calc((100% - 24px) / 4); width: calc((100% - 24px) / 4); }
-}
 @media (max-width: 900px) {
   .explore-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1518,9 +1551,6 @@ useMediaAutoRefresh(() => Promise.all([
   .continue-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-@media (max-width: 600px) {
-  .quick-chip { flex-basis: calc((100% - 8px) / 2); width: calc((100% - 8px) / 2); }
 }
 @media (max-width: 640px) {
   .home { padding-top: 95px; }
@@ -1557,9 +1587,6 @@ useMediaAutoRefresh(() => Promise.all([
   .media-zoom,
   .hg-actions {
     transition: none;
-  }
-  .quick-chip:hover {
-    transform: none;
   }
 }
 </style>
