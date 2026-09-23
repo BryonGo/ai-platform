@@ -18,6 +18,7 @@ const {
   required: turnstileRequired,
   token: turnstileToken,
   error: turnstileError,
+  siteKey: turnstileSiteKey,
   init: initTurnstile,
   reset: resetTurnstile
 } = useTurnstile()
@@ -126,11 +127,13 @@ async function submit() {
         {{ error }}
       </p>
 
-      <!-- Turnstile widget 容器：站点要求人机验证时才渲染（useTurnstile 决定）。 -->
+      <!-- Turnstile widget 容器：写法与后台控制台一致（class + data-sitekey）。 -->
       <div
         v-if="turnstileRequired"
         ref="turnstileHost"
-        class="turnstile-host"
+        class="cf-turnstile"
+        :data-sitekey="turnstileSiteKey"
+        data-action="turnstile-spin-v2"
       />
       <p
         v-if="turnstileError"

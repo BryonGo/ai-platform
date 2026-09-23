@@ -24,6 +24,7 @@ const {
   required: turnstileRequired,
   token: turnstileToken,
   error: turnstileError,
+  siteKey: turnstileSiteKey,
   init: initTurnstile,
   reset: resetTurnstile
 } = useTurnstile()
@@ -316,11 +317,14 @@ async function submitRegister() {
         </form>
 
         <!-- Turnstile widget 挂在两个表单**之外**：切换登录/注册页签时 v-if/v-else 会重建
-             表单内部节点，挂里面的话 widget 会跟着被卸载，用户就得重过一遍验证。 -->
+             表单内部节点，挂里面的话 widget 会跟着被卸载，用户就得重过一遍验证。
+             写法与后台控制台一致（class + data-sitekey）。 -->
         <div
           v-if="turnstileRequired"
           ref="turnstileHost"
-          class="turnstile-host"
+          class="cf-turnstile"
+          :data-sitekey="turnstileSiteKey"
+          data-action="turnstile-spin-v2"
         />
         <p
           v-if="turnstileError"
