@@ -311,6 +311,42 @@
   flex: 1;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+  isolation: isolate;
+}
+/* 原型的点阵属于页面壳：首页、创作与各列表共享一层，不在首页重复叠加。 */
+.hg-main::before {
+  position: fixed;
+  inset: 0 0 0 var(--hg3-rail-w);
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle, #ffffffb3 0 0.6px, transparent 0.7px);
+  background-size: 21px 21px;
+  mask-image: radial-gradient(ellipse 180vmin 90vmin at 50% 50%, #0000008f 0%, #0000005c 46%, #0003 56%, transparent 86%);
+  content: '';
+}
+.hg-dot-trails {
+  position: fixed;
+  inset: 0 0 0 var(--hg3-rail-w);
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hg-dot-trails span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 240px;
+  background-image: radial-gradient(circle, #ccc 0 0.6px, transparent 0.7px);
+  background-size: 21px 21px;
+  mask-image: radial-gradient(circle 120px at center, #000, transparent);
+  opacity: 0;
+  will-change: transform, opacity;
+  contain: strict;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-dot-trails { display: none; }
 }
 
 .hg-topbar {
@@ -488,6 +524,9 @@
 }
 .hg-media.r9x16 {
   aspect-ratio: 9 / 16;
+}
+.hg-media.r3x4 {
+  aspect-ratio: 3 / 4;
 }
 /* r2x3：创作工具卡的竖版封面。
  *

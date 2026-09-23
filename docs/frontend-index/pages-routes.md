@@ -67,7 +67,7 @@
 ### `/characters/new` — app/pages/characters/new.vue · 51 行
 - 用: `useHougongApi`
 
-### `/create` — app/pages/create.vue · 437 行
+### `/create` — app/pages/create.vue · 465 行
 对话创作页（/create）
 - 本文件声明 8 个: `streamRef` L8 · `historyOpen` L9 · `pinned` L10 · `sessionTitle` L12 · `resultTotal` L14 · `scrollToBottom` L16 · `onJumpLatest` L25 · `onScroll` L30
 
@@ -76,12 +76,13 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
 - 用: `useToolCatalog`
 - 本文件声明 7 个: `tab` L24 · `tools` L26 · `isOption` L56 · `effects` L60 · `inTab` L98 · `counts` L101 · `shown` L112
 
-### `/` — app/pages/index.vue · 1388 行
+### `/` — app/pages/index.vue · 1566 行
 - 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft` · `useToolCatalog`
-- 本文件声明 31 个: `notice` L27 · `toolCards` L64 · `quickTools` L95 · `hoverTool` L98 · `pickQuickTool` L101 · `runningWorks` L107 · `loggedIn` L117 · `continueItems` L159 · `continueLoading` L160
-  `relativeTime` L162 · `submitLanding` L201 · `loadContinue` L246 · `exploreCategory` L299 · `exploreItems` L300 · `explorePage` L301 · `exploreLoading` L302 · `exploreDone` L303
-  `exploreError` L304 · `exploreReady` L305 · `sentinel` L306 · `loadExplore` L321 · `switchCategory` L371 · `exploreVisible` L376 · `remixWork` L395 · `previewOpen` L407 · `previewSrc` L408
-  `previewTitle` L409 · `previewAuthor` L410 · `previewKind` L412 · `openPreview` L414 · `openContinuePreview` L423
+- 本文件声明 40 个: `notice` L27 · `toolCards` L64 · `quickTools` L95 · `hoverTool` L98 · `quickGridEl` L106 · `quickPopEl` L107 · `quickPopStyle` L108 · `placeQuickPop` L123 · `openQuickPop` L146
+  `closeQuickPop` L155 · `onQuickPopResize` L161 · `isQuickToolActive` L166 · `selectedToolCard` L178 · `pickQuickTool` L185 · `runningWorks` L191 · `loggedIn` L201 · `continueItems` L245
+  `continueLoading` L246 · `relativeTime` L248 · `submitLanding` L287 · `loadContinue` L332 · `exploreCategory` L385 · `exploreItems` L386 · `explorePage` L387 · `exploreLoading` L388
+  `exploreDone` L389 · `exploreError` L390 · `exploreReady` L391 · `sentinel` L392 · `loadExplore` L407 · `switchCategory` L457 · `exploreVisible` L462 · `remixWork` L481 · `previewOpen` L493
+  `previewSrc` L494 · `previewTitle` L495 · `previewAuthor` L496 · `previewKind` L498 · `openPreview` L500 · `openContinuePreview` L509
 
 ### `/notifications` — app/pages/notifications.vue · 203 行
 - 用: `useHougongApi`
@@ -134,15 +135,15 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 841 行
+- `app/app.vue` · 895 行
   - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
-    `accountWrapRef` L136 · `railOpen` L137 · `railCollapsed` L145 · `isFullBleed` L148 · `credits` L149 · `unread` L150 · `pageName` L170 · `isActive` L179 · `onAccountToggle` L187
-    `onDocClick` L191 · `logout` L197 · `loadShellData` L203
+    `accountWrapRef` L136 · `railOpen` L137 · `dotTrailRef` L139 · `fadeDotTrails` L144 · `onDotPointerMove` L157 · `railCollapsed` L186 · `isFullBleed` L189 · `credits` L190 · `unread` L191
+    `pageName` L211 · `isActive` L220 · `onAccountToggle` L228 · `onDocClick` L232 · `logout` L238 · `loadShellData` L244
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 841 行
+- `app/App.vue` · 895 行
   - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
-    `accountWrapRef` L136 · `railOpen` L137 · `railCollapsed` L145 · `isFullBleed` L148 · `credits` L149 · `unread` L150 · `pageName` L170 · `isActive` L179 · `onAccountToggle` L187
-    `onDocClick` L191 · `logout` L197 · `loadShellData` L203
+    `accountWrapRef` L136 · `railOpen` L137 · `dotTrailRef` L139 · `fadeDotTrails` L144 · `onDotPointerMove` L157 · `railCollapsed` L186 · `isFullBleed` L189 · `credits` L190 · `unread` L191
+    `pageName` L211 · `isActive` L220 · `onAccountToggle` L228 · `onDocClick` L232 · `logout` L238 · `loadShellData` L244
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"

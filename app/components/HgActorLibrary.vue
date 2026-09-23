@@ -206,11 +206,11 @@ useMediaAutoRefresh(() => load())
 .actor-state { margin: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
 .actor-state button { margin-left: 8px; color: var(--hg-accent); }
 
-/* 演员卡：横屏封面（和作品卡的竖屏错开，一眼分清「这是人」不是「这是作品」） */
-.actor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+/* 演员封面沿用原版竖屏立绘，名称与操作仍在卡片下方。 */
+.actor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .actor-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgb(255 255 255 / 2%); }
 .actor-card:hover { border-color: rgb(255 255 255 / 18%); }
-.actor-cover { position: relative; display: block; aspect-ratio: 4 / 3; overflow: hidden; background: #141416; }
+.actor-cover { position: relative; display: block; aspect-ratio: 3 / 4; overflow: hidden; background: #141416; }
 .actor-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .actor-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #141416 70%); color: var(--muted); font-size: 28px; }
 .actor-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 6px; background: rgb(0 0 0 / 65%); color: #f0c9e4; font-size: 10px; line-height: 16px; }

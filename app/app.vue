@@ -135,6 +135,47 @@ function onSearchKeydown(event: KeyboardEvent) {
 const accountOpen = ref(false)
 const accountWrapRef = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
+// 原型的点阵尾迹：仅指针移动时更新，760ms 后自然衰减；触摸与减少动态效果时跳过。
+const dotTrailRef = ref<HTMLElement | null>(null)
+const dotTrails: { el: HTMLElement, born: number }[] = []
+let dotTrailIndex = 0
+let lastDotTrail = 0
+let dotTrailFrame = 0
+function fadeDotTrails(now: number) {
+  let live = false
+  for (const trail of dotTrails) {
+    const age = now - trail.born
+    if (trail.born && age < 760) {
+      trail.el.style.opacity = String(0.9 * (1 - age / 760))
+      live = true
+    } else {
+      trail.el.style.opacity = '0'
+    }
+  }
+  dotTrailFrame = live ? requestAnimationFrame(fadeDotTrails) : 0
+}
+function onDotPointerMove(event: PointerEvent) {
+  if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const now = performance.now()
+  if (now - lastDotTrail < 28 || !dotTrailRef.value) return
+  lastDotTrail = now
+  const trail = dotTrails[dotTrailIndex++ % dotTrails.length]
+  if (!trail) return
+  const bounds = dotTrailRef.value.getBoundingClientRect()
+  const x = event.clientX - bounds.left - 120
+  const y = event.clientY - bounds.top - 120
+  trail.born = now
+  trail.el.style.transform = `translate(${x}px, ${y}px)`
+  trail.el.style.backgroundPosition = `${-x}px ${-y}px`
+  if (!dotTrailFrame) dotTrailFrame = requestAnimationFrame(fadeDotTrails)
+}
+onMounted(() => {
+  dotTrails.push(...Array.from(dotTrailRef.value?.children || [], el => ({ el: el as HTMLElement, born: 0 })))
+})
+onBeforeUnmount(() => {
+  if (dotTrailFrame) cancelAnimationFrame(dotTrailFrame)
+  dotTrails.length = 0
+})
 /**
  * 侧栏收起态（只留图标）。
  *
@@ -416,7 +457,20 @@ watch(() => route.fullPath, () => {
         </div>
       </aside>
 
-      <div class="hg-main">
+      <div
+        class="hg-main"
+        @pointermove="onDotPointerMove"
+      >
+        <div
+          ref="dotTrailRef"
+          class="hg-dot-trails"
+          aria-hidden="true"
+        >
+          <span
+            v-for="index in 18"
+            :key="index"
+          />
+        </div>
         <header class="hg-topbar">
           <div class="hg-topbar-left">
             <button

@@ -9,7 +9,8 @@
 - `AdultGateStatus` L14 {siteAdultContent, gateRequired, verified, minAge, adultMode, canUseAdult}
 
 ## app/composables/useApi.ts
-- `ApiEnvelope` L8 {code, message, data}
+- `ApiEnvelope` L8 {code, message, data, errorKey?, requestId?, details?, contractVersion?}
+- `PlatformErrorDetails` L22 {fieldErrors?, extra?} — 错误细节：与后端 httpx.Details 对应
 
 ## app/composables/useAppVersions.ts
 - `BackendVersionInfo` *type* L16 {service, version, commit, buildTime, startedAt, goVersion}
@@ -33,12 +34,12 @@
 - `CanvasSnapshot` L18 {graph}
 
 ## app/composables/useChatStudio.ts
-- `StudioStatus` *type* L25 {id, url, kind, width?, height?}
-- `StudioAsset` L27 {id, url, kind, width?, height?}
-- `RunMeta` L35 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
-- `StudioAttachment` L60 {name, url, assetId?, role?}
-- `StudioMessage` L73 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?}
-- `ChatStudio` *type* L1422 {provide}
+- `StudioStatus` *type* L26 {id, url, kind, width?, height?}
+- `StudioAsset` L28 {id, url, kind, width?, height?}
+- `RunMeta` L36 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
+- `StudioAttachment` L61 {name, url, assetId?, role?}
+- `StudioMessage` L74 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
+- `ChatStudio` *type* L1437 {provide}
 
 ## app/composables/useComposerDraft.ts
 - `ComposerDraft` L4 {prompt, mode, ratio, durationSeconds, uploadName, files, references?, file?, modelId?, modelChannel?, toolCode?, templateCode?}

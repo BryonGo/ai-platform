@@ -94,8 +94,92 @@ const toolCards = computed<ToolCard[]>(() => {
 const QUICK_COUNT = 8
 const quickTools = computed(() => toolCards.value.slice(0, QUICK_COUNT))
 
-/** 悬停卡：鼠标停在某一格上时显示「封面 + 名称 + 说明」。 */
+/** 悬停卡：鼠标停在某一格上（或键盘把焦点移到它上面）时显示「封面 + 名称 + 说明」。 */
 const hoverTool = ref<ToolCard | null>(null)
+
+/* 悬停卡是 .quick-grid 里**独立的一层**，不再挂在卡片内部。
+ *
+ * 挂卡片内部就只能用 `left: 50% + translateX(-50%)` 居中，而浮层宽 236px、窄视口
+ * （约 700-880px，此时侧栏已收起、快捷片贴着视口左边）下卡片列宽只有 152-184px，
+ * 于是最左/最右一格的浮层会顶出视口 —— hover 一下凭空多出一条横向滚动条。
+ * 现在位置由 placeQuickPop() 按原型的算法算好并夹进视口。 */
+const quickGridEl = ref<HTMLElement | null>(null)
+const quickPopEl = ref<HTMLElement | null>(null)
+const quickPopStyle = ref<Record<string, string>>({})
+/** 浮层当前锚定的那一格（非响应式，只在需要重量位置时读）。 */
+let quickPopAnchor: HTMLElement | null = null
+
+/** 与 .quick-pop 的 CSS 同源：离卡片 10px、离视口边缘至少 12px。 */
+const QUICK_POP_GAP = 10
+const QUICK_POP_MARGIN = 12
+
+/**
+ * 把悬停卡钉在那一格正上方，并**夹在视口内**。
+ *
+ * 原型是 `position: fixed` + `Math.max(12, Math.min(中心 - 半宽, innerWidth - 宽 - 12))`
+ * （hougong-oii.html 的 showQuickPop），这里照搬那套夹取，只把坐标换算到 .quick-grid 内部：
+ * 浮层因此**跟着内容一起滚**，不需要再监听 scroll 把它收起来。
+ */
+function placeQuickPop() {
+  const anchor = quickPopAnchor
+  const pop = quickPopEl.value
+  const grid = quickGridEl.value
+  if (!anchor || !pop || !grid) return
+  const chip = anchor.getBoundingClientRect()
+  const gridRect = grid.getBoundingClientRect()
+  const width = pop.offsetWidth
+  const height = pop.offsetHeight
+  // clientWidth 不含滚动条：用 innerWidth 会把「贴着滚动条」也算成越界
+  const viewWidth = document.documentElement.clientWidth
+  const left = Math.max(
+    QUICK_POP_MARGIN,
+    Math.min(chip.left + chip.width / 2 - width / 2, viewWidth - width - QUICK_POP_MARGIN)
+  )
+  const top = Math.max(QUICK_POP_MARGIN, chip.top - height - QUICK_POP_GAP)
+  quickPopStyle.value = {
+    left: `${Math.round(left - gridRect.left)}px`,
+    top: `${Math.round(top - gridRect.top)}px`
+  }
+}
+
+/** 打开悬停卡（鼠标进入与键盘聚焦共用一条路径，两者看到的信息完全一致）。 */
+async function openQuickPop(event: Event, tool: ToolCard) {
+  hoverTool.value = tool
+  quickPopAnchor = event.currentTarget as HTMLElement
+  // 等浮层真正渲染出来，量到的才是它的实际宽高（说明文字行数不定，写死高度会飘）
+  await nextTick()
+  placeQuickPop()
+}
+
+/** 收起悬停卡。 */
+function closeQuickPop() {
+  quickPopAnchor = null
+  hoverTool.value = null
+}
+
+/** 视口尺寸变了，夹取结果就过期了：还在悬停/聚焦时重量一次。 */
+function onQuickPopResize() {
+  if (quickPopAnchor) placeQuickPop()
+}
+
+/** 这一格是否已选中：视觉（active）与读屏（aria-pressed）取自同一个判断。 */
+function isQuickToolActive(tool: ToolCard) {
+  return studio.activeTool.value === tool.key.replace('tool:', '')
+}
+
+/**
+ * 当前选中的技能卡，给**没有 hover 的设备**用的可见说明（见模板里的 .quick-selected）。
+ *
+ * 说明文字以前只有悬停浮层这一个出口，而浮层在 `(hover: none)` 下是 display:none ——
+ * 触屏用户点选后看不到任何说明。这里按 studio.activeTool 反查目录（用 toolCards 而不是
+ * quickTools：从技能页带回的选中项可能不在这 8 格里，那时也该显示写的是哪个技能），
+ * 没选中或没写说明时返回 undefined，元素随之消失。
+ */
+const selectedToolCard = computed(() => {
+  const code = studio.activeTool.value
+  if (!code) return undefined
+  return toolCards.value.find(tool => tool.key === `tool:${code}`)
+})
 
 /** 点快捷片 = 选中该技能；输入框上方随即出现技能胶囊（配了模板的还会有模板）。 */
 function pickQuickTool(tool: ToolCard) {
@@ -125,6 +209,7 @@ onMounted(() => {
   void toolCatalog.ensure()
   void loadContinue()
   void loadExplore(true)
+  window.addEventListener('resize', onQuickPopResize, { passive: true })
 })
 
 /**
@@ -152,6 +237,7 @@ watch(loggedIn, (value) => {
 
 onBeforeUnmount(() => {
   observer?.disconnect()
+  window.removeEventListener('resize', onQuickPopResize)
 })
 
 /* ---------------- 继续创作 ---------------- */
@@ -444,12 +530,6 @@ useMediaAutoRefresh(() => Promise.all([
 <template>
   <div class="home">
     <!-- 创作区 -->
-    <!-- 点阵背景：和原型同一层（body 级那套在 app 壳里没有，这里给首页单独铺一层）。 -->
-    <div
-      class="home-dots"
-      aria-hidden="true"
-    />
-
     <section
       class="hero"
       aria-labelledby="hero-title"
@@ -479,10 +559,11 @@ useMediaAutoRefresh(() => Promise.all([
 
       <!-- 技能快捷片：**紧贴输入框正下方**（不是另起一个带标题的区块），
            上排 5 个 + 下排 3 个 + 第 9 格一个跳转箭头 → 技能页。
-           鼠标停在哪一格就浮一张「封面 + 名称 + 说明」的卡。
+           鼠标停在哪一格、或键盘聚焦到哪一格，就浮一张「封面 + 名称 + 说明」的卡。
            为什么不用 grid：grid 做不到「不满的那一行居中」，这里必须 flex。 -->
       <div
         v-if="quickTools.length"
+        ref="quickGridEl"
         class="quick-grid"
       >
         <button
@@ -490,13 +571,15 @@ useMediaAutoRefresh(() => Promise.all([
           :key="tool.key"
           type="button"
           class="quick-chip"
-          :class="{ active: studio.activeTool.value === tool.key.replace('tool:', '') }"
+          :class="{ active: isQuickToolActive(tool) }"
           :style="{ '--tint': tool.tint }"
+          :aria-pressed="isQuickToolActive(tool)"
+          :aria-describedby="tool.summary ? `quick-summary-${tool.key.replace('tool:', '')}` : undefined"
           @click="pickQuickTool(tool)"
-          @mouseenter="hoverTool = tool"
-          @mouseleave="hoverTool = null"
-          @focus="hoverTool = tool"
-          @blur="hoverTool = null"
+          @mouseenter="openQuickPop($event, tool)"
+          @mouseleave="closeQuickPop"
+          @focus="openQuickPop($event, tool)"
+          @blur="closeQuickPop"
         >
           <img
             v-if="tool.cover"
@@ -515,22 +598,6 @@ useMediaAutoRefresh(() => Promise.all([
             />
           </span>
           <span class="quick-name">{{ tool.label }}</span>
-
-          <!-- 悬停卡挂在这一格里面：absolute + bottom:100%，
-               就近定位祖先就是这格，不用 JS 算坐标（也就不会在滚动时飘）。 -->
-          <span
-            v-if="hoverTool?.key === tool.key"
-            class="quick-pop"
-            aria-hidden="true"
-          >
-            <img
-              v-if="tool.cover"
-              :src="tool.cover"
-              alt=""
-            >
-            <strong>{{ tool.label }}</strong>
-            <small>{{ tool.summary }}</small>
-          </span>
         </button>
 
         <NuxtLink
@@ -543,7 +610,54 @@ useMediaAutoRefresh(() => Promise.all([
             aria-hidden="true"
           />
         </NuxtLink>
+
+        <!-- 技能说明的等价副本：浮层只在 :hover 出现，触屏上整套 (hover: none) 规则把它藏了，
+             只留一个按钮名等于把说明丢掉。这里给读屏/触屏一份（由卡片的 aria-describedby 引用；
+             放在卡片外面，免得这段文字被算进按钮名）。
+             为什么要这样而不是直接读浮层：浮层是 aria-hidden 的装饰层，且挂在按钮里时
+             其文字会被拼进 accessible name。 -->
+        <template
+          v-for="tool in quickTools"
+          :key="`desc-${tool.key}`"
+        >
+          <span
+            v-if="tool.summary"
+            :id="`quick-summary-${tool.key.replace('tool:', '')}`"
+            class="hg-sr"
+          >{{ tool.summary }}</span>
+        </template>
+
+        <!-- 悬停卡：整排共用一层，由 placeQuickPop() 定位并夹在视口内（见脚本里的说明）。 -->
+        <span
+          v-if="hoverTool"
+          ref="quickPopEl"
+          class="quick-pop"
+          :style="quickPopStyle"
+          aria-hidden="true"
+        >
+          <img
+            v-if="hoverTool.cover"
+            :src="hoverTool.cover"
+            alt=""
+          >
+          <strong>{{ hoverTool.label }}</strong>
+          <small>{{ hoverTool.summary }}</small>
+        </span>
       </div>
+
+      <!-- 无 hover 设备（触屏）的可见说明：浮层在上面那条 (hover: none) 规则里被藏了，
+           点选后屏幕上就只剩一个高亮的按钮，看不到这个技能是干什么的。
+           只在 CSS 里对 `(hover: hover)` 隐藏 —— 桌面/键盘用户已经有浮层，不必再来一行。
+           读屏侧这段说明已由卡片的 aria-describedby 念过一次，这里 aria-hidden 去重。 -->
+      <p
+        v-if="selectedToolCard && selectedToolCard.summary"
+        class="quick-selected"
+        :style="{ '--tint': selectedToolCard.tint }"
+        aria-hidden="true"
+      >
+        <strong>{{ selectedToolCard.label }}</strong>
+        <span>{{ selectedToolCard.summary }}</span>
+      </p>
     </section>
 
     <!-- 继续创作 -->
@@ -599,9 +713,8 @@ useMediaAutoRefresh(() => Promise.all([
           :key="item.id"
           class="hg-card continue-card"
         >
-          <!-- 固定 16:9 框，框不随素材变形；素材完整缩放显示，比例对不上的部分用
-               同一张图的模糊层补背景（而不是留黑边，也不是把卡片撑长）。 -->
-          <div class="hg-media r16x9">
+          <!-- 原站作品以竖版为主，固定 3:4 框；视频仍完整等比显示。 -->
+          <div class="hg-media r3x4">
             <!-- 视频作品：没有封面图，进视口静音循环播；首帧用 #t=0.1 垫着，
                  免得自动播放起效前是一块黑框。 -->
             <video
@@ -727,7 +840,7 @@ useMediaAutoRefresh(() => Promise.all([
           :key="work.id"
           class="hg-card explore-card"
         >
-          <div class="hg-media r4x5">
+          <div class="hg-media r3x4">
             <!-- 视频作品：进视口静音循环播（后端 kind=video 时才有 videoUrl）。
                  首帧用 #t=0.1 垫着，自动播放被拒/还没进视口时也不是黑框。 -->
             <video
@@ -850,6 +963,7 @@ useMediaAutoRefresh(() => Promise.all([
 .home {
   display: grid;
   gap: 46px;
+  padding-top: 72px;
   /* 宽屏（1920 等）居中并限宽，避免卡片被拉长变形 */
   width: 100%;
   max-width: 1400px;
@@ -858,20 +972,7 @@ useMediaAutoRefresh(() => Promise.all([
 
 /* ---------- 创作区 ---------- */
 
-/* 创作区几何全部来自参考图实测（1003px 视口）：
-   标题 y101-168（44px）、输入框 x190-890 / y218-406（700x188）、
-   上传框 78x90、工具条 y350-390、生成按钮在框外右侧 x900-980 / y348-384。 */
-.home { position: relative; isolation: isolate; }
-/* 点阵背景：原型 .dot-background 的同一套（21px 网格 + 中心径向渐隐蒙版） */
-.home-dots {
-  position: fixed;
-  inset: 0 0 0 200px;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(circle, #ffffffb3 0 0.6px, transparent 0.7px);
-  background-size: 21px 21px;
-  mask-image: radial-gradient(ellipse 180vmin 90vmin at 50% 50%, #0000008f 0%, #0000005c 46%, #0003 56%, transparent 86%);
-}
+/* 点阵背景由 app 壳统一绘制，首页不另叠一层。 */
 .hero {
   width: min(calc(100% - clamp(32px, 5vw, 88px)), 800px);
   margin: 0 auto;
@@ -965,18 +1066,14 @@ useMediaAutoRefresh(() => Promise.all([
   font-size: 12px;
 }
 
-/* ---------------- 技能快捷片 ----------------
- * flex + 按内容宽度收缩：文字短的卡片窄、文字长的卡片宽，不留整格空白，
- * 整行靠 justify-content:center 居中换行。
- */
+/* ---------------- 技能快捷片：等宽五列，不足一行的卡片居中 ---------------- */
 .quick-grid {
-  /* 与输入框**同宽同位置**：输入框是 .composer-row 的 min(1180px, 92%) + margin auto，
-     快捷片跟着它走，否则会铺满整个 hero（比输入框宽出一截，看着像另一块东西）。 */
+  /* 与输入框同宽同位置。 */
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  width: min(1180px, 92%);
+  width: 100%;
   margin: 12px auto 0;
   /* 把整排卡片 + 悬停浮层提成一个比输入框（z-index:1）更高的层，
      否则 hover 时 .quick-chip 的 translateY 会新建堆叠上下文，把浮层关在输入框下面 */
@@ -989,9 +1086,8 @@ useMediaAutoRefresh(() => Promise.all([
   display: flex;
   align-items: center;
   gap: 8px;
-  /* 按内容宽度收缩：文字短卡片就窄，不再占满 1/5 留下大片空白 */
-  width: auto;
-  flex: 0 0 auto;
+  width: calc((100% - 32px) / 5);
+  flex: 0 0 calc((100% - 32px) / 5);
   height: 40px;
   padding: 4px 12px 4px 6px;
   border: 1px solid color-mix(in srgb, var(--tint, #fff) 30%, transparent);
@@ -1036,9 +1132,7 @@ useMediaAutoRefresh(() => Promise.all([
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 跳转格：**不占一整格宽**、也**不带按钮框**。原来它和别的格一样宽（约 154px）
- * 却只画 16px 的箭头 —— 既离上一张远、右边又多出一片空白，看起来「左右留边不一样」。
- * 收窄到 48px 后就紧贴最后一张，整行左右留边也就相等了。 */
+/* 第九格只放跳转箭头，随第二排一起居中。 */
 .quick-jump {
   display: flex;
   align-items: center;
@@ -1055,27 +1149,48 @@ useMediaAutoRefresh(() => Promise.all([
 .quick-jump:hover {
   color: var(--hg3-ink);
 }
+/* 悬停卡：left/top 由脚本写（placeQuickPop 夹进视口），不再是 CSS 居中 —— 见脚本里的说明。
+   容器是 .quick-grid（position: relative），所以浮层跟着内容一起滚。 */
 .quick-pop {
   position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
+  top: 0;
+  left: 0;
   z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
   width: 236px;
+  /* 兜底：视口比浮层还窄时不撑出横向滚动条（脚本量到的宽也会跟着变小） */
+  max-width: calc(100vw - 24px);
   padding: 8px;
   border: 1px solid var(--hg3-line-strong);
   border-radius: 14px;
   background: rgb(26 26 26 / 95%);
   box-shadow: 0 12px 32px rgb(0 0 0 / 80%);
-  transform: translateX(-50%);
   pointer-events: none;
+}
+/* 轻量入场：只做 6px 上浮 + 淡入，不做缩放/回弹（React Bits 那类细腻反馈的最小版）。
+   元素是 v-if 新建的，每次打开都会重放一次。 */
+@media (prefers-reduced-motion: no-preference) {
+  .quick-pop {
+    animation: quick-pop-in 140ms ease-out;
+  }
+}
+@keyframes quick-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .quick-pop img {
   display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
+  width: min(100%, 150px);
+  aspect-ratio: 3 / 4;
   border-radius: 9px;
   object-fit: cover;
 }
@@ -1088,9 +1203,36 @@ useMediaAutoRefresh(() => Promise.all([
   line-height: 17px;
   color: var(--hg3-muted);
 }
-/* 触屏没有 hover，浮层只会挡住自己 */
+/* 触屏没有 hover，浮层只会挡住自己。说明的等价信息见卡片里的 .hg-sr（aria-describedby）。 */
 @media (hover: none) {
   .quick-pop { display: none; }
+}
+/* 触屏点选后的可见说明（模板里的 .quick-selected）：沿用该技能自己的色底，
+   与快捷片同一套变量；这行只在没有 hover 的设备上出现。 */
+.quick-selected {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px auto 0;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--tint, #fff) 30%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tint, #fff) 13%, #141414);
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--hg3-muted);
+}
+.quick-selected strong {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hg3-ink);
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .quick-selected { display: none; }
 }
 .section {
   position: relative;
@@ -1365,8 +1507,10 @@ useMediaAutoRefresh(() => Promise.all([
   text-align: center;
 }
 
-/* 参考图在 1003px 视口下就是 5 列工具 / 4 列探索 / 3 列继续创作，
-   因此断点压到 900 以下才降列，避免比效果图更早换行。 */
+/* 与原型一致：宽屏五列快捷片，窄屏依次减列。 */
+@media (max-width: 800px) {
+  .quick-chip { flex-basis: calc((100% - 24px) / 4); width: calc((100% - 24px) / 4); }
+}
 @media (max-width: 900px) {
   .explore-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1375,13 +1519,47 @@ useMediaAutoRefresh(() => Promise.all([
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (max-width: 600px) {
+  .quick-chip { flex-basis: calc((100% - 8px) / 2); width: calc((100% - 8px) / 2); }
+}
 @media (max-width: 640px) {
-  /* 手机端两列 9:16 竖版封面（交互图面板 02） */
+  .home { padding-top: 95px; }
+  /* 手机端两列竖版封面 */
   .explore-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .continue-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 触屏：粗指针下没有 hover 也没有精确落点，28px / 24px 的角标按钮按不准
+   （WCAG 2.5.8 要求点击目标 ≥24px，Apple HIG 建议 44px）。这里放大到 34px，
+   图标本身不缩放，视觉重量不变；页签同时加高内边距，让整条更好按。 */
+@media (pointer: coarse) {
+  .media-zoom {
+    width: 34px;
+    height: 34px;
+  }
+  .more-button {
+    width: 34px;
+    height: 34px;
+  }
+  .explore-tabs button {
+    padding: 6px 0 12px;
+  }
+}
+
+/* 用户要求减少动态效果：颜色/边框反馈保留，位移与入场动画关掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .quick-chip,
+  .quick-jump,
+  .media-zoom,
+  .hg-actions {
+    transition: none;
+  }
+  .quick-chip:hover {
+    transform: none;
   }
 }
 </style>

@@ -1502,7 +1502,7 @@ useMediaAutoRefresh(() => reload())
 /* ---------- 网格 ---------- */
 .assets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 14px;
 }
 .asset-card {
@@ -1527,7 +1527,7 @@ useMediaAutoRefresh(() => reload())
 }
 .asset-card__media {
   position: relative;
-  aspect-ratio: 1;
+  aspect-ratio: 3 / 4;
   background: #1b1d21;
   cursor: zoom-in;
 }
