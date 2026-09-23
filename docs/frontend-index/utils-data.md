@@ -108,7 +108,7 @@
 
 ## app/data/hougong-home.ts
 - `const TOOL_TABS: { id: 'all' | ToolKind, label: string }[] = [` L16
-- `const EXPLORE_CATEGORIES = ['推荐', '动画动漫', '影视创作', '产品展示'] as const` L62
+- `const EXPLORE_CATEGORIES = ['推荐', '动画动漫', '影视创作', '产品展示'] as const` L61
 
 ## app/data/image-options.ts
 - `const RATIO_OPTIONS: RatioOption[] = [` L14

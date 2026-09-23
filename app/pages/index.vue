@@ -393,8 +393,8 @@ async function loadContinue() {
 
 /* ---------------- 探索灵感（无限滚动） ---------------- */
 
-// 探索作品与热门标签本轮为显式 mock（交接文档第 2 节允许），
-// 不与真实作品混排；后端探索流契约落地后只需替换 loadExplore 的取数。
+// 探索作品**只有真实数据**：取数走后端 `listWorksFeed(scope=explore)`（全站已发布），
+// 没有 mock 条目、也不和示例作品混排 —— 取不到就整块不渲染（模板的 v-if 兜着）。
 const exploreCategory = ref<ExploreCategory>('推荐')
 const exploreItems = ref<ExploreWork[]>([])
 const explorePage = ref(1)
@@ -492,11 +492,7 @@ onMounted(() => {
 })
 
 function remixWork(work: ExploreWork) {
-  if (work.mock) {
-    // mock 作品没有真实提示词，明确提示而不是伪造一条真实生成
-    notice.value = '这是展示用示例作品，暂不能创作同款。'
-    return
-  }
+  // 作品流里已经没有 mock 条目（一律来自后端「全站已发布」），不必再分叉提示。
   navigateTo(`/create?remix=${encodeURIComponent(work.id)}`)
 }
 

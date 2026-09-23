@@ -163,9 +163,9 @@
 
 ## app/data/hougong-home.ts
 - `ToolKind` *type* L14 {id}
-- `ExploreWork` L23 {id, title, author, avatar?, cover, category, tags?, badge?, badgeBaked?, duration?, kind?, videoUrl?, mock}
-- `ContinueItem` L46 {id, title, cover, status, statusText, compareBefore?, done?, kind?, videoUrl?}
-- `ExploreCategory` *type* L63 typeof EXPLORE_CATEGORIES[number]
+- `ExploreWork` L23 {id, title, author, avatar?, cover, category, tags?, badge?, badgeBaked?, duration?, kind?, videoUrl?}
+- `ContinueItem` L45 {id, title, cover, status, statusText, compareBefore?, done?, kind?, videoUrl?}
+- `ExploreCategory` *type* L62 typeof EXPLORE_CATEGORIES[number]
 
 ## app/data/image-options.ts
 - `RatioOption` L5 {value, label, shape, size1k} — 画幅与分辨率选项（对齐即梦：8 档比例 + 1K/2K）

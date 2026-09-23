@@ -40,7 +40,6 @@ export interface ExploreWork {
   kind?: 'image' | 'video'
   /** 视频作品的播放地址（kind === 'video' 时才有）。 */
   videoUrl?: string
-  mock: boolean
 }
 
 export interface ContinueItem {

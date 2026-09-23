@@ -36,7 +36,6 @@ export function toExploreWork(work: PublicationWork): ExploreWork {
     category: '推荐',
     tags: (work.tags || []).map(tag => tag.name),
     badge,
-    badgeBaked: false,
-    mock: false
+    badgeBaked: false
   }
 }
