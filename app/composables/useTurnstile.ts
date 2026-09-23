@@ -69,6 +69,24 @@ function loadScript(): Promise<void> {
 // turnstileAction 与后台控制台使用同一个 action 名。
 const turnstileAction = 'turnstile-spin-v2'
 
+// turnstileErrorText Cloudflare 客户端错误码 → 人话。
+//
+// 为什么必须显示出来：出问题时 widget 只是**空着**（容器在、没有 iframe），
+// 用户看到的是自己前端那句「请先完成人机验证」，运营完全无从下手。
+// 2026-09-23 线上就是 110200（域名未授权）卡了很久才发现 —— 错误码只有 console 里有。
+// 码表来源：https://developers.cloudflare.com/turnstile/troubleshooting/client-side-errors/error-codes/
+const turnstileErrorText: Record<string, string> = {
+  110100: 'sitekey 无效',
+  110110: 'sitekey 不存在',
+  110200: '当前域名未在 Cloudflare Turnstile 后台授权（Hostname Management）',
+  110600: '验证超时，请刷新重试',
+  110620: '交互超时，请重新验证',
+  200100: '浏览器时钟或代理缓存异常',
+  200500: '验证框加载失败（challenges.cloudflare.com 可能被拦截）',
+  400020: 'sitekey 无效',
+  400070: 'sitekey 已被停用'
+}
+
 export function useTurnstile() {
   /** host 绑到容器元素上；widget 渲染进它里面。 */
   const host: Ref<HTMLElement | null> = ref(null)
@@ -103,8 +121,14 @@ export function useTurnstile() {
       'expired-callback': () => {
         token.value = ''
       },
-      'error-callback': () => {
+      'error-callback': (code?: string | number) => {
         token.value = ''
+        // 把 Cloudflare 的错误码翻成人话挂到 `error` 上：出问题时用户/运营能直接看到原因。
+        const key = String(code ?? '')
+        const hint = turnstileErrorText[key]
+        error.value = hint
+          ? `人机验证不可用：${hint}（Cloudflare ${key}）`
+          : `人机验证不可用（Cloudflare ${key || '未知错误'}）`
       }
     })
     el.setAttribute('data-widget-id', String(widgetId))
