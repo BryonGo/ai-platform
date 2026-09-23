@@ -16,6 +16,18 @@ const showPassword = ref(false)
 const pending = ref(false)
 const error = ref('')
 
+// 站点要求人机验证时，这个弹窗同样是登录/注册入口 —— 少了它，从站内点「登录」
+// 发出的请求就不带 cf-turnstile-response，后端必拒（2026-09-23 线上就是这么挂的：
+// /auth/login 页修好了，但真正在用的这个弹窗漏了）。
+const {
+  host: turnstileHost,
+  required: turnstileRequired,
+  token: turnstileToken,
+  error: turnstileError,
+  init: initTurnstile,
+  reset: resetTurnstile
+} = useTurnstile()
+
 const heading = computed(() => intent.value.reason === 'publish' ? '登录后继续发布' : '登录后继续创作')
 const emblemSrc = '/mock/home/emblem.png'
 
@@ -35,6 +47,8 @@ watch(open, (value) => {
   if (value) {
     reset()
     tab.value = intent.value.mode ?? 'login'
+    // widget 容器在 v-if="open" 里面，要等 DOM 出来才能渲染。
+    void nextTick(initTurnstile)
   }
 })
 
@@ -57,12 +71,17 @@ async function submitLogin() {
     error.value = '请输入邮箱与密码'
     return
   }
+  if (turnstileRequired.value && !turnstileToken.value) {
+    error.value = '请先完成人机验证'
+    return
+  }
   pending.value = true
   try {
-    await hgApi.login(email.value.trim(), password.value)
+    await hgApi.login(email.value.trim(), password.value, turnstileToken.value)
     afterAuth()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '登录失败，请检查账号与密码'
+    resetTurnstile()
   } finally {
     pending.value = false
   }
@@ -83,15 +102,21 @@ async function submitRegister() {
     error.value = '请先阅读并同意服务条款与隐私政策'
     return
   }
+  if (turnstileRequired.value && !turnstileToken.value) {
+    error.value = '请先完成人机验证'
+    return
+  }
   pending.value = true
   try {
     await hgApi.register({
       email: email.value.trim(),
-      password: password.value
+      password: password.value,
+      turnstileToken: turnstileToken.value
     })
     afterAuth()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '注册失败，请稍后重试'
+    resetTurnstile()
   } finally {
     pending.value = false
   }
@@ -289,6 +314,21 @@ async function submitRegister() {
             <span>当前输入已在本页面保留</span>
           </div>
         </form>
+
+        <!-- Turnstile widget 挂在两个表单**之外**：切换登录/注册页签时 v-if/v-else 会重建
+             表单内部节点，挂里面的话 widget 会跟着被卸载，用户就得重过一遍验证。 -->
+        <div
+          v-if="turnstileRequired"
+          ref="turnstileHost"
+          class="turnstile-host"
+        />
+        <p
+          v-if="turnstileError"
+          class="hg-auth-error"
+          role="alert"
+        >
+          {{ turnstileError }}
+        </p>
       </section>
     </div>
   </Teleport>
