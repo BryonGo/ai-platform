@@ -90,6 +90,8 @@ interface ToolOutput {
    *  视频资产的 width/height 是 0，只判尺寸会把视频当成 0×0 的图片，
    *  结果区一片空白（实测：文字转视频出片了，前台却看不到）。 */
   mime: string
+  /** 作用域：temp=临时生成产物（默认）/ permanent=已保存到我的资产。 */
+  scope?: 'temp' | 'permanent'
 }
 interface ToolRun {
   id: string
@@ -105,6 +107,57 @@ const notice = ref('')
 const sourceUrl = computed(() => slots[0]!.preview)
 /** 最近一次成功的产物（右侧主展示位）。 */
 const latest = computed(() => runs.value.find(r => r.outputs.length))
+
+/**
+ * 「保存到我的资产」的状态。
+ *
+ * 生成产物默认是临时的（scope=temp）；这里按产物 id 记录保存态：
+ *   · savedIds  —— 已永久（后端返回 permanent，或本次保存成功）；
+ *   · savingIds —— 正在保存（按钮显示"保存中…"）。
+ * 刷新页面后由 resolveOutputs 从 assetSelectByIds 返回的 scope 重建 savedIds，
+ * 所以「已保存」态不会因为刷新而丢。
+ */
+const savedIds = ref<Record<string, boolean>>({})
+const savingIds = ref<Record<string, boolean>>({})
+
+/** latest 的产物是否全部已保存（全部已保存则按钮置灰）。 */
+const allOutputsSaved = computed(() =>
+  !!latest.value && latest.value.outputs.length > 0 && latest.value.outputs.every(o => savedIds.value[o.id])
+)
+/** latest 是否有产物正在保存。 */
+const anyOutputSaving = computed(() =>
+  !!latest.value && latest.value.outputs.some(o => savingIds.value[o.id])
+)
+
+/**
+ * 把结果区当前产物**全部**保存到「我的资产」：一次一个接口、逐个显示保存中。
+ *
+ * 只改服务端 scope（幂等），不重新上传、不重新生成；失败的产物保留临时态并提示，
+ * 成功的即时置为已保存，用户可单独重试失败的（再点一次只会处理未保存的）。
+ */
+async function saveOutputs() {
+  const outs = latest.value?.outputs || []
+  const todo = outs.filter(o => !savedIds.value[o.id] && !savingIds.value[o.id])
+  if (!todo.length) return
+  notice.value = ''
+  let failed = 0
+  for (const out of todo) {
+    savingIds.value = { ...savingIds.value, [out.id]: true }
+    try {
+      const asset = await api.saveAsset(out.id)
+      const scope = asset?.scope || 'permanent'
+      savedIds.value = { ...savedIds.value, [out.id]: scope !== 'temp' }
+      out.scope = scope
+    } catch {
+      failed++
+    } finally {
+      const next = { ...savingIds.value }
+      delete next[out.id]
+      savingIds.value = next
+    }
+  }
+  notice.value = failed ? `有 ${failed} 个产物保存失败，可再点一次重试` : '已保存到我的资产'
+}
 
 /** 当前玩法自己的封面（后台在模板上填了才有）。 */
 const templateCover = computed(() => templates.value.find(t => t.code === template.value)?.cover || '')
@@ -358,7 +411,7 @@ async function submit() {
   } catch (e) {
     const reason = e instanceof Error ? e.message : '生成失败'
     notice.value = reason
-    // 任务从未创建（余额不足 / 工具被停用 / 缺图）：不留假卡片
+    // 任务从未创建（金币不足 / 工具被停用 / 缺图）：不留假卡片
     const first = runs.value[0]
     if (first && !first.id) {
       runs.value.shift()
@@ -403,9 +456,14 @@ async function resolveOutputs(ids: string[]) {
     return choices
       .map(({ asset }) => ({
         id: asset.id, url: asset.url, mime: String(asset.mimeType || ''),
-        width: asset.width, height: asset.height
+        width: asset.width, height: asset.height, scope: asset.scope
       }))
       .filter(a => !!a.url)
+      .map((a) => {
+        // 已是永久的产物（保存过 / 历史永久资产）：重建「已保存」态，刷新不丢。
+        if (a.scope === 'permanent') savedIds.value = { ...savedIds.value, [a.id]: true }
+        return a
+      })
   } catch {
     return []
   }
@@ -544,7 +602,7 @@ useMediaAutoRefresh(async () => {
 
         <template v-if="needsImage">
           <!-- 能力边界写在传图之前。等出图了再说"不支持男性"就晚了：
-               用户已经等了一两分钟、积分也扣了，最后拿到一张废图。 -->
+               用户已经等了一两分钟、金币也扣了，最后拿到一张废图。 -->
           <div
             v-if="restriction"
             class="limit-note"
@@ -701,7 +759,7 @@ useMediaAutoRefresh(async () => {
         </div>
 
         <div class="cost-row">
-          <span>所需积分</span>
+          <span>所需金币</span>
           <strong v-if="cost > 0">{{ cost }}</strong>
           <span
             v-else
@@ -758,6 +816,16 @@ useMediaAutoRefresh(async () => {
             <span class="result-meta">
               {{ outputLabel(latest.outputs[0]!) }}
             </span>
+            <button
+              v-if="latest.outputs.length"
+              type="button"
+              class="link-btn"
+              :disabled="anyOutputSaving || allOutputsSaved"
+              :title="allOutputsSaved ? '这些产物已在「我的资产」里' : '把这些产物转为永久素材'"
+              @click="saveOutputs"
+            >
+              {{ allOutputsSaved ? '已保存到我的资产' : (anyOutputSaving ? '保存中…' : '保存到我的资产') }}
+            </button>
             <button
               type="button"
               class="link-btn"
@@ -1001,6 +1069,7 @@ useMediaAutoRefresh(async () => {
 .form-error { margin: 0 0 10px; font-size: 13px; color: #f87171; }
 .submit { width: 100%; }
 .link-btn { padding: 0; border: 0; background: transparent; color: var(--hg-muted); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.link-btn:disabled { color: var(--hg-faint); text-decoration: none; cursor: default; }
 .tool-result { min-height: 420px; padding: 20px; border: 1px solid var(--hg-line); border-radius: 12px; background: var(--hg-card); display: flex; flex-direction: column; }
 .result-empty, .result-pending { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--hg-muted); text-align: center; }
 .result-empty strong, .result-pending strong { color: var(--ink); font-size: 15px; }

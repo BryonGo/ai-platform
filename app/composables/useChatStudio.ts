@@ -31,6 +31,11 @@ export interface StudioAsset {
   kind: 'image' | 'video'
   width?: number
   height?: number
+  /**
+   * 作用域：temp=临时生成产物 / permanent=已保存到「我的资产」（缺省视为已保存）。
+   * 由 assetSelectByIds 带回，产物面板据此重建「已保存」态，刷新/切会话不丢。
+   */
+  scope?: 'temp' | 'permanent'
 }
 
 export interface RunMeta {
@@ -41,7 +46,8 @@ export interface RunMeta {
   modelId: string
   modelName: string
   credits: number | null
-  unit: '积分' | '余额'
+  /** 用户可见计价单位。全环境统一 coin_wallet 后只有「金币」（见 useModelCatalog.ModelChannel） */
+  unit: '金币'
   prompt: string
   characterName: string
   /** 用了哪个创作工具/模板（建任务时定稿，任务卡回显用；没选工具时为空）。 */
@@ -579,6 +585,9 @@ export function createChatStudio() {
    * 任务 → 展示资产。
    * 用 assetSelectByIds **按资产 id** 解析展示地址（交接文档：不靠扫有限列表找历史产物），
    * 并保留**全部**产物而不是第一张。
+   *
+   * 同时带回 `scope`：产物默认临时（temp），用户点过「保存到我的资产」后是 permanent。
+   * 面板的「已保存」态读它，所以刷新页面后按钮仍显示已保存。
    */
   async function resolveAssets(assetIds: string[]): Promise<StudioAsset[]> {
     const ids = assetIds.filter(Boolean)
@@ -591,7 +600,8 @@ export function createChatStudio() {
           url: asset.url,
           kind: (asset.mimeType || '').startsWith('video/') ? 'video' as const : 'image' as const,
           width: asset.width,
-          height: asset.height
+          height: asset.height,
+          scope: asset.scope
         }))
         .filter(item => !!item.url)
     } catch {
@@ -705,7 +715,7 @@ export function createChatStudio() {
             modelId: '',
             modelName: '',
             credits: task.billedCredits ?? null,
-            unit: '积分',
+            unit: '金币',
             prompt: snap.prompt,
             characterName: '',
             // 历史任务快照里没有分级信息（分级是**作品**属性，不是任务属性），
@@ -1031,7 +1041,7 @@ export function createChatStudio() {
       modelId: modelId.value,
       modelName: selectedModel.value?.name || '',
       credits: quote.value?.amount ?? null,
-      unit: quote.value?.unit ?? '积分',
+      unit: quote.value?.unit ?? '金币',
       prompt: text,
       characterName: selectedCharacter.value?.name || '',
       toolName: toolInfo.value?.name || '',
@@ -1099,7 +1109,7 @@ export function createChatStudio() {
       meta
     })
     messages.value.push(userMessage, taskMessage)
-    // 提交前留一份草稿：建任务失败（内容守卫拦截 / 积分不足 / 参数不支持 / 网络失败）时
+    // 提交前留一份草稿：建任务失败（内容守卫拦截 / 金币不足 / 参数不支持 / 网络失败）时
     // 要还回输入框。以前是提交前直接 clearPrompt()，于是失败后用户点发送只会看到
     // 「还没输入内容」——而内容守卫恰恰要求他"修改后重试"，原文已经被删掉了，
     // 等于让他把几千字重新粘一遍。
@@ -1180,11 +1190,11 @@ export function createChatStudio() {
       await settle(taskMessage, created, created2.status)
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : '生成失败'
-      // 积分不足是「用户自己能解决」的一类失败：不套「创建任务失败：」这个技术前缀，
+      // 金币不足是「用户自己能解决」的一类失败：不套「创建任务失败：」这个技术前缀，
       // 给一句人话 + 直达充值入口（message 已由 useApi 按 errorKey 翻成中文）。
       const outOfCredits = e instanceof PlatformApiError && e.errorKey === 'INSUFFICIENT_CREDITS'
       if (created === null) {
-        // 任务从未创建（余额不足 / 参数不支持 / 内容拦截 / 未登录）：不留「预占 → 失败」的假卡片
+        // 任务从未创建（金币不足 / 参数不支持 / 内容拦截 / 未登录）：不留「预占 → 失败」的假卡片
         messages.value = messages.value.filter(item => item.id !== taskMessage.id)
         if (outOfCredits) {
           pushAssistant(reason, { label: '去充值', to: '/wallet' })

@@ -538,7 +538,21 @@ export interface Invite {
 }
 
 export interface EconomyWallet {
+  /**
+   * 金币余额（后端 coin_wallet.balance）。
+   *
+   * 2026-09-23 起旧的 credit_wallet（积分）与 platform_balance_wallet（余额分）已并入同一
+   * coin_wallet（1 元 = 100 分 = 1000 金币），所以这个字段现在就是用户可见的**金币数**；
+   * 字段名 credits 是历史契约，不改。
+   */
   credits: number
+  /**
+   * 旧「余额(分)」字段。后端为不打断前端协议仍下发，实测恒为 0（见 aicodcms
+   * platform/economy/service 的 Wallet 注释），待后端改名/移除后再同步。
+   *
+   * **仅为协议保留**：钱包页「消费余额（元）」卡片已于 2026-09-23 删除，UI 已不再展示；
+   * 类型与响应字段保留是为了不破坏后端契约，前端不要再据此渲染。
+   */
   balanceCents: number
   nextExpiry: string
 }

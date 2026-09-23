@@ -118,7 +118,7 @@
 - 用: `useChatStudio` · `useHougongApi`
 - 本文件声明 9 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `close` L18 · `onKeydown` L22 · `download` L29 · `continueEdit` L44 · `toVideo` L52
 
-### HgAuthDialog — app/components/HgAuthDialog.vue · 512 行
+### HgAuthDialog — app/components/HgAuthDialog.vue · 515 行
 未登录时的登录弹窗（效果图 homepage-interactions 面板 04）
 - props: —
 - v-model: `open` · 用: `useHougongApi` · `useAuthDialog` · `useTurnstile`

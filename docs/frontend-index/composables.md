@@ -358,8 +358,8 @@
 - `token` · L98 · ref `ref` — token 是 Cloudflare 回调给的凭据，提交时放进 cf-turnstile-response
 - `error` · L100 · ref `ref` — error 是非阻塞提示（脚本加载失败等），不挡页面其它内容
 - `siteKey` · L102 · ref `ref` — siteKey 供模板绑定 `data-sitekey`（与后台同样的声明式写法）
-- `init()` · L138 · `/pub/verification/config`
-- `reset()` · L158 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
+- `init()` · L167 · `/pub/verification/config`
+- `reset()` · L187 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
 
 ## app/composables/useVersionWatcher.ts
 - 导出函数/常量：`useUpdateBlocker(fn: () => boolean)` L25 · `useVersionWatcher()` L46

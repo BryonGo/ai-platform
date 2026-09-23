@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { SessionItem } from '~/composables/useHougongApi'
-import { FEATURES } from '~/config/features'
 import AppAgeGate from './components/AppAgeGate.vue'
 
 useHead({
@@ -44,8 +43,8 @@ const emblemSrc = '/mock/home/emblem.png'
  * 三处改名与两处撤下的理由：
  *   - 「全部工具」→「技能」：前台叫法是"技能"，和 /skill 的语义一致（路由暂时仍走 /effects）。
  *   - 「素材」→「资产」：页内本来就是"资产/素材"混用，统一成资产。
- *   - 「画布」撤下入口（`canvasFeatureEnabled()` 生产为关），/canvas 路由与页面都还在，
- *     直接敲 URL 依旧可用（另见 middleware/canvas-gate.global.ts）。
+  *   - 「画布」撤下侧栏入口（`canvasFeatureEnabled()` 生产为关），/canvas 路由与页面都还在，
+  *     直接敲 URL 依旧可用。
  *   - 「我的画布」同样撤下入口，/canvases 路由与页面保留。
  *   - 「探索」是首页区块的锚点，区块本身滚得到，不再单独占一个导航项。
  *   - 角色资产（/characters）的入口不进侧栏：它要收进「资产」页里当「演员库」页签
@@ -264,7 +263,7 @@ async function loadShellData() {
 onMounted(loadShellData)
 // 版本号只在客户端取：SSR 阶段取到的内网版本对浏览器没有意义，也会拖慢首屏。
 onMounted(() => loadVersions())
-// 登录弹窗关闭或成功后刷新顶栏余额 / 最近会话
+// 登录弹窗关闭或成功后刷新顶栏金币 / 最近会话
 watch(authOpen, (value, previous) => {
   if (previous && !value) void loadShellData()
 })
@@ -508,7 +507,7 @@ watch(() => route.fullPath, () => {
                   class="hg3-coin"
                   aria-hidden="true"
                 />
-                {{ credits.toLocaleString() }} 积分
+                {{ credits.toLocaleString() }} 金币
               </NuxtLink>
               <NuxtLink
                 class="hg-icon-btn"
@@ -532,6 +531,7 @@ watch(() => route.fullPath, () => {
                   type="button"
                   class="hg-avatar"
                   aria-label="打开账户菜单"
+                  aria-haspopup="menu"
                   :aria-expanded="accountOpen"
                   @click="onAccountToggle"
                 >
@@ -544,30 +544,46 @@ watch(() => route.fullPath, () => {
                   v-if="accountOpen"
                   class="hg-account-menu"
                 >
+                  <!-- 「个人中心」= 账号资料页（/settings，含昵称/头像等资料的查看与编辑）。
+                       以前它挂在 FEATURES.characterAssets 上指向 /characters，该开关为 false，
+                       入口等于消失；这里改成始终可见并指向真正管资料的那一页。 -->
                   <NuxtLink
-                    v-if="FEATURES.characterAssets"
-                    to="/characters"
+                    to="/settings"
                     @click="accountOpen = false"
                   >
-                    个人中心
+                    <UIcon
+                      name="i-lucide-circle-user"
+                      aria-hidden="true"
+                    />个人中心
                   </NuxtLink>
                   <NuxtLink
                     to="/works"
                     @click="accountOpen = false"
                   >
-                    我的发布
+                    <UIcon
+                      name="i-lucide-send"
+                      aria-hidden="true"
+                    />我的发布
                   </NuxtLink>
+                  <!-- 充值 / 订单是同一个钱包页的两块：用 ?tab= 让钱包页自己滚到对应区域
+                       （见 pages/wallet.vue 的 applyTabFromQuery）。 -->
                   <NuxtLink
-                    to="/wallet"
+                    :to="{ path: '/wallet', query: { tab: 'recharge' } }"
                     @click="accountOpen = false"
                   >
-                    钱包与账单
+                    <UIcon
+                      name="i-lucide-circle-dollar-sign"
+                      aria-hidden="true"
+                    />充值
                   </NuxtLink>
                   <NuxtLink
-                    to="/settings"
+                    :to="{ path: '/wallet', query: { tab: 'orders' } }"
                     @click="accountOpen = false"
                   >
-                    偏好设置
+                    <UIcon
+                      name="i-lucide-receipt-text"
+                      aria-hidden="true"
+                    />订单
                   </NuxtLink>
                   <button
                     type="button"
@@ -817,7 +833,11 @@ watch(() => route.fullPath, () => {
   z-index: 40;
   display: grid;
   min-width: 168px;
+  /* 移动端：顶栏右侧贴着屏幕边，菜单靠 right:0 向左展开，加个上限别顶出视口。 */
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 80px);
   padding: 6px;
+  overflow-y: auto;
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 12px;
   background: #1c1d21;

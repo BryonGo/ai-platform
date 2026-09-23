@@ -26,14 +26,14 @@ export function featureEnabled(key: FeatureKey): boolean {
 }
 
 /**
- * 画布（/canvas）开关。
+ * 画布入口开关。
  *
  * 与上面写死在代码里的开关不同：画布由产品侧并发开发中，本地/dev 必须能用、生产必须屏蔽，
  * 所以它取 runtimeConfig.public.canvasEnabled（env `NUXT_PUBLIC_CANVAS_ENABLED`，见
  * nuxt.config.ts），生产由 compose 传 `false` —— 屏蔽与恢复都只改环境变量，不动代码。
  *
- * 关闭时**两处同时生效**：侧栏入口不渲染（app.vue）+ 直接敲 URL 由
- * middleware/canvas-gate.global.ts 打回首页。只藏入口不算屏蔽。
+ * 关闭时只隐藏侧栏入口（app.vue）；/canvas 路由仍然可以通过直达链接访问。
+ * 入口可见性与路由可访问性分开，避免历史链接或作品内的画布入口失效。
  *
  * 取值容错：环境变量在运行时覆盖时可能是字符串（'false'），也可能是布尔（false），
  * 两种都按关闭处理；缺省=开启，避免本地被误关。

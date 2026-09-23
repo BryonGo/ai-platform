@@ -13,13 +13,24 @@
 // 再统一 reload —— 中途失败不会留下"删了一半看不出来"的状态。
 import { safeHref } from '~/composables/useSafeUrl'
 
-/** 资产页的三个页签。三个都是「我有什么」的不同侧面，收在一页里翻。 */
+/** 资产页的四个页签。四个都是「我有什么」的不同侧面，收在一页里翻。 */
 const PANES = [
   { id: 'library', label: '我的资产' },
+  { id: 'temp', label: '临时资产' },
   { id: 'actors', label: '演员库' },
   { id: 'trash', label: '回收站' }
 ] as const
-const pane = ref<'library' | 'actors' | 'trash'>('library')
+const pane = ref<'library' | 'temp' | 'actors' | 'trash'>('library')
+
+/**
+ * 当前页签是否「资产列表」（我的资产 / 临时资产）。
+ *
+ * 这两个页签共用同一套列表状态与卡片渲染，只有作用域（scope）与几个动作不同；
+ * 演员库/回收站是独立组件，不参与这里的列表请求。
+ */
+const isAssetPane = computed(() => pane.value === 'library' || pane.value === 'temp')
+/** 当前页签对应的服务端作用域：临时资产 = temp，其余 = permanent。 */
+const paneScope = computed<'permanent' | 'temp'>(() => (pane.value === 'temp' ? 'temp' : 'permanent'))
 
 const api = useHougongApi()
 const session = useAuthSession()
@@ -101,6 +112,9 @@ async function fetchPage(target: number) {
       hidden: showHidden.value,
       kind: kind.value,
       origin: origin.value,
+      // 作用域以当前页签为准：我的资产=permanent，临时资产=temp。绝不把演员库/回收站发出去
+      // （它们的入口不在这里，isAssetPane 为假时不会触发 fetchPage）。
+      scope: paneScope.value,
       keyword: keyword.value.trim(),
       sort: sort.value,
       duplicates: onlyDuplicates.value,
@@ -171,6 +185,13 @@ watch(keyword, () => {
 })
 watch([kind, origin, sort, showHidden, onlyDuplicates], () => {
   void reload()
+})
+
+// 切换「我的资产 / 临时资产」：作用域变了，必须重拉第 1 页；
+// 切到演员库/回收站则不发列表请求（那两个页签的数据源是别的组件）。
+watch(pane, (next) => {
+  clearPick()
+  if (next === 'library' || next === 'temp') void reload()
 })
 
 // ── 选择 ──
@@ -274,6 +295,32 @@ async function toggleHiddenOne(a: AssetItem) {
 }
 
 const downloadingId = ref('')
+
+/** 临时资产「保存到我的资产」的进行中 id（同一张只能点一次）。 */
+const savingIds = ref<Record<string, boolean>>({})
+
+/**
+ * 把临时生成产物保存到「我的资产」。
+ *
+ * 只是把服务端的 scope 置为 permanent（幂等），**不重新上传、不重新生成**；
+ * 成功后它不再属于临时列表，以服务端为准重拉，避免本地猜"要不要移除"。
+ */
+async function saveToLibrary(a: AssetItem) {
+  if (savingIds.value[a.id]) return
+  savingIds.value = { ...savingIds.value, [a.id]: true }
+  error.value = ''
+  try {
+    await api.saveAsset(a.id)
+    notice.value = `已把「${displayName(a)}」保存到我的资产`
+    await reload()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '保存失败'
+  } finally {
+    const next = { ...savingIds.value }
+    delete next[a.id]
+    savingIds.value = next
+  }
+}
 
 async function download(a: AssetItem) {
   downloadingId.value = a.id
@@ -647,7 +694,10 @@ onUnmounted(() => {
 
 // 资产库整屏都是限时签名地址（3600s）：挂久了会集体 403，
 // 收到自愈信号就回第 1 页重取（不重新上传、不重新生成）。见 ~/composables/useMediaRefresh。
-useMediaAutoRefresh(() => reload())
+// 只在资产列表页签下重取：演员库/回收站有各自的数据源，不该被这个信号牵动。
+useMediaAutoRefresh(() => {
+  if (isAssetPane.value) void reload()
+})
 </script>
 
 <template>
@@ -664,11 +714,11 @@ useMediaAutoRefresh(() => reload())
       </div>
       <!-- 加载中不显示上一次的数字：切筛选时旧数字会让人以为筛选没生效 -->
       <div
-        v-if="pane === 'library'"
+        v-if="isAssetPane"
         class="assets-head__stat"
       >
         <strong>{{ firstLoading ? '…' : total }}</strong>
-        <span>{{ showHidden ? '个已隐藏' : '个可用素材' }}</span>
+        <span>{{ pane === 'temp' ? '个临时产物' : (showHidden ? '个已隐藏' : '个可用素材') }}</span>
       </div>
     </header>
 
@@ -694,12 +744,18 @@ useMediaAutoRefresh(() => reload())
     </div>
 
     <p
-      v-if="pane === 'library'"
+      v-if="isAssetPane"
       class="assets-intro"
     >
-      这里是你上传与生成的全部图片、视频。点「批量管理」后可勾选多个素材，批量删除、
-      隐藏或恢复到可用状态，也可以打成工程包一次带走；同一张图重复上传过多次时，
-      用「清理重复」一次收拾干净。
+      <template v-if="pane === 'temp'">
+        这里是生成成功、但还没保存的临时产物。点「保存到我的资产」把它转成永久素材；
+        也可以直接下载、隐藏或删除。临时产物不在「我的资产」默认列表里。
+      </template>
+      <template v-else>
+        这里是你上传与已保存的生成结果。点「批量管理」后可勾选多个素材，批量删除、
+        隐藏或恢复到可用状态，也可以打成工程包一次带走；同一张图重复上传过多次时，
+        用「清理重复」一次收拾干净。
+      </template>
     </p>
 
     <HgActorLibrary v-if="pane === 'actors'" />
@@ -712,8 +768,8 @@ useMediaAutoRefresh(() => reload())
       <small>后端还没有软删回收站接口：现在「删除」是直接删，删掉就找不回来了。要真做回收站，需要后端先给软删 + 恢复 + 彻底删除三个动作。</small>
     </div>
 
-    <!-- ↓↓↓ 素材库这一整段只在「我的资产」页签下渲染 ↓↓↓ -->
-    <template v-if="pane === 'library'">
+    <!-- ↓↓↓ 素材库这一整段只在「我的资产 / 临时资产」页签下渲染 ↓↓↓ -->
+    <template v-if="isAssetPane">
       <!-- 筛选：全部走服务端，翻页后依然准 -->
       <section
         class="assets-toolbar"
@@ -751,6 +807,7 @@ useMediaAutoRefresh(() => reload())
             {{ manageMode ? '退出批量' : '批量管理' }}
           </button>
           <button
+            v-if="pane === 'library'"
             type="button"
             class="assets-btn"
             :disabled="dedupeBusy"
@@ -761,7 +818,6 @@ useMediaAutoRefresh(() => reload())
             {{ dedupeBusy ? '统计中…' : '清理重复' }}
           </button>
         </div>
-
         <div class="assets-filters">
           <label class="assets-search">
             <UIcon name="i-lucide-search" />
@@ -813,7 +869,10 @@ useMediaAutoRefresh(() => reload())
             <span>只看已隐藏</span>
           </label>
 
-          <label class="assets-switch">
+          <label
+            v-if="pane === 'library'"
+            class="assets-switch"
+          >
             <input
               v-model="onlyDuplicates"
               type="checkbox"
@@ -976,6 +1035,15 @@ useMediaAutoRefresh(() => reload())
 
           <div class="asset-card__actions">
             <button
+              v-if="pane === 'temp'"
+              type="button"
+              class="primary"
+              :disabled="savingIds[a.id]"
+              @click="saveToLibrary(a)"
+            >
+              {{ savingIds[a.id] ? '保存中…' : '保存到我的资产' }}
+            </button>
+            <button
               type="button"
               :disabled="downloadingId === a.id"
               @click="download(a)"
@@ -1023,6 +1091,16 @@ useMediaAutoRefresh(() => reload())
           >
             清除筛选条件
           </button>
+        </template>
+        <template v-else-if="pane === 'temp'">
+          <h2>还没有临时产物</h2>
+          <p>生成成功、还没保存的产物会出现在这里。点「保存到我的资产」可把它转成永久素材。</p>
+          <NuxtLink
+            to="/create"
+            class="assets-btn assets-btn--primary"
+          >
+            去创作
+          </NuxtLink>
         </template>
         <template v-else>
           <h2>还没有素材</h2>
@@ -1686,6 +1764,16 @@ useMediaAutoRefresh(() => reload())
 .asset-card__actions button.danger:hover {
   border-color: #ff707a;
   color: #ff707a;
+}
+/* 临时资产的主动作：保存到我的资产（其余动作是次要的灰按钮） */
+.asset-card__actions button.primary {
+  border-color: var(--hg3-accent);
+  background: var(--hg3-accent-soft);
+  color: var(--hg3-accent-hi);
+}
+.asset-card__actions button.primary:hover:not(:disabled) {
+  background: var(--hg3-accent);
+  color: var(--hg3-accent-ink);
 }
 
 /* 骨架屏 */

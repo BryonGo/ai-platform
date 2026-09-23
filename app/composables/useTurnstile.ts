@@ -102,6 +102,15 @@ export function useTurnstile() {
   const siteKey = ref('')
 
   let widgetId: string | null = null
+  let watchdog: ReturnType<typeof setTimeout> | null = null
+
+  // watchdogMs 是「渲染后多久还没出 iframe 就认为挑战没起来」的阈值。
+  //
+  // 为什么需要它：`error-callback` 只在 Cloudflare **自己报错**时触发。脚本被插件/广告拦截
+  // 挡掉、或请求在网关层被吞掉时，容器就是**一直空着**且毫无动静 —— 用户看到空白、
+  // 提交被「请先完成人机验证」拦住，运营也看不到任何原因。2026-09-23 线上排查这次就是
+  // 只有 console 有线索。8s 足够正常网络出题，又不会让人干等。
+  const watchdogMs = 8000
 
   // render 显式渲染 widget —— 与后台控制台同一套写法：
   // 动态出现的 `.cf-turnstile` 不会被 api.js 自动渲染，必须自己 render 一次，
@@ -112,16 +121,19 @@ export function useTurnstile() {
     if (!w.turnstile || !el) return
     // 重复渲染会报错（同一个容器只能挂一个 widget）；已经渲染过就跳过。
     if (el.getAttribute('data-widget-id') || el.querySelector('iframe')) return
+    clearWatchdog()
     widgetId = w.turnstile.render(el, {
       'sitekey': key,
       'action': turnstileAction,
       'callback': (t: string) => {
+        clearWatchdog()
         token.value = t
       },
       'expired-callback': () => {
         token.value = ''
       },
       'error-callback': (code?: string | number) => {
+        clearWatchdog()
         token.value = ''
         // 把 Cloudflare 的错误码翻成人话挂到 `error` 上：出问题时用户/运营能直接看到原因。
         const key = String(code ?? '')
@@ -133,6 +145,23 @@ export function useTurnstile() {
     })
     el.setAttribute('data-widget-id', String(widgetId))
     ready.value = true
+    // `ready` 只表示「render 调用过了」，不表示题目真的出来 —— 所以另设看门狗，
+    // 到点还是没有 iframe 就把沉默变成一条可读的原因。
+    watchdog = setTimeout(() => {
+      watchdog = null
+      if (token.value || host.value?.querySelector('iframe')) return
+      if (!error.value) {
+        error.value = '人机验证未能加载：请检查是否拦截了 challenges.cloudflare.com，或换浏览器/关闭无痕模式重试'
+      }
+    }, watchdogMs)
+  }
+
+  // clearWatchdog 停掉计时器（成功、报错、重新渲染、卸载时都要停）。
+  function clearWatchdog() {
+    if (watchdog) {
+      clearTimeout(watchdog)
+      watchdog = null
+    }
   }
 
   async function init() {
@@ -162,6 +191,7 @@ export function useTurnstile() {
   }
 
   onBeforeUnmount(() => {
+    clearWatchdog()
     const w = window as unknown as { turnstile?: TurnstileApi }
     if (w.turnstile && widgetId) w.turnstile.remove(widgetId)
     widgetId = null

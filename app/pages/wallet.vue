@@ -1,12 +1,14 @@
 <script setup lang="ts">
 const api = useHougongApi()
 const session = useAuthSession()
+const route = useRoute()
 
 const loading = ref(true)
 const error = ref('')
 
-// 钱包
-const wallet = ref<{ credits: number, balanceCents: number, nextExpiry: string } | null>(null)
+// 钱包。credits = 金币余额（coin_wallet.balance）。接口仍下发 balanceCents（旧「余额(分)」
+// 契约字段，后端恒 0，仅为协议保留），UI 已不再展示，故这里不取。
+const wallet = ref<{ credits: number, nextExpiry: string } | null>(null)
 const claiming = ref(false)
 const claimNotice = ref('')
 // 邀请
@@ -15,6 +17,7 @@ const copied = ref(false)
 // 会员
 const membership = ref<Membership | null>(null)
 // 交易 / 流水
+// key 仍叫 transactions（接口 listTransactions 与模板分支都按它走），只是对用户的叫法是「订单」。
 const tab = ref<'transactions' | 'ledger'>('transactions')
 const transactions = ref<Transaction[]>([])
 const ledger = ref<WalletLedgerItem[]>([])
@@ -23,6 +26,10 @@ const rechargeAmt = ref(100)
 const checkoutBusy = ref(false)
 const checkoutRes = ref<Purchase | null>(null)
 const checkoutErr = ref('')
+// ?tab= 的落地目标：头像菜单点「充值 / 订单」进来时要直接看到对应区域，而不是只换 URL。
+// 用 ref 而不是纯 id + getElementById：和模板绑定在一起，重命名/移除会被类型检查发现。
+const rechargeRef = ref<HTMLElement | null>(null)
+const ordersRef = ref<HTMLElement | null>(null)
 // 创作者认证
 const creatorInfo = ref<Creator | null>(null)
 const applyCreatorOpen = ref(false)
@@ -45,6 +52,32 @@ const kindText: Record<string, string> = {
 
 function fmtCredits(n: number | undefined) {
   return (n ?? 0).toLocaleString()
+}
+
+/**
+ * ?tab= 的解析：只有 recharge / orders 两个合法值。
+ *
+ * - recharge：滚到「充值金币」区（充值区没有页签状态，所以只需滚动）；
+ * - orders  ：先切回订单 Tab（transactions），再滚到流水区；
+ * - 其他/缺省：不动作，保持页面默认（订单 Tab、页面停在顶部）。
+ *
+ * 非法值静默回退而不是报错：这个参数是入口链接给的，用户手改坏了也只该看到默认页。
+ */
+function applyTabFromQuery(raw: unknown) {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === 'recharge') {
+    void scrollToSection(rechargeRef.value)
+  } else if (value === 'orders') {
+    tab.value = 'transactions'
+    void scrollToSection(ordersRef.value)
+  }
+}
+
+/** 等 DOM 更新完再滚，否则刚切 Tab 时目标区可能还没渲染出来。 */
+async function scrollToSection(el: HTMLElement | null) {
+  if (!el) return
+  await nextTick()
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 async function load() {
@@ -75,7 +108,7 @@ async function claim() {
   claimNotice.value = ''
   try {
     wallet.value = await api.claimDaily()
-    claimNotice.value = '今日积分已到账'
+    claimNotice.value = '今日金币已到账'
   } catch (e: unknown) {
     claimNotice.value = e instanceof Error ? e.message : '领取失败'
   } finally {
@@ -158,18 +191,22 @@ onMounted(async () => {
   }
   load()
   loadCreator()
+  applyTabFromQuery(route.query.tab)
 })
+
+// 已经在 /wallet 时再点头像菜单的「充值 / 订单」只改 query（组件不重建），靠 watch 重新定位。
+watch(() => route.query.tab, applyTabFromQuery)
 </script>
 
 <template>
-  <div class="page-body">
+  <div class="page-body wallet-page">
     <div class="page-head">
       <div>
         <p class="detail-kicker">
-          钱包 · 积分
+          钱包 · 金币
         </p>
-        <h1>积分、余额与会员</h1>
-        <p>每日签到领取积分，邀请好友得奖励；充值后积分实时到账。</p>
+        <h1>金币与会员</h1>
+        <p>每日签到领取金币，邀请好友得奖励；充值后金币实时到账。</p>
       </div>
       <button
         type="button"
@@ -177,6 +214,10 @@ onMounted(async () => {
         :disabled="claiming"
         @click="claim"
       >
+        <UIcon
+          name="i-lucide-calendar-check"
+          aria-hidden="true"
+        />
         {{ claiming ? '领取中…' : '每日领取' }}
       </button>
     </div>
@@ -196,40 +237,55 @@ onMounted(async () => {
 
     <div class="wallet-cards">
       <div class="wallet-card wallet-credits">
-        <span class="wallet-label">可用积分</span>
-        <strong>{{ fmtCredits(wallet?.credits) }}</strong>
+        <div class="wallet-card-head">
+          <span
+            class="wallet-card-icon"
+            aria-hidden="true"
+          ><UIcon name="i-lucide-coins" /></span>
+          <span class="wallet-label">可用金币</span>
+        </div>
+        <strong class="wallet-value">{{ fmtCredits(wallet?.credits) }}</strong>
         <small v-if="wallet?.nextExpiry">下次过期：{{ new Date(wallet.nextExpiry).toLocaleDateString() }}</small>
       </div>
-      <div class="wallet-card">
-        <span class="wallet-label">余额（元）</span>
-        <strong>{{ ((wallet?.balanceCents ?? 0) / 100).toFixed(2) }}</strong>
-        <small>用于会员订阅等消费</small>
-      </div>
       <div class="wallet-card wallet-invite">
-        <span class="wallet-label">邀请码</span>
-        <strong>{{ invite?.code || '—' }}</strong>
+        <div class="wallet-card-head">
+          <span
+            class="wallet-card-icon"
+            aria-hidden="true"
+          ><UIcon name="i-lucide-gift" /></span>
+          <span class="wallet-label">邀请码</span>
+        </div>
+        <strong class="wallet-value">{{ invite?.code || '—' }}</strong>
         <div class="wallet-invite-meta">
           <span>已邀请 {{ invite?.invited ?? 0 }}</span>
           <button
             type="button"
-            class="composer2-btn-sm"
+            class="composer2-btn-sm wallet-copy-btn"
             @click="copyInvite"
           >
             {{ copied ? '已复制 ✓' : '复制' }}
           </button>
         </div>
-        <small>每成功邀请一位好友，双方各得 {{ fmtCredits(invite?.rewardCredits) }} 积分</small>
+        <small>每成功邀请一位好友，双方各得 {{ fmtCredits(invite?.rewardCredits) }} 金币</small>
       </div>
     </div>
 
     <div class="wallet-grid">
       <!-- 充值 -->
-      <section class="panel-block">
+      <section
+        id="wallet-recharge"
+        ref="rechargeRef"
+        class="panel-block"
+      >
         <h3 class="section-title">
-          充值积分
+          <span
+            class="section-icon"
+            aria-hidden="true"
+          ><UIcon name="i-lucide-credit-card" /></span>
+          充值金币
         </h3>
         <p class="muted">
-          10 元 = 100,000 积分（{{ fmtCredits(invite?.rewardCredits) }} 奖励另计）
+          10 元 = 10,000 金币（{{ fmtCredits(invite?.rewardCredits) }} 奖励另计）
         </p>
         <div class="amount-row">
           <button
@@ -262,7 +318,7 @@ onMounted(async () => {
           class="checkout-result"
         >
           <p>
-            订单已创建（{{ checkoutRes.state }}）：{{ fmtCredits(checkoutRes.credits) }} 积分 ·
+            订单已创建（{{ checkoutRes.state }}）：{{ fmtCredits(checkoutRes.credits) }} 金币 ·
             ¥{{ (checkoutRes.priceCents / 100).toFixed(2) }}
           </p>
           <p class="muted">
@@ -274,6 +330,10 @@ onMounted(async () => {
       <!-- 会员 -->
       <section class="panel-block">
         <h3 class="section-title">
+          <span
+            class="section-icon"
+            aria-hidden="true"
+          ><UIcon name="i-lucide-crown" /></span>
           会员
         </h3>
         <template v-if="membership?.tier">
@@ -321,7 +381,7 @@ onMounted(async () => {
             class="muted"
           >
             已发布 {{ creatorInfo.publishedImages }} / 需 {{ creatorInfo.requiredImages }} 张 ·
-            奖励 {{ fmtCredits(creatorInfo.reward.credits) }} 积分（每张 {{ creatorInfo.reward.perImageCredits }}）
+            奖励 {{ fmtCredits(creatorInfo.reward.credits) }} 金币（每张 {{ creatorInfo.reward.perImageCredits }}）
           </p>
           <button
             type="button"
@@ -441,17 +501,25 @@ onMounted(async () => {
       </p>
     </section>
 
-    <!-- 流水 -->
-    <section class="panel-block">
+    <!-- 订单（交易）/ 金币流水 -->
+    <section
+      id="wallet-orders"
+      ref="ordersRef"
+      class="panel-block"
+    >
       <div class="filters">
         <button
-          v-for="t in ([{ key: 'transactions', label: '交易' }, { key: 'ledger', label: '积分流水' }] as const)"
+          v-for="t in ([{ key: 'transactions', label: '订单', icon: 'i-lucide-receipt' }, { key: 'ledger', label: '金币流水', icon: 'i-lucide-list' }] as const)"
           :key="t.key"
           type="button"
           class="filter-btn"
           :class="{ active: tab === t.key }"
           @click="tab = t.key"
         >
+          <UIcon
+            :name="t.icon"
+            aria-hidden="true"
+          />
           {{ t.label }}
         </button>
       </div>
@@ -461,12 +529,20 @@ onMounted(async () => {
           v-for="t in transactions"
           :key="t.id"
           class="ledger-row"
+          :class="(t.amount ?? (t.credits || 0)) >= 0 ? 'is-in' : 'is-out'"
         >
-          <div>
+          <span
+            class="ledger-icon"
+            aria-hidden="true"
+          ><UIcon :name="(t.amount ?? (t.credits || 0)) >= 0 ? 'i-lucide-arrow-down-left' : 'i-lucide-arrow-up-right'" /></span>
+          <div class="ledger-main">
             <strong>{{ t.type === 'purchase' ? '充值订单' : kindText[t.kind || ''] || t.kind }}</strong>
-            <small class="muted">{{ t.state || (t.amount || 0) > 0 ? '入账' : '支出' }} · {{ new Date(t.createdAt).toLocaleString() }}</small>
+            <small class="muted">{{ t.state || ((t.amount || 0) > 0 ? '入账' : '支出') }} · {{ new Date(t.createdAt).toLocaleString() }}</small>
           </div>
-          <span :class="(t.amount ?? (t.credits || 0)) >= 0 ? 'amount-plus' : 'amount-minus'">
+          <span
+            class="ledger-amount"
+            :class="(t.amount ?? (t.credits || 0)) >= 0 ? 'amount-plus' : 'amount-minus'"
+          >
             {{ (t.amount ?? t.credits ?? 0) > 0 ? '+' : '' }}{{ fmtCredits(t.amount ?? t.credits ?? 0) }}
           </span>
         </div>
@@ -482,18 +558,26 @@ onMounted(async () => {
           v-for="l in ledger"
           :key="l.id"
           class="ledger-row"
+          :class="l.amount > 0 ? 'is-in' : 'is-out'"
         >
-          <div>
+          <span
+            class="ledger-icon"
+            aria-hidden="true"
+          ><UIcon :name="l.amount > 0 ? 'i-lucide-arrow-down-left' : 'i-lucide-arrow-up-right'" /></span>
+          <div class="ledger-main">
             <strong>{{ kindText[l.kind] || l.kind }}</strong>
             <small class="muted">{{ l.asset }} · {{ new Date(l.createdAt).toLocaleString() }}</small>
           </div>
-          <span :class="l.amount > 0 ? 'amount-plus' : 'amount-minus'">{{ l.amount > 0 ? '+' : '' }}{{ fmtCredits(l.amount) }}</span>
+          <span
+            class="ledger-amount"
+            :class="l.amount > 0 ? 'amount-plus' : 'amount-minus'"
+          >{{ l.amount > 0 ? '+' : '' }}{{ fmtCredits(l.amount) }}</span>
         </div>
         <p
           v-if="!ledger.length"
           class="empty-tip"
         >
-          暂无积分流水
+          暂无金币流水
         </p>
       </template>
     </section>
@@ -501,43 +585,150 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/**
+ * 钱包页的语义色收口在本页一层（不改全局 token）：
+ * 深色卡片底 + **单一暖金主 accent**（金币），正负金额只在行内小面积用绿/红，
+ * 邀请码用蓝紫做辅助。这样每张卡不再各自一种颜色，也不会再出现浅色米黄底。
+ */
+.wallet-page {
+  --w-gold: #f5c451;
+  --w-gold-strong: #ffd77a;
+  --w-gold-soft: rgb(245 196 81 / 0.14);
+  --w-gold-line: rgb(245 196 81 / 0.4);
+  --w-gold-glow: rgb(245 196 81 / 0.2);
+  --w-ok: #4ade80;
+  --w-ok-soft: rgb(74 222 128 / 0.12);
+  --w-bad: #f87171;
+  --w-bad-soft: rgb(248 113 113 / 0.12);
+  --w-invite: #a78bfa;
+  --w-invite-soft: rgb(167 139 250 / 0.14);
+  --w-invite-line: rgb(167 139 250 / 0.38);
+  --w-line: var(--hg-line, #282828);
+  --w-surface: var(--hg-card, #171717);
+  /* 与全站 panel-block / entry-card 同款「大圆角 + 小圆角」签名 */
+  --w-radius: 16px 4px 16px 4px;
+  /* 语义色之外统一用中灰，避免第二套「看起来也像强调」的颜色 */
+  --w-muted: var(--hg-muted, #949494);
+}
 .wallet-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin: 1.25rem 0;
 }
+/* 宽屏让「可用金币」占更宽的一列，成为主视觉卡；邀请码作次列 */
+@media (min-width: 880px) {
+  .wallet-cards {
+    grid-template-columns: 1.45fr 1fr;
+  }
+}
 .wallet-card {
-  border: 1px solid var(--hg-line, #e2e4ea);
-  border-radius: 1.25rem;
-  padding: 1.1rem 1.25rem;
+  --card-accent: var(--w-gold);
+  --card-soft: var(--w-gold-soft);
+  position: relative;
   display: grid;
-  gap: 0.2rem;
-  background: var(--hg-card);
+  align-content: start;
+  gap: 0.3rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
 }
-.wallet-card strong {
-  font-size: clamp(1.5rem, 2.4vw, 2rem);
+.wallet-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
 }
-.wallet-credits {
-  background: linear-gradient(135deg, #f7ecd8, #f3e3c0);
-  border-color: var(--hg-accent, #b08a4f);
+/* 小面积 accent：只有图标底色/描边跟着卡走 */
+.wallet-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--card-soft);
+  color: var(--card-accent);
+  font-size: 16px;
 }
 .wallet-label {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--hg-muted, #666);
+  letter-spacing: 0.02em;
+  color: var(--w-muted);
+}
+/* 全站没有定义 .muted（历史页面靠继承拿到正文色），这里补上，让副文案真有层级 */
+.muted {
+  color: var(--w-muted);
+}
+.wallet-value {
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  line-height: 1.15;
+  color: var(--ink, #fafafa);
+  font-variant-numeric: tabular-nums;
+}
+.wallet-card small {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--w-muted);
+}
+/* 主视觉卡：暗色底 + 暖金描边 + 柔和光晕（不再是浅色米黄渐变） */
+.wallet-credits {
+  border-color: var(--w-gold-line);
+  background:
+    radial-gradient(130% 150% at 100% 0%, var(--w-gold-soft), transparent 58%),
+    var(--w-surface);
+  box-shadow: 0 18px 44px -28px var(--w-gold-glow);
+}
+.wallet-credits .wallet-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  font-size: 19px;
+  background: rgb(245 196 81 / 0.18);
+}
+.wallet-credits .wallet-label {
+  color: var(--w-gold);
+}
+.wallet-credits .wallet-value {
+  font-size: clamp(1.9rem, 3.2vw, 2.7rem);
+  font-weight: 800;
+  color: var(--w-gold-strong);
+}
+/* 邀请码：同一 card surface，只用图标那一点 accent 区分 */
+.wallet-invite {
+  --card-accent: var(--w-invite);
+  --card-soft: var(--w-invite-soft);
+}
+.wallet-invite .wallet-value {
+  font-size: clamp(1.3rem, 2vw, 1.6rem);
+  letter-spacing: 0.06em;
+  color: var(--w-invite);
 }
 .wallet-invite-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
   font-size: 0.8rem;
-  color: var(--hg-muted, #777);
+  color: var(--w-muted);
 }
-.wallet-invite small,
-.wallet-card small {
-  font-size: 0.74rem;
-  color: var(--hg-muted, #999);
+/* 带 .wallet-invite 前缀提高优先级：否则会被后面的 .composer2-btn-sm 同权重覆盖 */
+.wallet-invite .wallet-copy-btn {
+  min-height: 30px;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--w-invite-line);
+  background: var(--w-invite-soft);
+  color: var(--w-invite);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.18s ease, border-color 0.18s ease;
+}
+.wallet-invite .wallet-copy-btn:hover {
+  filter: brightness(1.12);
 }
 .wallet-grid {
   display: grid;
@@ -546,31 +737,79 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 .panel-block {
-  border: 1px solid var(--hg-line, #e2e4ea);
-  border-radius: 1.25rem;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
   padding: 1.1rem 1.25rem;
   display: grid;
   gap: 0.7rem;
-  background: var(--hg-card);
+  background: var(--w-surface);
+}
+/* ?tab=recharge / ?tab=orders 滚动落点：留一点上边距，标题不贴页面顶端。 */
+#wallet-recharge,
+#wallet-orders {
+  scroll-margin-top: 16px;
 }
 .section-title {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1rem;
+}
+.section-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--w-gold-soft);
+  color: var(--w-gold);
+  font-size: 15px;
 }
 .amount-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+/* 筛选 / 金额芯片：与全站一致的描边 + 胶囊，选中态用本页暖金，而不是全局粉色 */
+.filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 38px;
+  padding: 0 0.95rem;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--w-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.filter-btn:hover {
+  color: var(--ink, #fafafa);
+  border-color: #3a3a3a;
+}
+.filter-btn.active {
+  border-color: var(--w-gold-line);
+  background: var(--w-gold-soft);
+  color: var(--w-gold-strong);
+}
+/* panel-block 是 grid，主按钮会被拉满整块；收回内容宽度，和旁边的 ghost 按钮观感一致 */
+.panel-block > .btn-primary {
+  justify-self: start;
+}
 .checkout-result {
-  border-top: 1px solid var(--hg-line, #eee);
+  border-top: 1px solid var(--w-line);
   padding-top: 0.6rem;
   font-size: 0.85rem;
 }
 .member-tier {
   font-size: 1.4rem;
   font-weight: 800;
-  color: var(--hg-accent, #b08a4f);
+  color: var(--w-gold-strong);
   margin: 0;
 }
 .member-offers {
@@ -608,7 +847,7 @@ onMounted(async () => {
   margin: 0;
   padding-left: 1rem;
   font-size: 0.8rem;
-  color: var(--hg-muted, #666);
+  color: var(--w-muted);
   display: grid;
   gap: 0.15rem;
 }
@@ -622,50 +861,126 @@ onMounted(async () => {
   border: none;
   background: none;
   cursor: pointer;
-  color: var(--hg-muted, #999);
+  color: var(--w-muted);
+}
+.resource-list button:hover {
+  color: var(--ink, #fafafa);
 }
 .ledger-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--hg-line, #f2f2f4);
+  gap: 0.7rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--w-line);
 }
-.ledger-row > div {
+/* 收支方向不只用颜色：左侧箭头图标 + 右侧正负号 + 「入账/支出」文案三重表达 */
+.ledger-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 15px;
+  background: rgb(255 255 255 / 0.05);
+  color: var(--w-muted);
+}
+.ledger-row.is-in .ledger-icon {
+  background: var(--w-ok-soft);
+  color: var(--w-ok);
+}
+.ledger-row.is-out .ledger-icon {
+  background: var(--w-bad-soft);
+  color: var(--w-bad);
+}
+.ledger-main {
   display: grid;
   gap: 0.1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ledger-main strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.ledger-main small {
+  font-size: 0.74rem;
+  color: var(--w-muted);
+  overflow-wrap: anywhere;
+}
+/* 金额列不参与压缩，避免被长文案挤变形 */
+.ledger-amount {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 .amount-plus {
-  color: #15803d;
-  font-weight: 800;
+  color: var(--w-ok);
 }
 .amount-minus {
-  color: #b91c1c;
-  font-weight: 800;
+  color: var(--w-bad);
 }
 .error-text {
-  color: #dc2626;
+  color: var(--w-bad);
   font-size: 0.82rem;
 }
 .composer2-input {
   width: 100%;
+  min-width: 0;
+  min-height: 40px;
   padding: 0.6rem 0.75rem;
-  border-radius: 0.7rem;
-  border: 1px solid var(--hg-line, #e2e4ea);
+  border-radius: 10px 3px 10px 3px;
+  border: 1px solid var(--w-line);
+  background: var(--hg-input, rgb(255 255 255 / 0.05));
+  color: var(--ink, #fafafa);
   font-size: 0.86rem;
   outline: none;
-  background: var(--hg-input);
   resize: vertical;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.composer2-input::placeholder {
+  color: var(--w-muted);
+}
+.composer2-input:focus {
+  border-color: var(--w-gold-line);
+  box-shadow: 0 0 0 3px var(--w-gold-soft);
 }
 .composer2-btn-sm {
+  min-height: 32px;
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  border: 1px solid var(--hg-line, #e2e4ea);
+  border: 1px solid var(--w-line);
   background: transparent;
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
-  color: var(--hg-muted, #666);
+  color: var(--w-muted);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.composer2-btn-sm:hover {
+  color: var(--ink, #fafafa);
+  border-color: #3a3a3a;
+}
+/* 窄屏：触控目标放宽到接近 44px，并让金额芯片均分一行，避免横向溢出 */
+@media (max-width: 560px) {
+  .filter-btn {
+    min-height: 42px;
+  }
+  .amount-row .filter-btn {
+    flex: 1 1 auto;
+    min-width: 4.5rem;
+  }
+  .wallet-invite .wallet-copy-btn {
+    min-height: 36px;
+    padding: 0 0.9rem;
+  }
+  .page-head .btn-primary {
+    width: 100%;
+  }
+  .panel-block > .btn-primary {
+    justify-self: stretch;
+  }
 }
 </style>

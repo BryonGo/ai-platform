@@ -15,6 +15,66 @@ const assets = computed(() => studio.previewAssets.value)
 const current = computed(() => studio.previewAsset.value)
 const infoOpen = ref(false)
 
+/**
+ * 「保存到我的资产」状态（按产物 id 记）。
+ *
+ * 产物默认是临时的（scope=temp）；这里只记「已保存」与「保存中」两态：
+ *   · savedIds  —— 已永久（后端返回 permanent，或本次保存成功）；
+ *   · savingIds —— 正在保存（按钮显示"保存中…"）。
+ * 刷新/切会话后由 resolveAssets 带回的 scope 重建 savedIds，所以「已保存」态不丢。
+ */
+const savedIds = ref<Record<string, boolean>>({})
+const savingIds = ref<Record<string, boolean>>({})
+
+// 产物解析回来时带上 scope：permanent 即已保存。
+// **只置 true、不置 false** —— 接口没下发 scope（老数据）时不能把已保存态覆盖掉。
+watch(assets, (list) => {
+  for (const asset of list) {
+    if (asset.scope === 'permanent' && !savedIds.value[asset.id]) {
+      savedIds.value = { ...savedIds.value, [asset.id]: true }
+    }
+  }
+}, { immediate: true })
+
+/** 当前预览任务的全部产物是否都已保存（全部已保存则按钮置灰）。 */
+const allSaved = computed(() => assets.value.length > 0 && assets.value.every(a => savedIds.value[a.id]))
+/** 是否有产物正在保存。 */
+const saving = computed(() => assets.value.some(a => savingIds.value[a.id]))
+const saveLabel = computed(() =>
+  saving.value ? '保存中…' : (allSaved.value ? '已保存到我的资产' : '保存到我的资产')
+)
+
+/**
+ * 保存当前预览任务的**全部**产物到「我的资产」。
+ *
+ * 逐个调用 saveAsset（幂等，只改服务端 scope），**不重新上传、不重新生成**；
+ * 失败的产物保留临时态并提示，用户再点一次只会重试未保存的那些。
+ */
+async function saveAssets() {
+  const todo = assets.value.filter(a => !savedIds.value[a.id] && !savingIds.value[a.id])
+  if (!todo.length) return
+  const api = useHougongApi()
+  let failed = 0
+  for (const asset of todo) {
+    savingIds.value = { ...savingIds.value, [asset.id]: true }
+    try {
+      const saved = await api.saveAsset(String(asset.id))
+      // 接口成功即已置 permanent；返回里带 scope 时以它为准
+      asset.scope = saved?.scope ?? 'permanent'
+      savedIds.value = { ...savedIds.value, [asset.id]: asset.scope !== 'temp' }
+    } catch {
+      failed += 1
+    } finally {
+      const next = { ...savingIds.value }
+      delete next[asset.id]
+      savingIds.value = next
+    }
+  }
+  studio.notice.value = failed
+    ? `有 ${failed} 个产物保存失败，可再点一次重试`
+    : '已保存到我的资产'
+}
+
 function close() {
   studio.previewOpen.value = false
 }
@@ -127,6 +187,21 @@ function toVideo() {
       </div>
 
       <div class="panel-actions">
+        <button
+          v-if="current"
+          type="button"
+          class="save"
+          :class="{ saved: allSaved }"
+          :disabled="saving || allSaved"
+          :aria-busy="saving"
+          @click="saveAssets"
+        >
+          <UIcon
+            :name="allSaved ? 'i-lucide-check' : (saving ? 'i-lucide-loader-circle' : 'i-lucide-bookmark-plus')"
+            aria-hidden="true"
+            :class="{ spin: saving }"
+          />{{ saveLabel }}
+        </button>
         <button
           type="button"
           @click="continueEdit"
@@ -325,6 +400,29 @@ function toVideo() {
 }
 .panel-actions button.muted {
   color: var(--hg3-faint);
+}
+.panel-actions button.save.saved {
+  border-color: var(--hg3-accent-line);
+  color: var(--hg3-accent-hi);
+}
+/* 已保存/保存中的按钮不可点：保留原色、去掉 hover 高亮与手型 */
+.panel-actions button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.panel-actions button:disabled:hover {
+  border-color: var(--hg3-line-strong);
+  color: var(--hg3-ink);
+}
+.panel-actions button.save.saved:disabled:hover {
+  border-color: var(--hg3-accent-line);
+  color: var(--hg3-accent-hi);
+}
+.spin {
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 .panel-info {
   display: grid;
