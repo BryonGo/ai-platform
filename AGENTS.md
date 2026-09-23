@@ -115,7 +115,8 @@ APP_ENV=dev GF_GCFG_FILE=config.dev DEV_SITE_CODE=hougong APP_ROLE=all <二进�
   - 配套：`build-console.sh` / `apply-console.sh`（改 `AICODCMS_CONSOLE_TAG`）、
     `deploy-api.sh`（换二进制 + 重启 + healthz 轮询 + 失败给回滚命令）。
 - 上线前先看当前生产版本：`docker ps --format '{{.Names}} | {{.Image}}'`。
-- **dev 先行，生产要明确点头**；生产库的迁移（配置中心、钱包合并）尚未做，见下面踩坑 §2。
+- **dev 先行，生产要明确点头**。2026-09-23 起生产库已随 dev 同步过（配置中心 + 钱包合并已落库），
+  同步后**必须**按踩坑 §7 修正运行层配置。
 
 ## 踩坑（都踩过，按现象查）
 
@@ -130,15 +131,17 @@ APP_ENV=dev GF_GCFG_FILE=config.dev DEV_SITE_CODE=hougong APP_ROLE=all <二进�
 
 ### 2. 「余额不足」不一定真的没钱
 
-后宫钱包有**两代口径**：
+后宫钱包有**两代口径**，2026-09-23 起**所有环境都已统一到新一代**：
 
 | | 表 | 现状 |
 |---|---|---|
-| 旧 | `credit_wallet`（积分）+ `platform_balance_wallet`（余额/分） | **生产库仍是这一代** |
-| 新 | `coin_wallet`（两者合并） | dev / test 已是这一代 |
+| 旧 | `credit_wallet`（积分）+ `platform_balance_wallet`（余额/分） | **已删除**（数据按 `1 分 = 10 金币` 并入 `coin_wallet`） |
+| 新 | `coin_wallet`（两者合并） | dev / test / **生产** 统一 |
 
-所以会出现"账号明明有 99999 积分，却报余额不足"—— 因为那条链路扣的是**余额(分)**，账号只有积分。
-**排查先确认是哪个钱包、哪一代口径，再怀疑模型/供应商。**
+历史教训仍然成立：旧口径下「积分」和「余额(分)」是**两个钱包**，云端链路扣的是余额(分)，
+所以出现过"账号明明有 99999 积分，却报余额不足"。
+**排查计费问题先确认是哪个钱包，再怀疑模型/供应商。**
+换算口径：`coinsPerCent = 10`（1 元 = 100 分 = 1000 金币），只在进入钱包的边界换算一次。
 
 ### 3. 画布报「输入槽「material」还没接线」
 
@@ -173,3 +176,32 @@ cd ../aicodcms && APP_ENV=dev GF_GCFG_FILE=config.dev go run ./hack/modelcheck -
 
 前台、后端、后台共用同一批 worktree，实测遇到过 `../aicodcms/hack/dbmig/main.go` 正被并行会话
 写着。**永远显式 `git add <路径>`**，提交前 `git status` 扫一眼有没有不是自己的改动。
+
+### 7. 把 dev 库同步到线上库，会连**运行层配置**一起搬过去
+
+`aicodcms_dev → aicodcms` 整库同步（排除 `account`/`account_token`）很方便，但
+`config_entry` 里 `scope=global` 的运行层配置是**环境相关**的，dev 的值在生产上一定是错的：
+
+| 键 | dev | 生产必须 |
+|---|---|---|
+| `redis.{default,queue,crawler}.address` | `127.0.0.1:6379`（走隧道） | `icod-redis:6379` |
+| `rabbitmq.addr` | `127.0.0.1:5672` | `icod-rabbitmq:5672` |
+| `rabbitmq.enabled` / `mq.adapter` | 按 dev 的来 | `true` / `rabbitmq` |
+
+而且**数据库优先于文件**，所以生产配置文件里写对了也没用。症状是 API 日志里刷
+`dial tcp 127.0.0.1:6379: connect: connection refused`。
+
+同步之后**必须**把运行层配置改成该环境的值。正规做法是每个环境各跑一次
+`go run ./hack/cfgruntime --apply`（读到该环境的配置文件再写该环境的库）；这次是手工改的
+那几行。**注意**：`*.pass` / `*.api_key` 是敏感项，存在 `secret_value` 密文列，
+直接看 `value` 是 NULL 属正常，不要当成丢了。
+
+### 8. `liberr.PanicIfErr(ctx, i18nerr.NewCode(...))` 会把业务码吞掉
+
+`PanicIfErr` 走 `i18nerr.CheckSimple` → **panic 一个 string**；外层 `g.Try` 恢复后只能给出
+`gcode.CodeInternalPanic(68)`，原始业务码丢失，于是前端收到 `errorKey=INTERNAL_ERROR`，
+用户看到的是「服务开小差了」而不是「Token已过期，请重新登录」。
+
+规矩（`library/i18nerr/i18nerr.go` 里有实测对照表）：**要保留业务码就用
+`i18nerr.ThrowCode(ctx, code, key)`**，它 panic 的是带栈的 gerror，`g.Try` 会原样返回。
+2026-09-23 线上就是被这条坑到（`auto-login` 过期 token 报「服务开小差了（编号 …）」）。

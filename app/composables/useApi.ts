@@ -190,14 +190,26 @@ export async function apiRequest<T = unknown>(
   if (res.code !== 0) {
     const errorKey = res.errorKey || ''
     const requestId = res.requestId || ''
-    // 登录失效：JWT 中间件返回 401（"请求要求用户的身份认证"）或平台接口 60001。
-    // 清除本地登录态并给友好提示，页面会引导重新登录。
-    if (res.code === 60001 || res.code === 401 || errorKey === 'UNAUTHENTICATED') {
+    // 登录失效：JWT 中间件返回 401（"请求要求用户的身份认证"）、平台接口 60001，
+    // 以及账号侧的 50005/50006/50007（Token 过期 / 无效 / 未登录）。
+    // 清本地登录态 + 友好提示，页面会引导重新登录。
+    //
+    // 50005-50007 必须在这里列出：后端那几个码此前被 `liberr.PanicIfErr` 吞成
+    // CodeInternalPanic(68)，既认不出也提示不对（2026-09-23 修）。两边要一起看。
+    if (res.code === 60001 || res.code === 401
+      || res.code === 50005 || res.code === 50006 || res.code === 50007
+      || errorKey === 'UNAUTHENTICATED') {
       session.clear()
       throw new PlatformApiError(res.code, '登录已过期，请重新登录', 'UNAUTHENTICATED', requestId)
     }
-    let message = friendlyMessage(errorKey, res.message || `API error ${res.code}`)
-    // 内部错误带上编号：用户截图/复制时编号跟着走，后端能直接定位（已含编号则不重复）。
+    const backendMessage = (res.message || '').trim()
+    // INTERNAL_ERROR 刻意**不走文案表**：后端对这类错误已经做过脱敏（httpx.sanitizeMessage），
+    // 它给的消息本身就是给人看的（掩码过的还已经带上了「（编号 xxx）」）。用「服务开小差了」
+    // 盖掉它，会把「Token已过期，请重新登录」这类真实原因一起盖没 —— 2026-09-23 线上踩过。
+    let message = errorKey === 'INTERNAL_ERROR'
+      ? (backendMessage || '服务开小差了，请稍后再试')
+      : friendlyMessage(errorKey, backendMessage || `API error ${res.code}`)
+    // 其余情况仍补编号：用户截图/复制时编号跟着走，后端能直接定位（已含则不重复）。
     if (errorKey === 'INTERNAL_ERROR' && requestId && !message.includes(requestId)) {
       message += `（编号 ${requestId}）`
     }
