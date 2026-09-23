@@ -70,38 +70,38 @@
 - `SessionItem` L375 {id, title, state, current, latestTask, createdAt, lastActivityAt}
 - `SnippetCategory` L385 {key, labels, position, subcategories}
 - `SnippetItem` L392 {id, category, subcategory, labels, prompt, preview}
-- `AssetItem` L401 {id, name?, kind?, origin, status, mimeType, bytes, width, height, url, createdAt, hidden, duplicateCount?}
-- `AssetChoice` L420 {asset, generation}
-- `ExportTask` L426 {id, kind, status, sourceKind, sourceId, total, done, failed, resultAssetId, downloadUrl, errorCode, errorMessage, startedAt, finishedAt, createdAt, failures?} — 导出任务（对齐 api/v1/platform/export.go 的 ExportTaskItem）
-- `PublicationWork` L449 {id, title, state, author?, contentRating, coverUrl, kind?, videoUrl?, tags, stats, publishedAt}
-- `WorkEditor` L477 {id, state, title, content, contentRating, tags, updatedAt} — 作品编辑器（后端 WorkEditor）：草稿/已发布作品的可编辑字段
-- `WorkSaveInput` L488 {id?, title?, content?, tagIds?, coverAssetId?, contentRating?} — 保存作品草稿入参（对应后端 WorkSaveReq）
-- `PublicationPost` L499 {id, title, state, content, assets, tags, stats, publishedAt}
-- `PublicationComment` L510 {id, targetKind, targetId, content, likes, createdAt}
-- `PlatformTag` L519 {id, key, name, aliases, active, priority}
-- `Invite` L528 {code, invited, completed, pending, earnedCredits, friendCredits, rewardCredits}
-- `EconomyWallet` L538 {credits, balanceCents, nextExpiry}
-- `WalletLedgerItem` L544 {id, asset, amount, kind, expiresAt, createdAt}
-- `Membership` L553 {purchaseId, tier, choice, startedAt, expiresAt}
-- `Purchase` L561 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
-- `Transaction` L576 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
-- `CreatorWork` L591 {id, title, imageUrl}
-- `Creator` L597 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
-- `ModelCreator` L614 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
-- `NotificationItem` L625 {id, kind, message, readAt, createdAt, target}
-- `ModelWeight` L635 {default}
-- `ModelStats` L636 {works}
-- `ModelTag` L637 {key}
-- `ModelSampling` L638 {steps?}
-- `ModelFile` L639 {name}
-- `ModelRuntime` L640 {engine}
-- `ModelListItem` L641 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
-- `ModelDetail` L665 {description, compatible, sampling}
-- `ModelFacets` L671 {families, loraCategories}
-- `MineListItem` L676 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
-- `MineModel` L690 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
-- `ModelDraftInput` L704 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
-- `ProfileInfo` L720 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
+- `AssetItem` L401 {id, name?, kind?, origin, status, mimeType, bytes, width, height, url, createdAt, hidden, scope?, duplicateCount?}
+- `AssetChoice` L422 {asset, generation}
+- `ExportTask` L428 {id, kind, status, sourceKind, sourceId, total, done, failed, resultAssetId, downloadUrl, errorCode, errorMessage, startedAt, finishedAt, createdAt, failures?} — 导出任务（对齐 api/v1/platform/export.go 的 ExportTaskItem）
+- `PublicationWork` L451 {id, title, state, author?, contentRating, coverUrl, kind?, videoUrl?, tags, stats, publishedAt}
+- `WorkEditor` L479 {id, state, title, content, contentRating, tags, updatedAt} — 作品编辑器（后端 WorkEditor）：草稿/已发布作品的可编辑字段
+- `WorkSaveInput` L490 {id?, title?, content?, tagIds?, coverAssetId?, contentRating?} — 保存作品草稿入参（对应后端 WorkSaveReq）
+- `PublicationPost` L501 {id, title, state, content, assets, tags, stats, publishedAt}
+- `PublicationComment` L512 {id, targetKind, targetId, content, likes, createdAt}
+- `PlatformTag` L521 {id, key, name, aliases, active, priority}
+- `Invite` L530 {code, invited, completed, pending, earnedCredits, friendCredits, rewardCredits}
+- `EconomyWallet` L540 {credits, balanceCents, nextExpiry}
+- `WalletLedgerItem` L546 {id, asset, amount, kind, expiresAt, createdAt}
+- `Membership` L555 {purchaseId, tier, choice, startedAt, expiresAt}
+- `Purchase` L563 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
+- `Transaction` L578 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
+- `CreatorWork` L593 {id, title, imageUrl}
+- `Creator` L599 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
+- `ModelCreator` L616 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
+- `NotificationItem` L627 {id, kind, message, readAt, createdAt, target}
+- `ModelWeight` L637 {default}
+- `ModelStats` L638 {works}
+- `ModelTag` L639 {key}
+- `ModelSampling` L640 {steps?}
+- `ModelFile` L641 {name}
+- `ModelRuntime` L642 {engine}
+- `ModelListItem` L643 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
+- `ModelDetail` L667 {description, compatible, sampling}
+- `ModelFacets` L673 {families, loraCategories}
+- `MineListItem` L678 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
+- `MineModel` L692 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
+- `ModelDraftInput` L706 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
+- `ProfileInfo` L722 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
 
 ## app/composables/useModelCatalog.ts
 - `ComposerMode` *type* L14 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?}
@@ -112,6 +112,9 @@
 ## app/composables/useToolCatalog.ts
 - `ToolTemplate` L9 {code, name, summary, cover?, coverBefore?, badge?, tags?, isCard?}
 - `ToolItem` L34 {code, name, category, summary, icon, cover?, coverBefore?, coverVideo?, badge?, tags?, engine, input, supportsTemplates, templates}
+
+## app/composables/useTurnstile.ts
+- `VerificationConfig` L21 {mode, turnstile_site_key?} — VerificationConfig 是后端 /pub/verification/config 的响应
 
 ## app/data/canvas-graph.ts
 - `CanvasArtifactRef` L19 {artifactId, version, item?}

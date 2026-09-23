@@ -118,12 +118,12 @@
 - 用: `useChatStudio` · `useHougongApi`
 - 本文件声明 9 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `close` L18 · `onKeydown` L22 · `download` L29 · `continueEdit` L44 · `toVideo` L52
 
-### HgAuthDialog — app/components/HgAuthDialog.vue · 468 行
+### HgAuthDialog — app/components/HgAuthDialog.vue · 508 行
 未登录时的登录弹窗（效果图 homepage-interactions 面板 04）
 - props: —
-- v-model: `open` · 用: `useHougongApi` · `useAuthDialog`
-- 本文件声明 14 个: `tab` L11 · `email` L12 · `password` L13 · `agreed` L14 · `showPassword` L15 · `pending` L16 · `error` L17 · `heading` L19 · `close` L22 · `reset` L26 · `onKeydown` L41 · `afterAuth` L48
-  `submitLogin` L54 · `submitRegister` L72
+- v-model: `open` · 用: `useHougongApi` · `useAuthDialog` · `useTurnstile`
+- 本文件声明 14 个: `tab` L11 · `email` L12 · `password` L13 · `agreed` L14 · `showPassword` L15 · `pending` L16 · `error` L17 · `heading` L31 · `close` L34 · `reset` L38 · `onKeydown` L55 · `afterAuth` L62
+  `submitLogin` L68 · `submitRegister` L91
 
 ### HgBottomSheet — app/components/HgBottomSheet.vue · 113 行
 移动端底部面板容器：同一个面板内容在窄屏以 sheet 呈现，可滚动、可关闭、保留选择
