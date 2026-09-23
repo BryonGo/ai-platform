@@ -413,6 +413,8 @@ export interface AssetItem {
   url: string
   createdAt: number
   hidden: boolean
+  /** 作用域：temp=临时生成产物 / permanent=上传素材与已保存的产物。缺省视为 permanent。 */
+  scope?: 'temp' | 'permanent'
   /** 同内容（sha256）在本账号素材库里的总份数，仅 >1 时下发（用于「重复 ×N」角标）。 */
   duplicateCount?: number
 }
@@ -732,10 +734,17 @@ export function useHougongApi() {
 
   // 登录只认邮箱（后端口径，2026-09）：用户名是自动生成、可自行修改的展示名，
   // 不再作为登录标识，所以这里发的字段就是 email，而不是过去的 account 混填。
-  async function login(email: string, password: string): Promise<AuthResult> {
+  //
+  // turnstileToken：站点把登录验证方式配成 turnstile/both 时后端必填，字段名是
+  // Cloudflare 的约定名 `cf-turnstile-response`（见后端 UserLoginReq.TurnstileToken）。
+  async function login(email: string, password: string, turnstileToken?: string): Promise<AuthResult> {
     const data = await apiRequest<AuthResult>('/account/auth/login', {
       method: 'POST',
-      body: { email, password }
+      body: {
+        email,
+        password,
+        ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {})
+      }
     })
     session.save(data.token, data.user_id)
     return data
@@ -744,11 +753,19 @@ export function useHougongApi() {
   /**
    * 邮箱注册。用户名与展示名都由服务端自动生成（「邮箱前缀 + 随机后缀」，
    * 用户名即展示名），因此这里只提交邮箱与密码；注册后可在设置页改用户名。
+   * turnstileToken 同 login。
    */
-  async function register(input: { email: string, password: string }): Promise<AuthResult> {
+  async function register(
+    input: { email: string, password: string, turnstileToken?: string }
+  ): Promise<AuthResult> {
+    const { turnstileToken, ...rest } = input
     const data = await apiRequest<AuthResult>('/account/auth/register', {
       method: 'POST',
-      body: { ...input, agree_version: '2026.08' }
+      body: {
+        ...rest,
+        agree_version: '2026.08',
+        ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {})
+      }
     })
     session.save(data.token, data.user_id)
     return data
@@ -1014,6 +1031,13 @@ export function useHougongApi() {
     hidden?: boolean
     kind?: string
     origin?: string
+    /**
+     * 作用域：'permanent'（我的资产，默认）/ 'temp'（临时资产）/ 'all'（不限）。
+     *
+     * 服务端不传时默认只返回 permanent —— 生成产物默认是临时的，不会混进「我的资产」；
+     * 「临时资产」页签必须显式传 'temp' 才列得出来。
+     */
+    scope?: 'all' | 'permanent' | 'temp'
     keyword?: string
     sort?: 'new' | 'old' | 'large'
     /** 只看重复：内容（sha256）在库里出现多于一次的行。 */
@@ -1025,6 +1049,7 @@ export function useHougongApi() {
     params.set('hidden', q.hidden ? '1' : '0')
     if (q.kind && q.kind !== 'all') params.set('kind', q.kind)
     if (q.origin && q.origin !== 'all') params.set('origin', q.origin)
+    if (q.scope) params.set('scope', q.scope)
     if (q.keyword) params.set('keyword', q.keyword)
     if (q.sort) params.set('sort', q.sort)
     if (q.duplicates) params.set('duplicates', '1')
@@ -1067,6 +1092,16 @@ export function useHougongApi() {
   }
   async function setAssetHidden(id: string, hidden: boolean): Promise<void> {
     await apiRequest(`/platform/asset/${id}/hidden`, { method: 'POST', body: { hidden } })
+  }
+  /**
+   * saveAsset 把临时生成产物「保存到我的资产」：后端把 scope 置为 permanent（幂等）。
+   *
+   * 返回最新资产条目（含 scope），前端据此把按钮置为已保存。**不重新上传、不重新生成**。
+   * id 一律按字符串传（雪花 19 位，Number 会丢精度）。
+   */
+  async function saveAsset(id: string): Promise<AssetItem> {
+    const res = await apiRequest<{ asset: AssetItem }>(`/platform/asset/${id}/save`, { method: 'POST' })
+    return res.asset
   }
   async function assetSelect(page = 1, pageSize = 20): Promise<AssetChoice[]> {
     const res = await apiRequest<{ items: AssetChoice[] }>(`/platform/asset/select?page=${page}&pageSize=${pageSize}`)
@@ -1407,6 +1442,7 @@ export function useHougongApi() {
     dedupeAssets,
     removeAsset,
     setAssetHidden,
+    saveAsset,
     assetSelect,
     assetSelectByIds,
     assetDownloadUrl,

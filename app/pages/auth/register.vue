@@ -12,6 +12,17 @@ const agreed = ref(false)
 const pending = ref(false)
 const error = ref('')
 
+// 站点要求人机验证时，注册同样必须带 cf-turnstile-response（与登录同一套判定）。
+const {
+  host: turnstileHost,
+  required: turnstileRequired,
+  token: turnstileToken,
+  error: turnstileError,
+  init: initTurnstile,
+  reset: resetTurnstile
+} = useTurnstile()
+onMounted(initTurnstile)
+
 // 成功后回到来源页（只放行站内路径），没有来源就回首页。
 function redirectTarget(): string {
   const raw = route.query.redirect
@@ -33,15 +44,22 @@ async function submit() {
     error.value = '请先阅读并同意服务条款与隐私政策'
     return
   }
+  if (turnstileRequired.value && !turnstileToken.value) {
+    error.value = '请先完成人机验证'
+    return
+  }
   pending.value = true
   try {
     await useHougongApi().register({
       email: email.value.trim(),
-      password: password.value
+      password: password.value,
+      turnstileToken: turnstileToken.value
     })
     await navigateTo(redirectTarget())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '注册失败'
+    // token 一次性：失败后换一张。
+    resetTurnstile()
   } finally {
     pending.value = false
   }
@@ -108,6 +126,19 @@ async function submit() {
         {{ error }}
       </p>
 
+      <!-- Turnstile widget 容器：站点要求人机验证时才渲染（useTurnstile 决定）。 -->
+      <div
+        v-if="turnstileRequired"
+        ref="turnstileHost"
+        class="turnstile-host"
+      />
+      <p
+        v-if="turnstileError"
+        class="form-error"
+      >
+        {{ turnstileError }}
+      </p>
+
       <button
         type="submit"
         class="btn-primary btn-block"
@@ -120,7 +151,10 @@ async function submit() {
         已经注册？
         <NuxtLink to="/auth/login">直接登录</NuxtLink>
       </p>
-      <p class="turnstile-note">
+      <p
+        v-if="turnstileRequired"
+        class="turnstile-note"
+      >
         提交由 Cloudflare Turnstile 保护
       </p>
     </form>

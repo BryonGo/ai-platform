@@ -6,6 +6,18 @@ const password = ref('')
 const pending = ref(false)
 const error = ref('')
 
+// 站点把登录验证方式配成 turnstile/both 时，后端要求 cf-turnstile-response；
+// 拿不到 token 的提交必被拒（「turnstile token 为空」），所以这里必须真接上 widget。
+const {
+  host: turnstileHost,
+  required: turnstileRequired,
+  token: turnstileToken,
+  error: turnstileError,
+  init: initTurnstile,
+  reset: resetTurnstile
+} = useTurnstile()
+onMounted(initTurnstile)
+
 // 成功后回到来源页（只放行站内路径），没有来源就回首页。
 function redirectTarget(): string {
   const raw = route.query.redirect
@@ -19,12 +31,18 @@ async function submit() {
     error.value = '请输入邮箱与密码'
     return
   }
+  if (turnstileRequired.value && !turnstileToken.value) {
+    error.value = '请先完成人机验证'
+    return
+  }
   pending.value = true
   try {
-    await useHougongApi().login(email.value.trim(), password.value)
+    await useHougongApi().login(email.value.trim(), password.value, turnstileToken.value)
     await navigateTo(redirectTarget())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '登录失败，请检查账号与密码'
+    // Turnstile 的 token 是一次性的：失败后换一张，否则重试只会再失败一次。
+    resetTurnstile()
   } finally {
     pending.value = false
   }
@@ -79,6 +97,19 @@ async function submit() {
         {{ error }}
       </p>
 
+      <!-- Turnstile widget 容器：站点要求人机验证时才渲染（useTurnstile 决定）。 -->
+      <div
+        v-if="turnstileRequired"
+        ref="turnstileHost"
+        class="turnstile-host"
+      />
+      <p
+        v-if="turnstileError"
+        class="form-error"
+      >
+        {{ turnstileError }}
+      </p>
+
       <button
         type="submit"
         class="btn-primary btn-block"
@@ -91,7 +122,10 @@ async function submit() {
         还没有账号？
         <NuxtLink to="/auth/register">免费注册</NuxtLink>
       </p>
-      <p class="turnstile-note">
+      <p
+        v-if="turnstileRequired"
+        class="turnstile-note"
+      >
         提交由 Cloudflare Turnstile 保护
       </p>
     </form>
