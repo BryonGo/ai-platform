@@ -2348,12 +2348,10 @@ textarea:focus-visible {
   font-size: 11px;
   text-align: center;
 }
-/* Turnstile widget 容器（class 与后台控制台一致）：给个最小高度，
-   避免挑战脚本还没加载完时表单跳一下。 */
+/* Turnstile widget 容器（class 与后台控制台一致）。
+   刻意**不加** display/min-height 之类的自定义排版：后台那边完全不加样式也正常出题，
+   容器布局交给 Cloudflare 自己管，避免我们的 flex/min-height 干扰它插入 iframe。 */
 .cf-turnstile {
-  display: flex;
-  justify-content: center;
-  min-height: 65px;
   margin-top: 14px;
 }
 

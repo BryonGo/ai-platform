@@ -346,6 +346,9 @@ async function submitRegister() {
   display: grid;
   place-items: center;
   padding: 20px;
+  /* 弹窗比视口高时（小屏/矮窗口）要能滚动：否则底部的 Turnstile widget 会被直接裁掉，
+     表现就是"验证框看不到"，而容器其实已经渲染在视口外。 */
+  overflow: auto;
   background: rgb(6 7 9 / 68%);
   backdrop-filter: blur(3px);
 }
