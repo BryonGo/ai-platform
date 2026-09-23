@@ -140,6 +140,14 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
             >
               {{ message.text }}
             </p>
+            <!-- 可操作失败（如积分不足）带的下一步入口：直接给按钮，别让用户自己找充值页。 -->
+            <NuxtLink
+              v-if="message.action"
+              :to="message.action.to"
+              class="msg-action"
+            >
+              {{ message.action.label }}
+            </NuxtLink>
             <!-- 参考图**并排多图**：一行最多 4 张，超过自动折行（auto-fit + 容器限宽 =
                  最多 4 列；张数少时每张自动变宽，不会缩成一条小图）。 -->
             <div
@@ -347,6 +355,26 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
   font-size: 13px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+/* 失败消息里的下一步入口（如「去充值」）：用主色描边胶囊，和正文区分开。
+   .msg 是 grid，子项默认拉满整列 —— 加 justify-self 让按钮按内容宽度收住。 */
+.msg-action {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 6px 16px;
+  border: 1px solid var(--hg3-accent-line);
+  border-radius: 999px;
+  background: var(--hg3-accent-soft);
+  color: var(--hg3-accent-hi);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.msg-action:hover {
+  background: var(--hg3-accent);
+  color: var(--hg3-accent-ink);
 }
 /* 参考图并排展示：一行最多 4 张，超过折行。
    实现用 auto-fit + 容器限宽（而不是写死 repeat(4,1fr)）：这样 1 张时铺满、

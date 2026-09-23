@@ -4,6 +4,7 @@ import { applyImageRefRoles, imageRefLabel, imageRefWording, missingImageRefs } 
 import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
+import { PlatformApiError } from './useApi'
 
 // 对话创作页的业务层。
 //
@@ -89,6 +90,13 @@ export interface StudioMessage {
   assets?: StudioAsset[]
   error?: string
   meta?: RunMeta
+  /**
+   * 消息附带的一个可点击操作（如「去充值」跳 /wallet）。
+   *
+   * 只给「用户自己能解决」的失败用：把出问题的下一步直接摆到他面前，
+   * 比只告诉他"失败了"有用。
+   */
+  action?: { label: string, to: string }
 }
 
 const TERMINAL: StudioStatus[] = ['succeeded', 'failed', 'cancelled']
@@ -757,8 +765,8 @@ export function createChatStudio() {
 
   /* ---------------- 生成 ---------------- */
 
-  function pushAssistant(text: string): StudioMessage {
-    const message: StudioMessage = { id: makeId('a'), role: 'assistant', kind: 'text', text, time: Date.now() }
+  function pushAssistant(text: string, action?: StudioMessage['action']): StudioMessage {
+    const message: StudioMessage = { id: makeId('a'), role: 'assistant', kind: 'text', text, time: Date.now(), action }
     messages.value.push(message)
     return message
   }
@@ -1172,10 +1180,17 @@ export function createChatStudio() {
       await settle(taskMessage, created, created2.status)
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : '生成失败'
+      // 积分不足是「用户自己能解决」的一类失败：不套「创建任务失败：」这个技术前缀，
+      // 给一句人话 + 直达充值入口（message 已由 useApi 按 errorKey 翻成中文）。
+      const outOfCredits = e instanceof PlatformApiError && e.errorKey === 'INSUFFICIENT_CREDITS'
       if (created === null) {
         // 任务从未创建（余额不足 / 参数不支持 / 内容拦截 / 未登录）：不留「预占 → 失败」的假卡片
         messages.value = messages.value.filter(item => item.id !== taskMessage.id)
-        pushAssistant(`创建任务失败：${reason}`)
+        if (outOfCredits) {
+          pushAssistant(reason, { label: '去充值', to: '/wallet' })
+        } else {
+          pushAssistant(`创建任务失败：${reason}`)
+        }
       } else {
         taskMessage.status = 'failed'
         taskMessage.error = reason

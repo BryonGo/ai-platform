@@ -9,6 +9,78 @@ export interface ApiEnvelope<T> {
   code: number
   message: string
   data: T
+  /** 稳定错误键（由后端 httpx 注入，如 INSUFFICIENT_CREDITS）。成功响应缺省。 */
+  errorKey?: string
+  /** 请求编号：用户反馈时凭它定位服务端日志。 */
+  requestId?: string
+  /** 结构化错误细节：字段级校验错误 / 业务附加数据。 */
+  details?: PlatformErrorDetails
+  contractVersion?: number
+}
+
+/** 错误细节：与后端 httpx.Details 对应。 */
+export interface PlatformErrorDetails {
+  fieldErrors?: { field: string, rule: string, message: string }[]
+  extra?: unknown
+}
+
+/**
+ * PlatformApiError 平台业务错误。
+ *
+ * 带出 code / errorKey / requestId，让调用方能按 **errorKey** 分支（例如积分不足要
+ * 引导去充值、年龄门要弹确认框），而不是去模糊匹配 message 文案 —— 文案会改，键不会。
+ */
+export class PlatformApiError extends Error {
+  readonly code: number
+  readonly errorKey: string
+  readonly requestId: string
+  readonly details?: PlatformErrorDetails
+
+  constructor(code: number, message: string, errorKey: string, requestId: string, details?: PlatformErrorDetails) {
+    super(message)
+    this.name = 'PlatformApiError'
+    this.code = code
+    this.errorKey = errorKey
+    this.requestId = requestId
+    this.details = details
+  }
+}
+
+// errorKeyMessages 稳定错误键 → 面向用户的中文文案。
+//
+// 为什么在前端做映射、而不是让后端 message 直接返回中文：后端的 message 是给开发看的
+// 内部描述（英文，如 "insufficient credits"），面向用户的措辞属于展示层，要随产品话术
+// 调整；而 errorKey 正是后端为「前端可枚举处理」专门提供的稳定契约（见后端
+// platform/consts/error.go 的包注释）。文案集中在这一张表里、由 apiRequest 一处收口，
+// 全站调用点自动受益，也不会把 UI 文案焊死在后端。
+const errorKeyMessages: Record<string, string> = {
+  INSUFFICIENT_CREDITS: '积分不足，请先充值后再试',
+  UNAUTHENTICATED: '登录已过期，请重新登录',
+  FORBIDDEN: '没有权限执行该操作',
+  AGE_GATE_REQUIRED: '需要先完成 18+ 年龄确认',
+  CONTENT_BLOCKED: '提示词包含不允许的内容，请修改后重试',
+  RATE_LIMITED: '操作太频繁，请稍后再试',
+  UNSUPPORTED_PARAMETER: '当前模型或参数不支持，请调整后重试',
+  ASSET_UNAVAILABLE: '素材不可用，请重新选择',
+  CAPABILITY_UNAVAILABLE: '该能力暂时不可用，请稍后再试',
+  VALIDATION_FAILED: '提交的参数不合法，请检查后重试',
+  STATE_CONFLICT: '当前状态不允许该操作，请刷新后重试',
+  VERSION_CONFLICT: '内容已被更新，请刷新后重试',
+  NOT_FOUND: '内容不存在或已被删除',
+  QUOTE_EXPIRED: '报价已过期，请重新获取',
+  QUOTE_STALE: '价格已变化，请确认新价格后重新提交',
+  IMPORT_NOT_READY: '还有文件未就绪，请稍后再试',
+  PATH_CONFLICT: '目标路径已被占用，请选择其他路径',
+  OPERATION_EXPIRED: '该操作已过期，请重新发起',
+  EXPORT_PLAN_CHANGED: '导出内容已变化，请重新确认',
+  IDEMPOTENCY_CONFLICT: '请求与上次重复，请刷新后重试',
+  INVALID_PACKAGE: '该套餐不存在或已下架',
+  INTERNAL_ERROR: '服务开小差了，请稍后再试'
+}
+
+/** friendlyMessage 取用户可读文案：优先用错误键映射，未登记的键回落到后端 message。 */
+export function friendlyMessage(errorKey: string, fallback: string): string {
+  return errorKeyMessages[errorKey] || fallback
 }
 
 // legacyTokenKey 旧版落盘的凭据键名。迁移后主动清理，避免历史用户机器上遗留的
@@ -116,13 +188,20 @@ export async function apiRequest<T = unknown>(
   }
   const res = parseWithBigInt(await resp.text()) as ApiEnvelope<T>
   if (res.code !== 0) {
+    const errorKey = res.errorKey || ''
+    const requestId = res.requestId || ''
     // 登录失效：JWT 中间件返回 401（"请求要求用户的身份认证"）或平台接口 60001。
     // 清除本地登录态并给友好提示，页面会引导重新登录。
-    if (res.code === 60001 || res.code === 401) {
+    if (res.code === 60001 || res.code === 401 || errorKey === 'UNAUTHENTICATED') {
       session.clear()
-      throw new Error('登录已过期，请重新登录')
+      throw new PlatformApiError(res.code, '登录已过期，请重新登录', 'UNAUTHENTICATED', requestId)
     }
-    throw new Error(res.message || `API error ${res.code}`)
+    let message = friendlyMessage(errorKey, res.message || `API error ${res.code}`)
+    // 内部错误带上编号：用户截图/复制时编号跟着走，后端能直接定位（已含编号则不重复）。
+    if (errorKey === 'INTERNAL_ERROR' && requestId && !message.includes(requestId)) {
+      message += `（编号 ${requestId}）`
+    }
+    throw new PlatformApiError(res.code, message, errorKey, requestId, res.details)
   }
   return res.data
 }
