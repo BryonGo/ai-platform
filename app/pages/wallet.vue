@@ -350,6 +350,11 @@ watch(() => route.query.tab, applyTabFromQuery)
         >
           当前未开通会员
         </p>
+        <!-- 会员只有「按面值兑换金币」一种口径：1 元 = 1000 金币，无额外赠送、无余额奖励。
+             不再展示"更多积分/更多余额"的二选一（后端两种 choice 新下单同额，二选一就是误导）。 -->
+        <p class="member-offer-note">
+          ¥69 → <strong>69,000 金币</strong> · 会员 1 个月
+        </p>
         <div class="member-offers">
           <button
             type="button"
@@ -811,6 +816,13 @@ watch(() => route.query.tab, applyTabFromQuery)
   font-weight: 800;
   color: var(--w-gold-strong);
   margin: 0;
+}
+.member-offer-note {
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.9rem;
+}
+.member-offer-note strong {
+  color: var(--w-gold-strong);
 }
 .member-offers {
   display: flex;

@@ -27,7 +27,7 @@ export interface PlatformErrorDetails {
 /**
  * PlatformApiError 平台业务错误。
  *
- * 带出 code / errorKey / requestId，让调用方能按 **errorKey** 分支（例如积分不足要
+ * 带出 code / errorKey / requestId，让调用方能按 **errorKey** 分支（例如金币不足要
  * 引导去充值、年龄门要弹确认框），而不是去模糊匹配 message 文案 —— 文案会改，键不会。
  */
 export class PlatformApiError extends Error {
@@ -54,7 +54,7 @@ export class PlatformApiError extends Error {
 // platform/consts/error.go 的包注释）。文案集中在这一张表里、由 apiRequest 一处收口，
 // 全站调用点自动受益，也不会把 UI 文案焊死在后端。
 const errorKeyMessages: Record<string, string> = {
-  INSUFFICIENT_CREDITS: '积分不足，请先充值后再试',
+  INSUFFICIENT_CREDITS: '金币不足，请先充值后再试',
   UNAUTHENTICATED: '登录已过期，请重新登录',
   FORBIDDEN: '没有权限执行该操作',
   AGE_GATE_REQUIRED: '需要先完成 18+ 年龄确认',

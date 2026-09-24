@@ -113,10 +113,11 @@
 - props: —
 - 用: `useHougongApi`
 
-### HgAssetPanel — app/components/HgAssetPanel.vue · 352 行
+### HgAssetPanel — app/components/HgAssetPanel.vue · 450 行
 - props: —
 - 用: `useChatStudio` · `useHougongApi`
-- 本文件声明 9 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `close` L18 · `onKeydown` L22 · `download` L29 · `continueEdit` L44 · `toVideo` L52
+- 本文件声明 15 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `savedIds` L26 · `savingIds` L27 · `allSaved` L40 · `saving` L42 · `saveLabel` L43 · `saveAssets` L53 · `close` L78
+  `onKeydown` L82 · `download` L89 · `continueEdit` L104 · `toVideo` L112
 
 ### HgAuthDialog — app/components/HgAuthDialog.vue · 515 行
 未登录时的登录弹窗（效果图 homepage-interactions 面板 04）

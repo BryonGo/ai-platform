@@ -34,12 +34,12 @@
 - `CanvasSnapshot` L18 {graph}
 
 ## app/composables/useChatStudio.ts
-- `StudioStatus` *type* L26 {id, url, kind, width?, height?}
-- `StudioAsset` L28 {id, url, kind, width?, height?}
-- `RunMeta` L36 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
-- `StudioAttachment` L61 {name, url, assetId?, role?}
-- `StudioMessage` L74 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
-- `ChatStudio` *type* L1437 {provide}
+- `StudioStatus` *type* L26 {id, url, kind, width?, height?, scope?}
+- `StudioAsset` L28 {id, url, kind, width?, height?, scope?}
+- `RunMeta` L41 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
+- `StudioAttachment` L67 {name, url, assetId?, role?}
+- `StudioMessage` L80 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
+- `ChatStudio` *type* L1447 {provide}
 
 ## app/composables/useComposerDraft.ts
 - `ComposerDraft` L4 {prompt, mode, ratio, durationSeconds, uploadName, files, references?, file?, modelId?, modelChannel?, toolCode?, templateCode?}
@@ -81,33 +81,33 @@
 - `PlatformTag` L521 {id, key, name, aliases, active, priority}
 - `Invite` L530 {code, invited, completed, pending, earnedCredits, friendCredits, rewardCredits}
 - `EconomyWallet` L540 {credits, balanceCents, nextExpiry}
-- `WalletLedgerItem` L546 {id, asset, amount, kind, expiresAt, createdAt}
-- `Membership` L555 {purchaseId, tier, choice, startedAt, expiresAt}
-- `Purchase` L563 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
-- `Transaction` L578 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
-- `CreatorWork` L593 {id, title, imageUrl}
-- `Creator` L599 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
-- `ModelCreator` L616 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
-- `NotificationItem` L627 {id, kind, message, readAt, createdAt, target}
-- `ModelWeight` L637 {default}
-- `ModelStats` L638 {works}
-- `ModelTag` L639 {key}
-- `ModelSampling` L640 {steps?}
-- `ModelFile` L641 {name}
-- `ModelRuntime` L642 {engine}
-- `ModelListItem` L643 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
-- `ModelDetail` L667 {description, compatible, sampling}
-- `ModelFacets` L673 {families, loraCategories}
-- `MineListItem` L678 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
-- `MineModel` L692 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
-- `ModelDraftInput` L706 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
-- `ProfileInfo` L722 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
+- `WalletLedgerItem` L560 {id, asset, amount, kind, expiresAt, createdAt}
+- `Membership` L569 {purchaseId, tier, choice, startedAt, expiresAt}
+- `Purchase` L577 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
+- `Transaction` L592 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
+- `CreatorWork` L607 {id, title, imageUrl}
+- `Creator` L613 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
+- `ModelCreator` L630 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
+- `NotificationItem` L641 {id, kind, message, readAt, createdAt, target}
+- `ModelWeight` L651 {default}
+- `ModelStats` L652 {works}
+- `ModelTag` L653 {key}
+- `ModelSampling` L654 {steps?}
+- `ModelFile` L655 {name}
+- `ModelRuntime` L656 {engine}
+- `ModelListItem` L657 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
+- `ModelDetail` L681 {description, compatible, sampling}
+- `ModelFacets` L687 {families, loraCategories}
+- `MineListItem` L692 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
+- `MineModel` L706 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
+- `ModelDraftInput` L720 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
+- `ProfileInfo` L736 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
 
 ## app/composables/useModelCatalog.ts
 - `ComposerMode` *type* L14 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?}
-- `ModelChannel` *type* L20 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?} — 账务通道
-- `UserModelOption` L22 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?}
-- `PriceQuery` L47 {ratio, seconds, count}
+- `ModelChannel` *type* L23 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?} — 账务通道
+- `UserModelOption` L25 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?}
+- `PriceQuery` L50 {ratio, seconds, count}
 
 ## app/composables/useToolCatalog.ts
 - `ToolTemplate` L9 {code, name, summary, cover?, coverBefore?, badge?, tags?, isCard?}

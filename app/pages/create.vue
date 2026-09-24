@@ -140,7 +140,7 @@ useMediaAutoRefresh(() => studio.refreshAssetUrls())
             >
               {{ message.text }}
             </p>
-            <!-- 可操作失败（如积分不足）带的下一步入口：直接给按钮，别让用户自己找充值页。 -->
+            <!-- 可操作失败（如金币不足）带的下一步入口：直接给按钮，别让用户自己找充值页。 -->
             <NuxtLink
               v-if="message.action"
               :to="message.action.to"

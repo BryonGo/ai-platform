@@ -122,6 +122,6 @@
 ## app/config/features.ts
 - `const FEATURES = {` L10 — 前台功能开关
 - `featureEnabled(key: FeatureKey): boolean` L24 — 读开关：写成函数是为了以后能接远程配置/灰度而不动调用点
-- `canvasFeatureEnabled(): boolean` L41 — 画布（/canvas）开关
+- `canvasFeatureEnabled(): boolean` L41 — 画布入口开关
 
 <!-- END GENERATED:utils -->

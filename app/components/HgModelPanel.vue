@@ -42,7 +42,7 @@ function choose(option: UserModelOption) {
   emit('close')
 }
 
-// 单位随账务通道走：积分（本地预占）与余额（云端扣款）不能混标（交接文档 G2）
+// 全环境统一 coin_wallet 后用户可见单位只有「金币」，这里直接用它（priceUnit 由 useModelCatalog 保证）
 function priceText(option: UserModelOption) {
   return option.fromPrice === null ? '价格待报价' : `起步 ${option.fromPrice} ${option.priceUnit}`
 }

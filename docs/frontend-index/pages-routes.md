@@ -5,17 +5,18 @@
 
 页面/视图：路由、职责、用到的组合式函数；大文件另附本文件声明清单。
 
-### `/assets` — app/pages/assets.vue · 1915 行
+### `/assets` — app/pages/assets.vue · 2003 行
 素材库（/assets）——「我的资产」里的素材分区
 - 用: `useHougongApi`
-- 本文件声明 79 个: `pane` L22 · `items` L47 · `total` L48 · `pageNo` L49 · `firstLoading` L50 · `loadingMore` L51 · `done` L52 · `error` L53 · `notice` L54 · `brokenIds` L56 · `kind` L58 · `origin` L59
-  `sort` L60 · `keyword` L61 · `showHidden` L62 · `onlyDuplicates` L69 · `manageMode` L76 · `picked` L78 · `hasFilter` L81 · `pickedVisible` L86 · `pickedHidden` L89 · `fetchPage` L97 · `reload` L127
-  `loadMore` L138 · `sentinel` L146 · `stopObserver` L149 · `isPicked` L177 · `togglePick` L182 · `pickAllLoaded` L201 · `clearPick` L209 · `onPressStart` L218 · `onPressEnd` L226
-  `onMediaClick` L232 · `preview` L242 · `previewOpen` L243 · `openPreview` L245 · `closePreview` L251 · `busyId` L256 · `toggleHiddenOne` L258 · `downloadingId` L276 · `download` L278
-  `batchBusy` L297 · `confirmOpen` L298 · `confirmTitle` L299 · `confirmMessage` L300 · `pendingSingle` L301 · `batchProgress` L303 · `chunkSizeFor` L314 · `batchPercent` L319 · `batchInChunks` L326
-  `askDelete` L341 · `doDelete` L353 · `runBatch` L384 · `dedupeOpen` L430 · `dedupeBusy` L431 · `dedupePlan` L432 · `dedupeMessage` L433 · `askDedupe` L443 · `doDedupe` L458 · `publishOpen` L482
-  `publishPending` L483 · `publishCover` L485 · `askPublish` L487 · `submitPublish` L500 · `exporting` L530 · `exportTask` L531 · `exportError` L532 · `extOf` L534 · `relPathOf` L547
-  `runExport` L551 · `typeLabel` L585 · `isImage` L588 · `isVideo` L591 · `displayName` L596 · `dateText` L601 · `sizeText` L606 · `dimsOf` L613 · `onImgError` L617 · `onKeydown` L622
+- 本文件声明 83 个: `pane` L23 · `isAssetPane` L31 · `paneScope` L33 · `items` L58 · `total` L59 · `pageNo` L60 · `firstLoading` L61 · `loadingMore` L62 · `done` L63 · `error` L64 · `notice` L65
+  `brokenIds` L67 · `kind` L69 · `origin` L70 · `sort` L71 · `keyword` L72 · `showHidden` L73 · `onlyDuplicates` L80 · `manageMode` L87 · `picked` L89 · `hasFilter` L92 · `pickedVisible` L97
+  `pickedHidden` L100 · `fetchPage` L108 · `reload` L141 · `loadMore` L152 · `sentinel` L160 · `stopObserver` L163 · `isPicked` L198 · `togglePick` L203 · `pickAllLoaded` L222 · `clearPick` L230
+  `onPressStart` L239 · `onPressEnd` L247 · `onMediaClick` L253 · `preview` L263 · `previewOpen` L264 · `openPreview` L266 · `closePreview` L272 · `busyId` L277 · `toggleHiddenOne` L279
+  `downloadingId` L297 · `savingIds` L300 · `saveToLibrary` L308 · `download` L325 · `batchBusy` L344 · `confirmOpen` L345 · `confirmTitle` L346 · `confirmMessage` L347 · `pendingSingle` L348
+  `batchProgress` L350 · `chunkSizeFor` L361 · `batchPercent` L366 · `batchInChunks` L373 · `askDelete` L388 · `doDelete` L400 · `runBatch` L431 · `dedupeOpen` L477 · `dedupeBusy` L478
+  `dedupePlan` L479 · `dedupeMessage` L480 · `askDedupe` L490 · `doDedupe` L505 · `publishOpen` L529 · `publishPending` L530 · `publishCover` L532 · `askPublish` L534 · `submitPublish` L547
+  `exporting` L577 · `exportTask` L578 · `exportError` L579 · `extOf` L581 · `relPathOf` L594 · `runExport` L598 · `typeLabel` L632 · `isImage` L635 · `isVideo` L638 · `displayName` L643
+  `dateText` L648 · `sizeText` L653 · `dimsOf` L660 · `onImgError` L664 · `onKeydown` L669
 
 ### `/auth/login` — app/pages/auth/login.vue · 138 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
@@ -103,25 +104,25 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
 ### `/stories` — app/pages/stories/index.vue · 88 行
 - 用: `useHougongApi`
 
-### `/tool/:code` — app/pages/tool/[code].vue · 1049 行
+### `/tool/:code` — app/pages/tool/[code].vue · 1118 行
 单个创作工具页（/tool/:code）
 - 用: `useHougongApi` · `useToolCatalog`
-- 本文件声明 54 个: `code` L21 · `tool` L24 · `templates` L25 · `template` L26 · `toolMissing` L27 · `emptySlot` L36 · `uploading` L40 · `prompt` L41 · `inputKind` L42 · `needsImage` L43 · `isPair` L44
+- 本文件声明 59 个: `code` L21 · `tool` L24 · `templates` L25 · `template` L26 · `toolMissing` L27 · `emptySlot` L36 · `uploading` L40 · `prompt` L41 · `inputKind` L42 · `needsImage` L43 · `isPair` L44
   `isVideoPair` L46 · `isMask` L48 · `isCharacter` L50 · `characters` L51 · `characterId` L52 · `slotCount` L54 · `filledSlots` L55 · `maskCanvas` L64 · `setMaskCanvas` L66 · `brushSize` L71
-  `hasStroke` L72 · `canSubmit` L76 · `runs` L101 · `busy` L102 · `notice` L103 · `sourceUrl` L105 · `latest` L107 · `templateCover` L110 · `templateCoverBefore` L112 · `demoVideo` L123 · `demo` L138
-  `demoAlt` L147 · `restriction` L153 · `slotLabel` L161 · `cost` L171 · `onPick` L173 · `setFile` L181 · `clearFile` L190 · `syncMaskCanvas` L203 · `resetMask` L226 · `pointOf` L235 · `strokeTo` L245
-  `onMaskDown` L264 · `onMaskMove` L274 · `onMaskUp` L281 · `exportMask` L287 · `swapSlots` L305 · `submit` L311 · `poll` L376 · `resolveOutputs` L399 · `isVideoUrl` L415 · `outputLabel` L421
-  `download` L430
+  `hasStroke` L72 · `canSubmit` L76 · `runs` L103 · `busy` L104 · `notice` L105 · `sourceUrl` L107 · `latest` L109 · `savedIds` L120 · `savingIds` L121 · `allOutputsSaved` L124
+  `anyOutputSaving` L128 · `saveOutputs` L138 · `templateCover` L163 · `templateCoverBefore` L165 · `demoVideo` L176 · `demo` L191 · `demoAlt` L200 · `restriction` L206 · `slotLabel` L214
+  `cost` L224 · `onPick` L226 · `setFile` L234 · `clearFile` L243 · `syncMaskCanvas` L256 · `resetMask` L279 · `pointOf` L288 · `strokeTo` L298 · `onMaskDown` L317 · `onMaskMove` L327
+  `onMaskUp` L334 · `exportMask` L340 · `swapSlots` L358 · `submit` L364 · `poll` L429 · `resolveOutputs` L452 · `isVideoUrl` L473 · `outputLabel` L479 · `download` L488
 
 ### `/tv` — app/pages/tv.vue · 255 行
 - 用: `useHougongApi`
 
-### `/wallet` — app/pages/wallet.vue · 672 行
+### `/wallet` — app/pages/wallet.vue · 999 行
 - 用: `useHougongApi`
-- 本文件声明 32 个: `loading` L5 · `error` L6 · `wallet` L9 · `claiming` L10 · `claimNotice` L11 · `invite` L13 · `copied` L14 · `membership` L16 · `tab` L18 · `transactions` L19 · `ledger` L20
-  `rechargeAmt` L22 · `checkoutBusy` L23 · `checkoutRes` L24 · `checkoutErr` L25 · `creatorInfo` L27 · `applyCreatorOpen` L28 · `mcInfo` L29 · `applyMcOpen` L30 · `applyErr` L31 · `applyBusy` L32
-  `creatorForm` L33 · `mcForm` L34 · `fmtCredits` L46 · `load` L50 · `claim` L73 · `copyInvite` L86 · `doCheckout` L97 · `loadCreator` L113 · `submitCreator` L121 · `submitModelCreator` L134
-  `addResourceUrl` L147
+- 本文件声明 36 个: `loading` L6 · `error` L7 · `wallet` L11 · `claiming` L12 · `claimNotice` L13 · `invite` L15 · `copied` L16 · `membership` L18 · `tab` L21 · `transactions` L22 · `ledger` L23
+  `rechargeAmt` L25 · `checkoutBusy` L26 · `checkoutRes` L27 · `checkoutErr` L28 · `rechargeRef` L31 · `ordersRef` L32 · `creatorInfo` L34 · `applyCreatorOpen` L35 · `mcInfo` L36 · `applyMcOpen` L37
+  `applyErr` L38 · `applyBusy` L39 · `creatorForm` L40 · `mcForm` L41 · `fmtCredits` L53 · `applyTabFromQuery` L66 · `scrollToSection` L77 · `load` L83 · `claim` L106 · `copyInvite` L119
+  `doCheckout` L130 · `loadCreator` L146 · `submitCreator` L154 · `submitModelCreator` L167 · `addResourceUrl` L180
 
 ### `/works/:id` — app/pages/works/[id].vue · 541 行
 - 用: `useHougongApi` · `useAdultGate`
@@ -135,22 +136,22 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 895 行
-  - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
-    `accountWrapRef` L136 · `railOpen` L137 · `dotTrailRef` L139 · `fadeDotTrails` L144 · `onDotPointerMove` L157 · `railCollapsed` L186 · `isFullBleed` L189 · `credits` L190 · `unread` L191
-    `pageName` L211 · `isActive` L220 · `onAccountToggle` L228 · `onDocClick` L232 · `logout` L238 · `loadShellData` L244
+- `app/app.vue` · 915 行
+  - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
+    `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
+    `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 895 行
-  - 本文件声明: `recentSessions` L72 · `searchOpen` L75 · `searchQuery` L76 · `searchResults` L92 · `searchEmpty` L114 · `openSearch` L119 · `goSearch` L127 · `onSearchKeydown` L132 · `accountOpen` L135
-    `accountWrapRef` L136 · `railOpen` L137 · `dotTrailRef` L139 · `fadeDotTrails` L144 · `onDotPointerMove` L157 · `railCollapsed` L186 · `isFullBleed` L189 · `credits` L190 · `unread` L191
-    `pageName` L211 · `isActive` L220 · `onAccountToggle` L228 · `onDocClick` L232 · `logout` L238 · `loadShellData` L244
+- `app/App.vue` · 915 行
+  - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
+    `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
+    `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"
 - `server/utils/version.ts` — 版本端点（/api/version）GET 与 HEAD 共用的部分
 
 ## 中间件与插件
-- `app/middleware/canvas-gate.global.ts` — 画布（/canvas）屏蔽闸门
+- `app/middleware/canvas-gate.global.ts` — 画布路由保留给直达链接和内部业务跳转使用
 - `app/plugins/media-heal.client.ts` — 媒体自愈的全局接线（仅浏览器）
 
 <!-- END GENERATED:pages -->

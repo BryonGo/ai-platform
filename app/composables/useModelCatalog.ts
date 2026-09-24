@@ -14,8 +14,11 @@ import type { Catalog, CatalogVideoModel, CloudModel } from './useHougongApi'
 export type ComposerMode = 'image' | 'video'
 
 /**
- * 账务通道。仅用于**选择正确的计费口径与路由**（交接文档 G2：积分预占与
- * cloud balance 是两套账务语义，不能把余额标成积分），不作为 UI 文案展示。
+ * 账务通道。仅用于**选择正确的取数口径与路由**（本地预占 / 云端扣款 / 视频）。
+ *
+ * 历史背景（交接文档 G2）：过去本地走「积分预占」、云端走「余额」，是两套账务，
+ * 所以单位要分开标。2026-09-23 起全环境统一到 `coin_wallet`（1 元 = 100 分 = 1000 金币），
+ * 两者已是同一个钱包，**用户可见单位只剩「金币」**；渠道差异不再体现为单位，只影响路由。
  */
 export type ModelChannel = 'local' | 'cloud' | 'video'
 
@@ -30,8 +33,8 @@ export interface UserModelOption {
   tags: string[]
   /** 起步价数值；取不到时为 null，UI 显示「价格待报价」而不是编造数字 */
   fromPrice: number | null
-  /** 价格的单位：积分（credit 预占）或余额（cloud balance），不可混用 */
-  priceUnit: '积分' | '余额'
+  /** 用户可见价格的单位。全环境统一 coin_wallet 后只有「金币」一种（见 ModelChannel 注释） */
+  priceUnit: '金币'
   /** 后台配置的用途介绍；后端未提供时为 undefined，UI 不显示该行 */
   summary?: string
   /**
@@ -74,17 +77,17 @@ export function quote(catalog: Catalog | null, mode: ComposerMode, query: PriceQ
 }
 
 /**
- * 按**所选模型**报价，并返回正确单位。
+ * 按**所选模型**报价，并返回统一单位。
  *
- * 不能只按画幅从 rates 取数：云端模型走 cloud balance（余额/张），
- * 与本地模型的积分预占是两套账务（交接文档 G2）。未选模型时返回 null，
- * UI 显示「费用待确认」—— 与效果图一致，也不编造价格。
+ * 取数仍要区分渠道：云端模型取 `pricing.qualities[].balance`，本地/视频取站点 rates
+ * （两套取数口径不同），但**展示单位统一为「金币」**——全环境已并入 coin_wallet。
+ * 未选模型时返回 null，UI 显示「费用待确认」，不编造价格。
  */
 export function quoteModel(
   catalog: Catalog | null,
   option: UserModelOption | undefined,
   query: PriceQuery
-): { amount: number, unit: '积分' | '余额' } | null {
+): { amount: number, unit: '金币' } | null {
   if (!option || !option.available) return null
   if (option.channel === 'cloud') {
     const model = catalog?.cloudModels?.find(item => item.id === option.id)
@@ -93,13 +96,13 @@ export function quoteModel(
     const quality = model.pricing?.qualities?.find(item => item.quality === preferred)
       ?? model.pricing?.qualities?.[0]
     if (!quality || typeof quality.balance !== 'number') return null
-    // 云端按「余额/张」计价；数量上限由后端 capabilities.maxOutputs 约束
-    return { amount: quality.balance * Math.max(1, query.count), unit: '余额' }
+    // 云端按「每张金币」计价；数量上限由后端 capabilities.maxOutputs 约束
+    return { amount: quality.balance * Math.max(1, query.count), unit: '金币' }
   }
   const amount = option.channel === 'video'
     ? quoteVideo(catalog, query.ratio, query.seconds)
     : quoteImage(catalog, query.ratio, query.count)
-  return amount === null ? null : { amount, unit: '积分' }
+  return amount === null ? null : { amount, unit: '金币' }
 }
 
 function videoTags(model: CatalogVideoModel): string[] {
@@ -122,7 +125,7 @@ function cloudTags(model: CloudModel): string[] {
   return tags
 }
 
-/** 云端模型的起步余额（默认档），取不到时为 null */
+/** 云端模型的起步金币价（默认档），取不到时为 null */
 function cloudFromPrice(model: CloudModel): number | null {
   const preferred = model.capabilities?.default?.quality
   const quality = model.pricing?.qualities?.find(item => item.quality === preferred)
@@ -156,7 +159,7 @@ export function buildModelOptions(catalog: Catalog | null, mode: ComposerMode): 
       channel: 'video' as const,
       tags: videoTags(model),
       fromPrice: quoteVideo(catalog, '9:16', model.defaultSeconds || 5),
-      priceUnit: '积分' as const,
+      priceUnit: '金币' as const,
       summary: model.summary ?? model.note,
       available: model.available && model.selectable,
       unavailableReason: reasonFor(model.available && model.selectable, model.unavailableReason)
@@ -170,7 +173,7 @@ export function buildModelOptions(catalog: Catalog | null, mode: ComposerMode): 
     cover: model.cover,
     tags: [model.family].filter(Boolean) as string[],
     fromPrice: quoteImage(catalog, '16:9', 1),
-    priceUnit: '积分' as const,
+    priceUnit: '金币' as const,
     summary: model.summary,
     available: model.available && model.selectable,
     unavailableReason: reasonFor(model.available && model.selectable, model.unavailableReason)
@@ -185,7 +188,7 @@ export function buildModelOptions(catalog: Catalog | null, mode: ComposerMode): 
       cover: model.cover || undefined,
       tags: cloudTags(model),
       fromPrice: cloudFromPrice(model),
-      priceUnit: '余额' as const,
+      priceUnit: '金币' as const,
       summary: model.excerpt,
       available: true
     }))

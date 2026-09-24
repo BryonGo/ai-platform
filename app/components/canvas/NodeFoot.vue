@@ -43,7 +43,7 @@ function reviewLabel(a: CanvasArtifact): string {
 }
 
 /**
- * 跑这个节点大概花多少积分 —— 底栏「运行」按钮的 title 里给个预期，别等点了才知道。
+ * 跑这个节点大概花多少金币 —— 底栏「运行」按钮的 title 里给个预期，别等点了才知道。
  *
  * 口径与右侧详情面板（DetailPanel）的 `estimate` 一致：都取节点类型规格上的
  * `estimateCredits`，金额都用 `creditsToYuan` 格式化，避免同一个数在图上和面板里长得不一样。
