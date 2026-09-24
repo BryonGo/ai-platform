@@ -21,6 +21,10 @@ const {
 } = useTurnstile()
 onMounted(initTurnstile)
 
+// 站点要求人机验证、但还没拿到 token 时禁用提交并给出明确状态。
+// `ready` 只代表 render 调用过，不代表 token 到位，所以判据只能是 token 本身。
+const turnstileBlocked = computed(() => turnstileRequired.value && !turnstileToken.value)
+
 // 成功后回到来源页（只放行站内路径），没有来源就回首页。
 function redirectTarget(): string {
   const raw = route.query.redirect
@@ -116,6 +120,14 @@ async function submit() {
       >
         {{ turnstileError }}
       </p>
+      <!-- 未拿到 token 时按钮禁用，必须说明原因，否则用户只看到「点不动」；
+           widget 可能加载失败，所以再给一个手动重载入口（远端 ff13085 的语义）。 -->
+      <p
+        v-if="turnstileBlocked"
+        class="turnstile-hint"
+      >
+        {{ turnstileError ? '人机验证未就绪，请刷新页面或更换浏览器后重试' : '请完成上方的人机验证后继续' }}
+      </p>
       <div
         v-if="(turnstileRequired && !turnstileToken) || turnstileError"
         class="turnstile-help"
@@ -134,7 +146,7 @@ async function submit() {
       <button
         type="submit"
         class="btn-primary btn-block"
-        :disabled="pending"
+        :disabled="pending || turnstileBlocked"
       >
         {{ pending ? '登录中…' : '登录并继续' }}
       </button>
@@ -144,7 +156,7 @@ async function submit() {
         <NuxtLink to="/auth/register">免费注册</NuxtLink>
       </p>
       <p
-        v-if="turnstileRequired"
+        v-if="turnstileRequired && turnstileToken"
         class="turnstile-note"
       >
         提交由 Cloudflare Turnstile 保护

@@ -11,7 +11,10 @@ const { intent } = useAuthDialog()
 const tab = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
+// 确认密码只在本地比对，不提交给 API（register 的字段仍是 email + password）。
+const confirmPassword = ref('')
 const agreed = ref(false)
+// 一个开关同时管密码与确认密码：注册表单里两个框的显隐应当一致。
 const showPassword = ref(false)
 const pending = ref(false)
 const error = ref('')
@@ -31,6 +34,12 @@ const {
   retry: retryTurnstile
 } = useTurnstile()
 
+// 站点要求人机验证、但用户还没拿到 token 时，提交按钮保持禁用并给出明确状态。
+// 注意 `ready` 只代表 render 调用过，不代表题目出来或 token 到位，所以判据必须是 token 本身。
+// 2026-09-23 线上首次登录「点了报错、再点一次才成功」就是因为 Turnstile 是异步的：
+// 用户先点了提交才去点题，第一次必被「请先完成人机验证」拦住。
+const turnstileBlocked = computed(() => turnstileRequired.value && !turnstileToken.value)
+
 const heading = computed(() => intent.value.reason === 'publish' ? '登录后继续发布' : '登录后继续创作')
 const emblemSrc = '/mock/home/emblem.png'
 
@@ -41,6 +50,7 @@ function close() {
 function reset() {
   error.value = ''
   password.value = ''
+  confirmPassword.value = ''
   agreed.value = false
   showPassword.value = false
 }
@@ -99,6 +109,14 @@ async function submitRegister() {
   }
   if (!PASSWORD_RE.test(password.value)) {
     error.value = PASSWORD_HINT
+    return
+  }
+  if (!confirmPassword.value) {
+    error.value = '请再次输入密码以确认'
+    return
+  }
+  if (password.value !== confirmPassword.value) {
+    error.value = '两次输入的密码不一致'
     return
   }
   if (!agreed.value) {
@@ -235,7 +253,7 @@ async function submitRegister() {
           <button
             type="submit"
             class="hg-btn-primary hg-auth-submit"
-            :disabled="pending"
+            :disabled="pending || turnstileBlocked"
           >
             {{ pending ? '登录中…' : '登录并继续' }}
           </button>
@@ -283,6 +301,27 @@ async function submitRegister() {
               <UIcon :name="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'" />
             </button>
           </label>
+          <label class="hg-field">
+            <UIcon
+              name="i-lucide-lock"
+              aria-hidden="true"
+            />
+            <input
+              v-model="confirmPassword"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              placeholder="再次输入密码"
+              aria-label="确认密码"
+            >
+            <button
+              type="button"
+              class="hg-field-eye"
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              @click="showPassword = !showPassword"
+            >
+              <UIcon :name="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'" />
+            </button>
+          </label>
 
           <p
             v-if="error"
@@ -307,7 +346,7 @@ async function submitRegister() {
           <button
             type="submit"
             class="hg-btn-primary hg-auth-submit"
-            :disabled="pending"
+            :disabled="pending || turnstileBlocked"
           >
             {{ pending ? '注册中…' : '注册并继续' }}
           </button>
@@ -334,6 +373,15 @@ async function submitRegister() {
           role="alert"
         >
           {{ turnstileError }}
+        </p>
+        <!-- 未拿到 token 时按钮是禁用的，必须说明原因，否则用户只看到「点不动」。
+             有错误码时引导换浏览器/刷新，避免卡在死端；widget 可能加载失败，
+             所以再给一个手动重载入口（远端 ff13085 的语义）。 -->
+        <p
+          v-if="turnstileBlocked"
+          class="hg-auth-hint"
+        >
+          {{ turnstileError ? '人机验证未就绪，请刷新页面或更换浏览器后重试' : '请完成上方的人机验证后继续' }}
         </p>
         <div
           v-if="(turnstileRequired && !turnstileToken) || turnstileError"
@@ -485,6 +533,14 @@ async function submitRegister() {
   margin: 4px 0 8px;
   color: #ff8f8f;
   font-size: 12px;
+}
+/* 未完成人机验证时的明确状态（按钮此时禁用）：用品牌色而不是错误红，
+   表达「待完成」而非「出错了」。 */
+.hg-auth-hint {
+  margin: 8px 0 0;
+  color: var(--hg3-accent, #e832b0);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .hg-auth-submit {
   width: 100%;

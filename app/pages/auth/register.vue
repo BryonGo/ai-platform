@@ -8,6 +8,8 @@ import { PASSWORD_HINT, PASSWORD_RE } from '~/utils/password'
 const route = useRoute()
 const email = ref('')
 const password = ref('')
+// 确认密码只在本地比对，不提交给 API（register 的字段仍是 email + password）。
+const confirmPassword = ref('')
 const agreed = ref(false)
 const pending = ref(false)
 const error = ref('')
@@ -26,6 +28,10 @@ const {
 } = useTurnstile()
 onMounted(initTurnstile)
 
+// 站点要求人机验证、但还没拿到 token 时禁用提交并给出明确状态。
+// `ready` 只代表 render 调用过，不代表 token 到位，所以判据只能是 token 本身。
+const turnstileBlocked = computed(() => turnstileRequired.value && !turnstileToken.value)
+
 // 成功后回到来源页（只放行站内路径），没有来源就回首页。
 function redirectTarget(): string {
   const raw = route.query.redirect
@@ -41,6 +47,14 @@ async function submit() {
   }
   if (!PASSWORD_RE.test(password.value)) {
     error.value = PASSWORD_HINT
+    return
+  }
+  if (!confirmPassword.value) {
+    error.value = '请再次输入密码以确认'
+    return
+  }
+  if (password.value !== confirmPassword.value) {
+    error.value = '两次输入的密码不一致'
     return
   }
   if (!agreed.value) {
@@ -114,6 +128,17 @@ async function submit() {
         >
       </label>
 
+      <label class="field">
+        <span>确认密码</span>
+        <input
+          v-model="confirmPassword"
+          type="password"
+          autocomplete="new-password"
+          placeholder="再次输入密码"
+          aria-label="确认密码"
+        >
+      </label>
+
       <label class="check-row">
         <input
           v-model="agreed"
@@ -144,6 +169,14 @@ async function submit() {
       >
         {{ turnstileError }}
       </p>
+      <!-- 未拿到 token 时按钮禁用，必须说明原因，否则用户只看到「点不动」；
+           widget 可能加载失败，所以再给一个手动重载入口（远端 ff13085 的语义）。 -->
+      <p
+        v-if="turnstileBlocked"
+        class="turnstile-hint"
+      >
+        {{ turnstileError ? '人机验证未就绪，请刷新页面或更换浏览器后重试' : '请完成上方的人机验证后继续' }}
+      </p>
       <div
         v-if="(turnstileRequired && !turnstileToken) || turnstileError"
         class="turnstile-help"
@@ -162,7 +195,7 @@ async function submit() {
       <button
         type="submit"
         class="btn-primary btn-block"
-        :disabled="pending"
+        :disabled="pending || turnstileBlocked"
       >
         {{ pending ? '创建中…' : '创建账号' }}
       </button>
@@ -172,7 +205,7 @@ async function submit() {
         <NuxtLink to="/auth/login">直接登录</NuxtLink>
       </p>
       <p
-        v-if="turnstileRequired"
+        v-if="turnstileRequired && turnstileToken"
         class="turnstile-note"
       >
         提交由 Cloudflare Turnstile 保护

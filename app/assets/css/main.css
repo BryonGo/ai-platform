@@ -2348,6 +2348,14 @@ textarea:focus-visible {
   font-size: 11px;
   text-align: center;
 }
+/* 未完成人机验证时的明确状态（提交按钮此时禁用）。
+   用品牌色而非错误红，表达「待完成」而不是「出错了」；没有这条提示用户只会看到按钮点不动。 */
+.turnstile-hint {
+  margin-top: 10px;
+  color: var(--amber-soft, #f347bc);
+  font-size: 12px;
+  line-height: 1.7;
+}
 /* Turnstile widget 容器（class 与后台控制台一致）。
    刻意**不加** display/min-height 之类的自定义排版：后台那边完全不加样式也正常出题，
    容器布局交给 Cloudflare 自己管，避免我们的 flex/min-height 干扰它插入 iframe。 */
