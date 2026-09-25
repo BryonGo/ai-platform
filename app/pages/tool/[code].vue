@@ -64,7 +64,7 @@ const isVideoPair = computed(() => inputKind.value === 'video_pair')
 const isMask = computed(() => inputKind.value === 'image_mask')
 /** 角色延展：文字 + 必须选一个角色（character 输入形态）。 */
 const isCharacter = computed(() => inputKind.value === 'character')
-const characters = ref<{ id: number, name: string, alias?: string }[]>([])
+const characters = ref<{ id: string, name: string, alias?: string }[]>([])
 const characterId = ref('')
 /** 参与提交的槽位数：双图工具要求两张都齐。 */
 const slotCount = computed(() => (isPair.value || isVideoPair.value ? 2 : 1))

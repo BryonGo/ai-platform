@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { safeHref } from '~/composables/useSafeUrl'
+import { referenceLimitReason } from '~/data/reference-limit'
 // 右侧产物面板：按需展开，可切换同组多产物，并提供产物级操作。
 // 约束：完整预览保留原始宽高比（不裁切、不拉伸）；未完成的产物不渲染播放器；
 // 尚未接通的入口显式说明，不假装可用。
@@ -100,11 +101,26 @@ function download() {
   })()
 }
 
-/** 继续修改：把当前产物设为引用对象，留在图片模式 */
+/**
+ * 继续修改：把当前产物设为引用对象，留在图片模式。
+ *
+ * 底模不吃参考图时**不能**说"已把该产物设为参考图"就完事：那张图会被发送前的超限校验拦住，
+ * 用户照提示写完「脱掉他的衣服」，看到的却是灰掉的发送按钮（2026-09-25 实测就卡在这里）。
+ * 这种情况**不设引用** —— 设了反而让"删掉参考图"变成继续发送的前提，比不设更卡 ——
+ * 直接把该换模型、该用工具说清楚。
+ */
 function continueEdit() {
   if (!current.value) return
-  studio.setReferenceFromAsset(current.value)
   studio.mode.value = 'image'
+  if (!studio.referenceAllowed.value) {
+    studio.notice.value = referenceLimitReason({
+      max: studio.referenceMax.value,
+      modelName: studio.selectedModel.value?.name,
+      cloud: studio.selectedModel.value?.channel === 'cloud'
+    })
+    return
+  }
+  studio.setReferenceFromAsset(current.value)
   studio.notice.value = '已把该产物设为参考图，接着描述要改的地方即可。'
 }
 

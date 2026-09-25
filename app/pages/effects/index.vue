@@ -16,14 +16,22 @@ import { vAutoPlayVideo } from '~/composables/useAutoPlayVideo'
 //
 // 数据仍然全部来自后端目录（GET /hougong/tools）：运营在后台停用工具，这里立刻消失；
 // 封面图、角标、标签也在后台填（没填就用图标兜底，不留空框）。
+import { effectPath, effectTabFromPath, legacyRedirect } from '~/utils/routes'
+
 useSeoMeta({ title: '技能 · 后宫' })
+
+const route = useRoute()
+// 旧 `?tab=image|video` 入站重定向到 path 子路由（旧页签从没写过 URL，这里做兼容）。
+const legacy = legacyRedirect(route.path, route.query)
+if (legacy) await navigateTo(legacy, { redirectCode: 301 })
 
 // SSR 预取公开目录：服务端 render 前取好，首屏 HTML 就带真实技能卡；
 // payload 水合后客户端不再重复请求（见 useToolCatalogSsr）。
 const catalog = await useToolCatalogSsr()
-// 分类页签：全部 / 图片 / 视频。默认「全部」——
-// 原来默认落在图片，第一次进来的人根本不知道视频那半边还有东西。
-const tab = ref<'all' | 'image' | 'video'>('all')
+// 分类页签：全部 / 图片 / 视频。**页签即地址**（/effects、/effects/image、/effects/video），
+// 刷新/分享/后退都能回到同一分类；默认「全部」——原来默认落在图片，第一次进来的人
+// 根本不知道视频那半边还有东西。
+const tab = computed<'all' | 'image' | 'video'>(() => effectTabFromPath(route.path))
 
 const tools = computed(() => catalog.tools.value)
 
@@ -104,10 +112,6 @@ const counts = computed(() => ({
   image: effects.value.filter(e => e.category !== 'video').length,
   video: effects.value.filter(e => e.category === 'video').length
 }))
-watch(counts, (c) => {
-  // 只兜「当前页签变成了空分组」，不动「全部」
-  if (c.video === 0 && tab.value === 'video') tab.value = 'all'
-}, { immediate: true })
 
 // 列表只按页签筛。搜索与标签行随旧版面一起撤了 —— 原型上这一页就是
 // 「标题 + 分类页签 + 卡片」，多出来的工具条会把注意力从卡片上拽走。
@@ -124,40 +128,38 @@ onMounted(() => {
       技能
     </h1>
 
-    <!-- 分类页签：全部 / 图片 / 视频。下划线选中态，和资产页的页签同一套。 -->
+    <!-- 分类页签：全部 / 图片 / 视频。下划线选中态，和资产页的页签同一套。
+         每个页签是一个**地址**（NuxtLink），点它就换 URL，刷新/分享/后退都停在同一分类。 -->
     <div
       class="fx-tabs"
       role="tablist"
       aria-label="技能分类"
     >
-      <button
-        type="button"
+      <NuxtLink
         role="tab"
         :aria-selected="tab === 'all'"
         :class="{ active: tab === 'all' }"
-        @click="tab = 'all'"
+        :to="effectPath('all')"
       >
         全部
-      </button>
-      <button
-        type="button"
+      </NuxtLink>
+      <NuxtLink
         role="tab"
         :aria-selected="tab === 'image'"
         :class="{ active: tab === 'image' }"
-        @click="tab = 'image'"
+        :to="effectPath('image')"
       >
         图片
-      </button>
-      <button
+      </NuxtLink>
+      <NuxtLink
         v-if="counts.video > 0"
-        type="button"
         role="tab"
         :aria-selected="tab === 'video'"
         :class="{ active: tab === 'video' }"
-        @click="tab = 'video'"
+        :to="effectPath('video')"
       >
         视频
-      </button>
+      </NuxtLink>
     </div>
 
     <!-- 五列竖版卡片 -->
@@ -276,19 +278,18 @@ onMounted(() => {
 
 /* 原型 .tabs / .tabs button */
 .fx-tabs { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; font-size: 13px; }
-.fx-tabs button {
+.fx-tabs a {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   height: 26px;
-  border: 0;
-  background: transparent;
   color: #8a8a8a;
-  font-family: inherit;
   font-size: 13px;
-  cursor: pointer;
+  text-decoration: none;
 }
-.fx-tabs button:hover { color: #d8d8d8; }
-.fx-tabs button.active { color: #fff; font-weight: 600; }
-.fx-tabs button.active::after {
+.fx-tabs a:hover { color: #d8d8d8; }
+.fx-tabs a.active { color: #fff; font-weight: 600; }
+.fx-tabs a.active::after {
   position: absolute;
   right: 0;
   bottom: -3px;

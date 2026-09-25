@@ -3,6 +3,7 @@ import type { ComposerDraft } from './useComposerDraft'
 import { applyImageRefRoles, imageRefLabel, imageRefWording, missingImageRefs } from '~/utils/image-ref'
 import { buildModelOptions, cloudDefaultQuality, cloudDefaultRatio, cloudQualities, cloudRatioOptions, cloudRatios, durationOptions, pickRatio, PORTRAIT_RATIO, quoteModel, videoSizeFor, videoRatios, type ComposerMode } from './useModelCatalog'
 import { RATIO_OPTIONS, sizeFor } from '../data/image-options'
+import { referenceLimitReason } from '../data/reference-limit'
 import { promptText, type Prompt } from '../components/prompt/enhancement-mark'
 import { PlatformApiError } from './useApi'
 
@@ -474,10 +475,19 @@ export function createChatStudio() {
     && (!!prompt.value.trim() || referenceCount.value > 0)
   )
 
+  /** 参考图被拒 / 超限时的一句话原因（口径写在 app/data/reference-limit.ts，三个出口共用）。 */
+  function currentReferenceLimitReason(): string {
+    return referenceLimitReason({
+      max: referenceMax.value,
+      modelName: selectedModel.value?.name,
+      cloud: selectedModel.value?.channel === 'cloud'
+    })
+  }
+
   /** 不能发时用一句人话说明还缺什么（按钮 title 与输入区提示共用，避免只说"发不了"）。 */
   const sendBlockReason = computed(() => {
     if (referenceOverflow.value) {
-      return `当前模型最多接受 ${referenceMax.value} 张参考图，先删到 ${referenceMax.value} 张或换一个支持多图的模型`
+      return currentReferenceLimitReason()
     }
     if (mode.value === 'video' && referenceCount.value === 0) return '视频生成需要先添加起始图片（首帧）'
     if (!prompt.value.trim() && referenceCount.value === 0) return '先描述这一幕，或上传参考图'
@@ -823,7 +833,7 @@ export function createChatStudio() {
   /** 素材库选图 / 「继续修改」：沿用它的 assetId，不重复上传。 */
   function addReferenceFromAsset(asset: StudioAsset, name = '素材') {
     if (!canAddReference.value) {
-      notice.value = `这个模型最多接受 ${referenceMax.value} 张参考图。`
+      notice.value = currentReferenceLimitReason()
       return
     }
     if (references.value.some(r => r.assetId === asset.id)) return
@@ -1141,8 +1151,13 @@ export function createChatStudio() {
       if (toolNeedsImage.value && !refAssetId) {
         throw new Error('该工具需要先选择一张图片，或从素材库选择')
       }
-      // 本地文生图模型不支持参考图：即使界面上残留了引用也不下发
-      if (!referenceAllowed.value) refAssetIds.length = 0
+      // 本地文生图模型不支持参考图：即使界面上残留了引用也不下发。
+      // 正常路径走不到这里（有引用 + 上限 0 → referenceOverflow → canSend=false，按钮是灰的），
+      // 兜底万一被走到也必须**说出来**：悄悄丢掉会让用户以为那张图参与了生成。
+      if (!referenceAllowed.value) {
+        refAssetIds.length = 0
+        if (referenceCount.value > 0) notice.value = currentReferenceLimitReason()
+      }
       const splitPrompt = splitNegativePrompt(text)
       if (splitPrompt.negative) {
         notice.value = '已把「负面词 …」拆到负面提示词，提交时按负面词生效。'

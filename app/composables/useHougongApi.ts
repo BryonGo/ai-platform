@@ -1,5 +1,14 @@
 // 后宫真实后端 API（go-sdk /api/v1/hougong + account/credit）。
 import { apiBase, apiRequest, useAuthSession } from './useApi'
+// 演员库的纯逻辑（筛选序列化 / 原始数据归一化）单独放 utils，便于单测且不依赖 Nuxt。
+import {
+  normalizeActorDetail,
+  normalizeActorFacets,
+  normalizeActorGenRun,
+  normalizeActorItem,
+  normalizeCharacterItem,
+  serializeActorQuery
+} from '~/utils/actor'
 
 export interface AuthResult {
   user_id: number
@@ -19,8 +28,158 @@ export interface OutfitItem {
   current: boolean
 }
 
+/**
+ * 演员结构化标签（taxonomy）。
+ *
+ * 与「一句话设定」的区别：这是**可筛选的结构化维度**，演员库按它分面，
+ * 创建/复制时随 CharacterInput 一起落库。取值由后端字典决定（前端不猜）。
+ *
+ * 共 12 个维度。注意 `eraCategory`（时代大类）与 `era`（具体时代）是**两个独立维度**：
+ * 参考源里 `era_category` 是"上古/中世/近未来"这类大类，`era` 是更细的时代取值，不能互相代替。
+ */
+export interface ActorTaxonomy {
+  /** 时代大类（参考源 era_category，如 上古/中世/现代/近未来） */
+  eraCategory?: string
+  /** 具体时代 */
+  era?: string
+  /** 地区 */
+  region?: string
+  /** 性别 */
+  gender?: string
+  /** 年龄段 */
+  ageGroup?: string
+  /** 物种（人类/精灵/兽人…） */
+  species?: string
+  /** 体型 */
+  bodyType?: string
+  /** 身高 */
+  height?: string
+  /** 肤色 */
+  skinTone?: string
+  /** 发长 */
+  hairLength?: string
+  /** 发色 */
+  hairColor?: string
+  /** 气质：唯一的多选维度 */
+  temperament?: string[]
+}
+
+/** 演员媒体槽位：一个槽位一张素材（actor 媒体不返回 assetId，只有签名 url）。 */
+export interface ActorMediaSlot {
+  /** 素材 id（用户角色的媒体会返回；平台演员媒体不返回，故可选）。 */
+  assetId?: string
+  url: string
+  /** 图片宽高（有则带上，用于占位与画布） */
+  width?: number
+  height?: number
+}
+
+/** 演员媒体槽位名。 */
+export type ActorMediaSlotKey = 'headshot' | 'portrait' | 'fullBody' | 'expressionSheet' | 'threeView'
+
+/** 演员媒体集合：未产出的槽位直接缺席，界面按缺失显示占位。 */
+export type ActorMedia = Partial<Record<ActorMediaSlotKey, ActorMediaSlot>>
+
+/** 造型：名称 + 该造型自己的媒体（用户角色带 id/current；平台演员 label 来自 outfitKey）。 */
+export interface ActorOutfit {
+  id: string
+  name: string
+  assetId?: string
+  url?: string
+  /** 是否为当前默认造型 */
+  current?: boolean
+  /**
+   * 该造型**自己的**媒体槽位。
+   *
+   * 平台演员的媒体行带 outfitId：基础图挂在"没有造型"上，各造型另有自己的
+   * headshot/portrait/fullBody/expressionSheet/threeView。选中造型后界面应切换成这里的图，
+   * 而不是继续用全局媒体（否则换了造型图不变，等于没切）。
+   */
+  media?: ActorMedia
+}
+
+/** 音色：可播放的音频素材（url 为限时签名地址）。 */
+export interface ActorVoice {
+  id?: string
+  name?: string
+  assetId?: string
+  url?: string
+  durationSeconds?: number
+}
+
+/** 演员列表条目。id 一律按字符串收发（雪花 id）。 */
+export interface ActorItem {
+  id: string
+  name: string
+  coverUrl?: string
+  /** 图片张数（媒体库） */
+  imageCount?: number
+  /** 造型数 */
+  outfitCount?: number
+  favorite?: boolean
+  taxonomy?: ActorTaxonomy
+  media?: ActorMedia
+  /** 生成状态：pending/generating/ready/failed；流水线未接时按 pending 显示。 */
+  generationStatus?: string
+  /** 从哪个平台演员复制而来（我的演员才有） */
+  sourceActorId?: string
+}
+
+/** 演员详情：actor + 媒体 + 造型 + 音色 + 当前账号是否收藏。 */
+export interface ActorDetail {
+  actor: ActorItem
+  media: ActorMedia
+  outfits: ActorOutfit[]
+  voice: ActorVoice | null
+  favorited: boolean
+}
+
+/** 分面里的一个选项。 */
+export interface ActorFacetOption {
+  value: string
+  label?: string
+  count?: number
+}
+
+/** 演员分面：维度 → 可选值。后端没给的维度不出现。 */
+export type ActorFacets = Partial<Record<keyof ActorTaxonomy | 'favorite', ActorFacetOption[]>>
+
+/** 演员列表查询参数（与后端 /hougong/actors 约定一致）。 */
+export interface ActorListQuery {
+  keyword?: string
+  /** 时代大类（与 era 独立） */
+  eraCategory?: string
+  era?: string
+  region?: string
+  gender?: string
+  ageGroup?: string
+  species?: string
+  bodyType?: string
+  height?: string
+  skinTone?: string
+  hairLength?: string
+  hairColor?: string
+  /** 气质可多选 */
+  temperament?: string[]
+  /** 只看我的收藏 */
+  favorite?: boolean
+  sort?: 'recommended' | 'newest' | 'name'
+  page?: number
+  pageSize?: number
+}
+
+/** 演员列表响应（含分页与分面）。 */
+export interface ActorListResult {
+  items: ActorItem[]
+  total: number
+  page: number
+  pageSize: number
+  facets: ActorFacets
+}
+
 export interface CharacterItem {
-  id: number
+  /** 雪花 id：一律按**字符串**收发（后端与 JSON reviver 都是字符串，>2^53 用 number 会丢末位）。 */
+  id: string
   name: string
   alias: string
   age: string
@@ -32,8 +191,23 @@ export interface CharacterItem {
   workCount: number
   /** 角色封面地址（presign）：手动指定优先，否则取最近作品产物 */
   coverUrl?: string
-  /** 手动指定的封面素材 id（0/缺省 = 按最近作品自动） */
-  coverAssetId?: number
+  /** 手动指定的封面素材 id（雪花字符串；缺省 = 按最近作品自动） */
+  coverAssetId?: string
+  /** 结构化标签（新演员体系；老数据为空） */
+  taxonomy?: ActorTaxonomy
+  /** 媒体集合（headshot/portrait/…；老数据为空） */
+  media?: ActorMedia
+  /**
+   * 音色媒体（后端从 kind=voice 聚合；无音色时为空数组）。
+   *
+   * 统一成数组：后端下发的可能是数组，克隆来的角色可能只有一条，
+   * 展示层只关心"有没有可播放的 URL"。
+   */
+  voice?: ActorVoice[]
+  /** 从平台演员复制而来时的来源 id（雪花字符串） */
+  sourceActorId?: string
+  /** 生成状态：pending/generating/ready/failed（流水线未接时为空） */
+  generationStatus?: string
 }
 
 // CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）。
@@ -46,12 +220,79 @@ export interface CharacterInput {
   traits?: string[]
   appearance?: AppearanceItem[]
   outfits?: { name: string, note?: string, swatch?: string }[]
+  /** 结构化标签 */
+  taxonomy?: ActorTaxonomy
+  /** 媒体集合（创建时可带已上传素材） */
+  media?: ActorMedia
+  /** 来源平台演员 id（复制时由后端写入，一般不用手传） */
+  sourceActorId?: string
+  /** 生成状态（由后端流水线维护，创建时一般不用手传） */
+  generationStatus?: string
+  /** 创建时的角色源图素材 id（雪花 id 字符串） */
+  sourceAssetId?: string
 }
+
+/** 演员资产生成：单个 role 的状态与产物（ID 一律字符串）。 */
+export interface ActorGenRole {
+  /** headshot / full_body / expression_sheet / three_view（后端枚举，可能有新增） */
+  role: string
+  /** 产物在 hougong_character_media 里的 kind（本阶段与 role 一一对应） */
+  kind: string
+  /** pending / running / succeeded / failed / skipped */
+  status: string
+  /** 平台任务 id（未创建为空串） */
+  taskId: string
+  /** 产物资产 id（雪花字符串） */
+  assetIds: string[]
+  assetCount: number
+  /** 失败原因（成功时为空串） */
+  error: string
+}
+
+/** 本阶段明确不支持的 role 及原因（如 voice：无法从静态图推导）。 */
+export interface ActorGenUnsupportedRole {
+  role: string
+  reason: string
+}
+
+/** 一次演员资产生成运行。 */
+export interface ActorGenRun {
+  id: string
+  characterId: string
+  sourceAssetId: string
+  modelId: string
+  /** pending / running / succeeded / partial / failed */
+  status: string
+  roles: ActorGenRole[]
+  unsupportedRoles: ActorGenUnsupportedRole[]
+  successAssetCount: number
+  error: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** 发起生成的入参（modelId 必填）。 */
+export interface ActorGenStartInput {
+  /** 底模 id（目录域，与 /tasks 的 modelId 同口径） */
+  modelId: string
+  /** 画幅；缺省由前端/后端决定 */
+  ratio?: string
+  /** 云端清晰度档位（1K/1.5K/2K/3K/4K） */
+  quality?: string
+  /** 负面提示词（4 个 role 共用） */
+  negativePrompt?: string
+}
+
+/** 演员资产生成的 4 个 role 中文名见 `~/utils/actor` 的 `ACTOR_GEN_ROLES`（只定义一处）。 */
 
 export interface WorkItem {
   id: number
   title: string
-  characterId: number
+  /**
+   * 所属角色的雪花 id，**字符串**（后端 uint64，JSON reviver 已转字符串）。
+   * 消费方比较时一律 `String(...)`，不要转 number。
+   */
+  characterId: string
   sessionId?: number
   taskId?: number
   assetId: number
@@ -806,35 +1047,134 @@ export function useHougongApi() {
   }
 
   async function listCharacters(): Promise<CharacterItem[]> {
-    const res = await apiRequest<{ list: CharacterItem[] }>('/hougong/characters')
-    return res.list || []
+    const res = await apiRequest<{ list?: Record<string, unknown>[] }>('/hougong/characters')
+    return (res.list || []).map(normalizeCharacterItem)
   }
 
-  async function getCharacter(id: number): Promise<CharacterItem> {
-    return apiRequest<CharacterItem>(`/hougong/characters/${id}`)
+  async function getCharacter(id: string | number): Promise<CharacterItem> {
+    // 不 Number()：角色 id 是雪花 id（>2^53），转 number 会丢末位导致查不到（见 snowflake 约定）。
+    const raw = await apiRequest<Record<string, unknown>>(`/hougong/characters/${id}`)
+    return normalizeCharacterItem(raw)
   }
 
   // 角色创建/更新（字段对齐后端 CharacterInputData；更新时空字符串表示「不修改」）
   async function createCharacter(input: CharacterInput): Promise<CharacterItem> {
-    return apiRequest<CharacterItem>('/hougong/characters', { method: 'POST', body: input })
+    const raw = await apiRequest<Record<string, unknown>>('/hougong/characters', { method: 'POST', body: input })
+    return normalizeCharacterItem(raw)
   }
 
   async function updateCharacter(id: number | string, input: CharacterInput): Promise<CharacterItem> {
-    return apiRequest<CharacterItem>(`/hougong/characters/${id}`, { method: 'PUT', body: input })
+    const raw = await apiRequest<Record<string, unknown>>(`/hougong/characters/${id}`, { method: 'PUT', body: input })
+    return normalizeCharacterItem(raw)
   }
 
   // 指定 / 清除角色封面（assetId=0 恢复自动：取最近作品产物），返回更新后的角色。
   async function setCharacterCover(id: number | string, assetId: number | string): Promise<CharacterItem> {
-    return apiRequest<CharacterItem>(`/hougong/characters/${id}/cover`, {
+    const raw = await apiRequest<Record<string, unknown>>(`/hougong/characters/${id}/cover`, {
       method: 'PUT',
       // 同类精度问题：资产 id 是雪花 id，必须按字符串发（见 saveWorkDraft 注释）。
       body: { assetId: String(assetId || '0') }
     })
+    return normalizeCharacterItem(raw)
   }
 
   // 删除角色：后端软删；该角色名下还有作品时会拒绝（先删作品）。
   async function deleteCharacter(id: number | string): Promise<void> {
     await apiRequest(`/hougong/characters/${id}`, { method: 'DELETE' })
+  }
+
+  // ── 演员库（平台演员，只读；收藏与复制到我的演员）──
+  // 平台演员 = 运营维护的公共库（GET /hougong/actors，分页 + 服务端筛选）；
+  // 我的演员 = 本账号自建/复制来的角色（沿用 /hougong/characters）。
+  // 两侧 id 都按字符串收发：actor id / character id 都是雪花 id。
+
+  /**
+   * 平台演员列表。
+   *
+   * 筛选与分页**全部交给服务端**（分页下在前端过滤只能过滤已加载的那页）；
+   * 返回 total 与 facets：total 判「到底了」，facets 给筛选面板的可选值。
+   */
+  async function listActors(q: ActorListQuery = {}): Promise<ActorListResult> {
+    const qs = serializeActorQuery(q)
+    const res = await apiRequest<{ items?: unknown[], total?: number, page?: number, pageSize?: number, facets?: unknown }>(
+      `/hougong/actors${qs ? `?${qs}` : ''}`
+    )
+    return {
+      items: (res.items || []).map(normalizeActorItem),
+      total: Number(res.total) || 0,
+      page: Number(res.page) || q.page || 1,
+      pageSize: Number(res.pageSize) || q.pageSize || 0,
+      facets: normalizeActorFacets(res.facets)
+    }
+  }
+
+  /** 平台演员详情：actor + media + outfits + voice + 当前账号是否收藏。 */
+  async function getActor(id: string | number): Promise<ActorDetail> {
+    const res = await apiRequest<unknown>(`/hougong/actors/${id}`)
+    return normalizeActorDetail(res)
+  }
+
+  /** 收藏（POST）/ 取消收藏（DELETE）平台演员，返回操作后的收藏态。 */
+  async function favoriteActor(id: string | number, favorite = true): Promise<{ favorited: boolean }> {
+    const res = await apiRequest<{ favorited?: boolean }>(
+      `/hougong/actors/${id}/favorite`,
+      { method: favorite ? 'POST' : 'DELETE' }
+    )
+    return { favorited: res?.favorited ?? favorite }
+  }
+
+  /** 把平台演员复制到「我的演员」，返回新建的角色 id（雪花字符串）。 */
+  async function cloneActor(id: string | number): Promise<{ characterId: string }> {
+    const res = await apiRequest<{ characterId?: string | number }>(
+      `/hougong/actors/${id}/clone`,
+      { method: 'POST' }
+    )
+    return { characterId: String(res?.characterId ?? '') }
+  }
+
+  // ── 演员资产生成（actor-generation）──
+  // 从**一张源图**派生 4 类视觉资产：headshot / full_body / expression_sheet / three_view。
+  // 音色无法从图推导，后端放在 unsupportedRoles（前端如实说明，不做假生成）。
+  // 成功产物会进入 GET /characters/{id} 的 media[]（url 为现签），不需要另拉一次。
+
+  /** 发起一次生成运行（会创建 4 个 t2i 任务，可能产生费用）。 */
+  async function startActorGeneration(characterId: string | number, input: ActorGenStartInput): Promise<ActorGenRun> {
+    const raw = await apiRequest<unknown>(`/hougong/characters/${characterId}/actor-generation`, {
+      method: 'POST',
+      body: {
+        modelId: input.modelId,
+        ...(input.ratio ? { ratio: input.ratio } : {}),
+        ...(input.quality ? { quality: input.quality } : {}),
+        ...(input.negativePrompt ? { negativePrompt: input.negativePrompt } : {})
+      }
+    })
+    const run = normalizeActorGenRun(raw)
+    if (!run) throw new Error('后端没有返回生成运行信息')
+    return run
+  }
+
+  /** 该角色最近一次运行；没有跑过时返回 null（不是错误）。 */
+  async function getLatestActorGeneration(characterId: string | number): Promise<ActorGenRun | null> {
+    const raw = await apiRequest<unknown>(`/hougong/characters/${characterId}/actor-generation/latest`)
+    return normalizeActorGenRun(raw)
+  }
+
+  /** 指定运行的状态（轮询用）。 */
+  async function getActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun> {
+    const raw = await apiRequest<unknown>(`/hougong/characters/${characterId}/actor-generation/${runId}`)
+    const run = normalizeActorGenRun(raw)
+    if (!run) throw new Error('后端没有返回生成运行信息')
+    return run
+  }
+
+  /** 只对失败的 role 重试（逐 role、各自计费）。 */
+  async function retryActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun> {
+    const raw = await apiRequest<unknown>(`/hougong/characters/${characterId}/actor-generation/${runId}/retry`, {
+      method: 'POST'
+    })
+    const run = normalizeActorGenRun(raw)
+    if (!run) throw new Error('后端没有返回生成运行信息')
+    return run
   }
 
   async function listWorks(): Promise<WorkItem[]> {
@@ -1419,6 +1759,14 @@ export function useHougongApi() {
     updateCharacter,
     deleteCharacter,
     setCharacterCover,
+    listActors,
+    getActor,
+    favoriteActor,
+    cloneActor,
+    startActorGeneration,
+    getLatestActorGeneration,
+    getActorGeneration,
+    retryActorGeneration,
     listWorks,
     getHougongWork,
     favoriteHougongWork,

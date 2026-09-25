@@ -360,7 +360,7 @@ async function loadContinue() {
     // 取数失败按 0 处理：角标是锦上添花，不该把整块「继续创作」拖成空。
     const tasks: HougongTask[] = await hgApi.listTasks().catch(() => [])
     runningWorks.value = tasks.filter(task => !TASK_TERMINAL_STATUSES.has(task.status)).length
-    continueItems.value = works.slice(0, 3).map((work) => {
+    continueItems.value = works.slice(0, 6).map((work) => {
       // work.status 目前后端不下发（见 WorkItem.status 的说明），所以这里必然走兜底；
       // 保留查表是为了后端哪天补字段时能直接生效。
       const meta = STATUS_TEXT[work.status ?? ''] ?? { status: 'edited' as const, text: '最近编辑' }
@@ -729,6 +729,12 @@ useMediaAutoRefresh(() => Promise.all([
           v-for="item in continueItems"
           :key="item.id"
           class="hg-card continue-card"
+          role="button"
+          tabindex="0"
+          :aria-label="`预览 ${item.title}`"
+          @click="openContinuePreview(item)"
+          @keydown.enter.prevent="openContinuePreview(item)"
+          @keydown.space.prevent="openContinuePreview(item)"
         >
           <!-- 原站作品以竖版为主，固定 3:4 框；视频仍完整等比显示。 -->
           <div class="hg-media r3x4">
@@ -772,7 +778,7 @@ useMediaAutoRefresh(() => Promise.all([
               type="button"
               class="media-zoom"
               :aria-label="`完整预览 ${item.title}`"
-              @click="openContinuePreview(item)"
+              @click.stop="openContinuePreview(item)"
             >
               <UIcon name="i-lucide-maximize-2" />
             </button>
@@ -780,13 +786,6 @@ useMediaAutoRefresh(() => Promise.all([
           <div class="card-foot column">
             <div class="continue-title">
               <strong>{{ item.title }}</strong>
-              <button
-                type="button"
-                class="more-button"
-                aria-label="更多操作"
-              >
-                <UIcon name="i-lucide-ellipsis" />
-              </button>
             </div>
             <p class="continue-status">
               <UIcon
@@ -1326,10 +1325,20 @@ useMediaAutoRefresh(() => Promise.all([
   padding: 12px 14px 14px;
 }
 
+/* 一行 6 个：卡片小一号更像"接着干的缩略图"而不是独立任务卡；
+   桌面端与探索流（4 列）拉开密度差异，也把区块高度压回一行。 */
+/* 整卡可点（开完整预览）：给键盘可达性 —— 焦点描边 */
+.continue-card {
+  cursor: pointer;
+}
+.continue-card:focus-visible {
+  outline: 2px solid var(--hg3-accent-line, rgb(232 50 176 / 38%));
+  outline-offset: 2px;
+}
 .continue-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
 }
 /* 媒体适配（前景层铺满、左上角起裁）走全站统一规则，见 hougong3.css 的 img.media-fg */
 .media-placeholder {
@@ -1373,19 +1382,9 @@ useMediaAutoRefresh(() => Promise.all([
   font-size: 15px;
   font-weight: 600;
 }
-.more-button {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--hg3-muted);
-  cursor: pointer;
-}
-.more-button:hover {
-  background: #282828;
+.continue-title strong {
+  font-size: 15px;
+  font-weight: 600;
 }
 .continue-status {
   display: flex;
@@ -1544,7 +1543,7 @@ useMediaAutoRefresh(() => Promise.all([
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .continue-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (max-width: 640px) {
@@ -1554,7 +1553,7 @@ useMediaAutoRefresh(() => Promise.all([
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .continue-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1563,10 +1562,6 @@ useMediaAutoRefresh(() => Promise.all([
    图标本身不缩放，视觉重量不变；页签同时加高内边距，让整条更好按。 */
 @media (pointer: coarse) {
   .media-zoom {
-    width: 34px;
-    height: 34px;
-  }
-  .more-button {
     width: 34px;
     height: 34px;
   }

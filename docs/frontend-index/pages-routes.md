@@ -5,18 +5,21 @@
 
 页面/视图：路由、职责、用到的组合式函数；大文件另附本文件声明清单。
 
-### `/assets` — app/pages/assets.vue · 2003 行
+### `/actors/:id` — app/pages/actors/[id].vue · 18 行
+平台演员详情页（/actors/:id）
+
+### `/assets` — app/pages/assets.vue · 2031 行
 素材库（/assets）——「我的资产」里的素材分区
 - 用: `useHougongApi`
-- 本文件声明 83 个: `pane` L23 · `isAssetPane` L31 · `paneScope` L33 · `items` L58 · `total` L59 · `pageNo` L60 · `firstLoading` L61 · `loadingMore` L62 · `done` L63 · `error` L64 · `notice` L65
-  `brokenIds` L67 · `kind` L69 · `origin` L70 · `sort` L71 · `keyword` L72 · `showHidden` L73 · `onlyDuplicates` L80 · `manageMode` L87 · `picked` L89 · `hasFilter` L92 · `pickedVisible` L97
-  `pickedHidden` L100 · `fetchPage` L108 · `reload` L141 · `loadMore` L152 · `sentinel` L160 · `stopObserver` L163 · `isPicked` L198 · `togglePick` L203 · `pickAllLoaded` L222 · `clearPick` L230
-  `onPressStart` L239 · `onPressEnd` L247 · `onMediaClick` L253 · `preview` L263 · `previewOpen` L264 · `openPreview` L266 · `closePreview` L272 · `busyId` L277 · `toggleHiddenOne` L279
-  `downloadingId` L297 · `savingIds` L300 · `saveToLibrary` L308 · `download` L325 · `batchBusy` L344 · `confirmOpen` L345 · `confirmTitle` L346 · `confirmMessage` L347 · `pendingSingle` L348
-  `batchProgress` L350 · `chunkSizeFor` L361 · `batchPercent` L366 · `batchInChunks` L373 · `askDelete` L388 · `doDelete` L400 · `runBatch` L431 · `dedupeOpen` L477 · `dedupeBusy` L478
-  `dedupePlan` L479 · `dedupeMessage` L480 · `askDedupe` L490 · `doDedupe` L505 · `publishOpen` L529 · `publishPending` L530 · `publishCover` L532 · `askPublish` L534 · `submitPublish` L547
-  `exporting` L577 · `exportTask` L578 · `exportError` L579 · `extOf` L581 · `relPathOf` L594 · `runExport` L598 · `typeLabel` L632 · `isImage` L635 · `isVideo` L638 · `displayName` L643
-  `dateText` L648 · `sizeText` L653 · `dimsOf` L660 · `onImgError` L664 · `onKeydown` L669
+- 本文件声明 85 个: `paneFromQuery` L29 · `pane` L35 · `syncPaneQuery` L38 · `isAssetPane` L52 · `paneScope` L54 · `items` L79 · `total` L80 · `pageNo` L81 · `firstLoading` L82 · `loadingMore` L83
+  `done` L84 · `error` L85 · `notice` L86 · `brokenIds` L88 · `kind` L90 · `origin` L91 · `sort` L92 · `keyword` L93 · `showHidden` L94 · `onlyDuplicates` L101 · `manageMode` L108 · `picked` L110
+  `hasFilter` L113 · `pickedVisible` L118 · `pickedHidden` L121 · `fetchPage` L129 · `reload` L162 · `loadMore` L173 · `sentinel` L181 · `stopObserver` L184 · `isPicked` L226 · `togglePick` L231
+  `pickAllLoaded` L250 · `clearPick` L258 · `onPressStart` L267 · `onPressEnd` L275 · `onMediaClick` L281 · `preview` L291 · `previewOpen` L292 · `openPreview` L294 · `closePreview` L300
+  `busyId` L305 · `toggleHiddenOne` L307 · `downloadingId` L325 · `savingIds` L328 · `saveToLibrary` L336 · `download` L353 · `batchBusy` L372 · `confirmOpen` L373 · `confirmTitle` L374
+  `confirmMessage` L375 · `pendingSingle` L376 · `batchProgress` L378 · `chunkSizeFor` L389 · `batchPercent` L394 · `batchInChunks` L401 · `askDelete` L416 · `doDelete` L428 · `runBatch` L459
+  `dedupeOpen` L505 · `dedupeBusy` L506 · `dedupePlan` L507 · `dedupeMessage` L508 · `askDedupe` L518 · `doDedupe` L533 · `publishOpen` L557 · `publishPending` L558 · `publishCover` L560
+  `askPublish` L562 · `submitPublish` L575 · `exporting` L605 · `exportTask` L606 · `exportError` L607 · `extOf` L609 · `relPathOf` L622 · `runExport` L626 · `typeLabel` L660 · `isImage` L663
+  `isVideo` L666 · `displayName` L671 · `dateText` L676 · `sizeText` L681 · `dimsOf` L688 · `onImgError` L692 · `onKeydown` L697
 
 ### `/auth/login` — app/pages/auth/login.vue · 167 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
@@ -56,16 +59,22 @@
 - 本文件声明 22 个: `rows` L17 · `total` L18 · `page` L19 · `keyword` L21 · `keywordApplied` L22 · `sort` L24 · `ownerFilter` L25 · `loading` L32 · `error` L33 · `editingId` L35 · `draft` L36 · `busy` L37
   `pageCount` L39 · `load` L41 · `search` L64 · `goPage` L70 · `open` L77 · `startRename` L81 · `commitRename` L86 · `duplicate` L102 · `remove` L115 · `ago` L130
 
-### `/characters/:id/edit` — app/pages/characters/[id]/edit.vue · 133 行
+### `/characters/:id/edit` — app/pages/characters/[id]/edit.vue · 134 行
 - 用: `useHougongApi`
 
-### `/characters/:id` — app/pages/characters/[id].vue · 285 行
+### `/characters/:id` — app/pages/characters/[id].vue · 1043 行
 - 用: `useHougongApi`
+- 本文件声明 48 个: `character` L26 · `works` L27 · `loading` L28 · `error` L29 · `characterId` L31 · `facetLabels` L34 · `loadFacetLabels` L36 · `taxonomyTags` L46 · `mediaSlots` L62 · `voices` L68
+  `voiceWithoutUrl` L70 · `showGeneration` L74 · `generationLabel` L75 · `toCard` L76 · `load` L80 · `coverBusy` L113 · `coverNote` L114 · `resetCover` L116 · `generationGate` L147
+  `isOwnCharacter` L157 · `sourceAssetId` L159 · `hasTaxonomy` L165 · `catalog` L168 · `catalogError` L169 · `imageModels` L172 · `selectedModelId` L175 · `selectedModel` L177 · `qualityOptions` L179
+  `selectedQuality` L180 · `priceLabel` L182 · `loadCatalog` L190 · `syncQuality` L206 · `run` L219 · `runBusy` L220 · `runError` L221 · `runNotice` L222 · `retryBusy` L223 · `stopPolling` L233
+  `schedulePoll` L241 · `poll` L252 · `shouldContinuePolling` L275 · `reloadCharacterData` L287 · `loadLatestRun` L297 · `startGeneration` L311 · `retryRole` L336 · `runRoles` L357
+  `unsupportedRoles` L374 · `isRunActive` L383
 
 ### `/characters` — app/pages/characters/index.vue · 72 行
 - 用: `useHougongApi`
 
-### `/characters/new` — app/pages/characters/new.vue · 51 行
+### `/characters/new` — app/pages/characters/new.vue · 52 行
 - 用: `useHougongApi`
 
 ### `/create` — app/pages/create.vue · 465 行
@@ -76,7 +85,7 @@
 vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
 - 本文件声明 7 个: `tab` L26 · `tools` L28 · `isOption` L58 · `effects` L62 · `inTab` L100 · `counts` L103 · `shown` L114
 
-### `/` — app/pages/index.vue · 1588 行
+### `/` — app/pages/index.vue · 1583 行
 - 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft`
 - 本文件声明 40 个: `notice` L27 · `toolCards` L66 · `quickTools` L97 · `quickRows` L110 · `hoverTool` L113 · `quickGridEl` L121 · `quickPopEl` L122 · `quickPopStyle` L123 · `placeQuickPop` L138
   `openQuickPop` L161 · `closeQuickPop` L170 · `onQuickPopResize` L176 · `isQuickToolActive` L181 · `selectedToolCard` L193 · `runningWorks` L200 · `loggedIn` L210 · `continueItems` L254

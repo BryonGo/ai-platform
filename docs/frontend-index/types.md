@@ -34,74 +34,90 @@
 - `CanvasSnapshot` L18 {graph}
 
 ## app/composables/useChatStudio.ts
-- `StudioStatus` *type* L26 {id, url, kind, width?, height?, scope?}
-- `StudioAsset` L28 {id, url, kind, width?, height?, scope?}
-- `RunMeta` L42 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
-- `StudioAttachment` L68 {name, url, assetId?, role?}
-- `StudioMessage` L81 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
-- `ChatStudio` *type* L1448 {provide}
+- `StudioStatus` *type* L27 {id, url, kind, width?, height?, scope?}
+- `StudioAsset` L29 {id, url, kind, width?, height?, scope?}
+- `RunMeta` L43 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
+- `StudioAttachment` L69 {name, url, assetId?, role?}
+- `StudioMessage` L82 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
+- `ChatStudio` *type* L1463 {provide}
 
 ## app/composables/useComposerDraft.ts
 - `ComposerDraft` L4 {prompt, mode, ratio, durationSeconds, uploadName, files, references?, file?, modelId?, modelChannel?, toolCode?, templateCode?}
 
 ## app/composables/useHougongApi.ts
-- `AuthResult` L4 {user_id, token}
-- `AppearanceItem` L9 {label, value}
-- `OutfitItem` L14 {id, name, note, swatch, current}
-- `CharacterItem` L22 {id, name, alias, age, ageVerified, tagline, traits, appearance, outfits, workCount, coverUrl?, coverAssetId?}
-- `CharacterInput` L40 {name, alias?, age?, ageVerified, tagline?, traits?, appearance?, outfits?} — CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）
-- `WorkItem` L51 {id, title, characterId, sessionId?, taskId?, assetId, imageUrl?, videoUrl?, kind, status?, favorite, contentRating?, visibility?, createdAt}
-- `EpisodeItem` L90 {id, idx, title, status, budgetCredits, updatedAt, graphCount} — 一集（画布·集）
-- `StoryItem` L101 {id, title, synopsis, characterIds, relation, settings, clips, updatedAt}
-- `CatalogSampling` L112 {steps, stepsMin, stepsMax, cfgMin, cfgMax, cfgStep, samplers, schedulers}
-- `ToolTemplateItem` L129 {code, name, summary} — 创作工具（后台「创作工具」维护）
-- `ToolCatalogItem` L135 {code, name, category, summary, icon, cover?, badge?, engine, input, supportsTemplates, templates?}
-- `CatalogItem` L154 {id, type, name, family, summary?, safety, fileName?, cover?, available, selectable, unavailableReason?, weight?, sampling?, steps, sampler, scheduler, cfg, samplers?, schedulers?, stepsMin?, stepsMax?, cfgMin?, cfgMax?, cfgStep?, ratios?, qualities?, sizes?}
-- `CloudModel` L196 {id, name, author, excerpt?, cover?, state, engine, endpoint, unavailableReason?, capabilities, parameters, default, maxInputs, maxOutputs, pricing, includedInputs, extraInputBalance, qualities, output}
-- `VideoDurationOption` L223 {seconds, frames, actualSeconds}
-- `VideoResolution` L230 {ratio, label, width, height} — 视频画幅 → 输出尺寸（来自 comfy85 ResolutionSelector 实测：0.4MP、32 对齐）
-- `CatalogVideoModel` L237 {id, name, engine, workflow, provider?, resolution?, steps, frameRate, length, width, height, minSeconds, maxSeconds, defaultSeconds, durations, resolutions, note?, summary?, available, selectable, unavailableReason?}
-- `CatalogRates` L267 {product, image, video, extend, videoByDuration?} — 站点报价表：键为画幅（如 "1:1"），值为积分单价
-- `Catalog` L280 {version, sampling, models, loras, videoModels, cloudModels, textModels?, audioModels?, rates?}
-- `CatalogAudioModel` L305 {id, name, author?, excerpt?, summary?, available, selectable, unavailableReason?, family?, versionLabel?, isDefault?} — 一个音频模型（语音合成）
-- `CatalogTextModel` L325 {id, name, author?, excerpt?, cover?, summary?, description?, contextWindow?, maxOutput?, reasoning?, available, selectable, unavailableReason?, family?, versionLabel?, isDefault?} — 一个文本模型
-- `HougongTask` L347 {id, type, status, progress?, errorCode?, errorMessage?, billedCredits?, snapshot?, outputAssets?, createdAt?, finishedAt?}
-- `WorkCreateInput` L362 {characterId?, sessionId?, taskId?, assetId?, kind?, title?, contentRating?, visibility?}
-- `SessionItem` L375 {id, title, state, current, latestTask, createdAt, lastActivityAt}
-- `SnippetCategory` L385 {key, labels, position, subcategories}
-- `SnippetItem` L392 {id, category, subcategory, labels, prompt, preview}
-- `AssetItem` L401 {id, name?, kind?, origin, status, mimeType, bytes, width, height, url, createdAt, hidden, scope?, duplicateCount?}
-- `AssetChoice` L422 {asset, generation}
-- `ExportTask` L428 {id, kind, status, sourceKind, sourceId, total, done, failed, resultAssetId, downloadUrl, errorCode, errorMessage, startedAt, finishedAt, createdAt, failures?} — 导出任务（对齐 api/v1/platform/export.go 的 ExportTaskItem）
-- `PublicationWork` L451 {id, title, state, author?, contentRating, coverUrl, kind?, videoUrl?, tags, stats, publishedAt}
-- `WorkEditor` L479 {id, state, title, content, contentRating, tags, updatedAt} — 作品编辑器（后端 WorkEditor）：草稿/已发布作品的可编辑字段
-- `WorkSaveInput` L490 {id?, title?, content?, tagIds?, coverAssetId?, contentRating?} — 保存作品草稿入参（对应后端 WorkSaveReq）
-- `PublicationPost` L501 {id, title, state, content, assets, tags, stats, publishedAt}
-- `PublicationComment` L512 {id, targetKind, targetId, content, likes, createdAt}
-- `PlatformTag` L521 {id, key, name, aliases, active, priority}
-- `Invite` L530 {code, invited, completed, pending, earnedCredits, friendCredits, rewardCredits}
-- `EconomyWallet` L540 {credits, balanceCents, nextExpiry}
-- `WalletLedgerItem` L560 {id, asset, amount, kind, expiresAt, createdAt}
-- `Membership` L569 {purchaseId, tier, choice, startedAt, expiresAt}
-- `Purchase` L577 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
-- `Transaction` L592 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
-- `CreatorWork` L607 {id, title, imageUrl}
-- `Creator` L613 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
-- `ModelCreator` L630 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
-- `NotificationItem` L641 {id, kind, message, readAt, createdAt, target}
-- `ModelWeight` L651 {default}
-- `ModelStats` L652 {works}
-- `ModelTag` L653 {key}
-- `ModelSampling` L654 {steps?}
-- `ModelFile` L655 {name}
-- `ModelRuntime` L656 {engine}
-- `ModelListItem` L657 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
-- `ModelDetail` L681 {description, compatible, sampling}
-- `ModelFacets` L687 {families, loraCategories}
-- `MineListItem` L692 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
-- `MineModel` L706 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
-- `ModelDraftInput` L720 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
-- `ProfileInfo` L736 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
+- `AuthResult` L13 {user_id, token}
+- `AppearanceItem` L18 {label, value}
+- `OutfitItem` L23 {id, name, note, swatch, current}
+- `ActorTaxonomy` L40 {eraCategory?, era?, region?, gender?, ageGroup?, species?, bodyType?, height?, skinTone?, hairLength?, hairColor?, temperament?} — 演员结构化标签（taxonomy）
+- `ActorMediaSlot` L68 {assetId?, url, width?, height?} — 演员媒体槽位：一个槽位一张素材（actor 媒体不返回 assetId，只有签名 url）
+- `ActorMediaSlotKey` *type* L78 {id, name, assetId?, url?, current?, media?} — 演员媒体槽位名
+- `ActorMedia` *type* L81 {id, name, assetId?, url?, current?, media?} — 演员媒体集合：未产出的槽位直接缺席，界面按缺失显示占位
+- `ActorOutfit` L84 {id, name, assetId?, url?, current?, media?} — 造型：名称 + 该造型自己的媒体（用户角色带 id/current
+- `ActorVoice` L102 {id?, name?, assetId?, url?, durationSeconds?} — 音色：可播放的音频素材（url 为限时签名地址）
+- `ActorItem` L111 {id, name, coverUrl?, imageCount?, outfitCount?, favorite?, taxonomy?, media?, generationStatus?, sourceActorId?} — 演员列表条目
+- `ActorDetail` L129 {actor, media, outfits, voice, favorited} — 演员详情：actor + 媒体 + 造型 + 音色 + 当前账号是否收藏
+- `ActorFacetOption` L138 {value, label?, count?} — 分面里的一个选项
+- `ActorFacets` *type* L145 {keyword?, eraCategory?, era?, region?, gender?, ageGroup?, species?, bodyType?, height?, skinTone?, hairLength?, hairColor?, temperament?, favorite?, sort?, page?, pageSize?} — 演员分面：维度 → 可选值
+- `ActorListQuery` L148 {keyword?, eraCategory?, era?, region?, gender?, ageGroup?, species?, bodyType?, height?, skinTone?, hairLength?, hairColor?, temperament?, favorite?, sort?, page?, pageSize?} — 演员列表查询参数（与后端 /hougong/actors 约定一致）
+- `ActorListResult` L172 {items, total, page, pageSize, facets} — 演员列表响应（含分页与分面）
+- `CharacterItem` L180 {id, name, alias, age, ageVerified, tagline, traits, appearance, outfits, workCount, coverUrl?, coverAssetId?, taxonomy?, media?, voice?, sourceActorId?, generationStatus?}
+- `CharacterInput` L214 {name, alias?, age?, ageVerified, tagline?, traits?, appearance?, outfits?, taxonomy?, media?, sourceActorId?, generationStatus?, sourceAssetId?} — CharacterInput 角色创建/更新输入（对齐后端 data.CharacterInput）
+- `ActorGenRole` L236 {role, kind, status, taskId, assetIds, assetCount, error} — 演员资产生成：单个 role 的状态与产物（ID 一律字符串）
+- `ActorGenUnsupportedRole` L253 {role, reason} — 本阶段明确不支持的 role 及原因（如 voice：无法从静态图推导）
+- `ActorGenRun` L259 {id, characterId, sourceAssetId, modelId, status, roles, unsupportedRoles, successAssetCount, error, createdAt, updatedAt} — 一次演员资产生成运行
+- `ActorGenStartInput` L275 {modelId, ratio?, quality?, negativePrompt?} — 发起生成的入参（modelId 必填）
+- `WorkItem` L288 {id, title, characterId, sessionId?, taskId?, assetId, imageUrl?, videoUrl?, kind, status?, favorite, contentRating?, visibility?, createdAt}
+- `EpisodeItem` L331 {id, idx, title, status, budgetCredits, updatedAt, graphCount} — 一集（画布·集）
+- `StoryItem` L342 {id, title, synopsis, characterIds, relation, settings, clips, updatedAt}
+- `CatalogSampling` L353 {steps, stepsMin, stepsMax, cfgMin, cfgMax, cfgStep, samplers, schedulers}
+- `ToolTemplateItem` L370 {code, name, summary} — 创作工具（后台「创作工具」维护）
+- `ToolCatalogItem` L376 {code, name, category, summary, icon, cover?, badge?, engine, input, supportsTemplates, templates?}
+- `CatalogItem` L395 {id, type, name, family, summary?, safety, fileName?, cover?, available, selectable, unavailableReason?, weight?, sampling?, steps, sampler, scheduler, cfg, samplers?, schedulers?, stepsMin?, stepsMax?, cfgMin?, cfgMax?, cfgStep?, ratios?, qualities?, sizes?}
+- `CloudModel` L437 {id, name, author, excerpt?, cover?, state, engine, endpoint, unavailableReason?, capabilities, parameters, default, maxInputs, maxOutputs, pricing, includedInputs, extraInputBalance, qualities, output}
+- `VideoDurationOption` L464 {seconds, frames, actualSeconds}
+- `VideoResolution` L471 {ratio, label, width, height} — 视频画幅 → 输出尺寸（来自 comfy85 ResolutionSelector 实测：0.4MP、32 对齐）
+- `CatalogVideoModel` L478 {id, name, engine, workflow, provider?, resolution?, steps, frameRate, length, width, height, minSeconds, maxSeconds, defaultSeconds, durations, resolutions, note?, summary?, available, selectable, unavailableReason?}
+- `CatalogRates` L508 {product, image, video, extend, videoByDuration?} — 站点报价表：键为画幅（如 "1:1"），值为积分单价
+- `Catalog` L521 {version, sampling, models, loras, videoModels, cloudModels, textModels?, audioModels?, rates?}
+- `CatalogAudioModel` L546 {id, name, author?, excerpt?, summary?, available, selectable, unavailableReason?, family?, versionLabel?, isDefault?} — 一个音频模型（语音合成）
+- `CatalogTextModel` L566 {id, name, author?, excerpt?, cover?, summary?, description?, contextWindow?, maxOutput?, reasoning?, available, selectable, unavailableReason?, family?, versionLabel?, isDefault?} — 一个文本模型
+- `HougongTask` L588 {id, type, status, progress?, errorCode?, errorMessage?, billedCredits?, snapshot?, outputAssets?, createdAt?, finishedAt?}
+- `WorkCreateInput` L603 {characterId?, sessionId?, taskId?, assetId?, kind?, title?, contentRating?, visibility?}
+- `SessionItem` L616 {id, title, state, current, latestTask, createdAt, lastActivityAt}
+- `SnippetCategory` L626 {key, labels, position, subcategories}
+- `SnippetItem` L633 {id, category, subcategory, labels, prompt, preview}
+- `AssetItem` L642 {id, name?, kind?, origin, status, mimeType, bytes, width, height, url, createdAt, hidden, scope?, duplicateCount?}
+- `AssetChoice` L663 {asset, generation}
+- `ExportTask` L669 {id, kind, status, sourceKind, sourceId, total, done, failed, resultAssetId, downloadUrl, errorCode, errorMessage, startedAt, finishedAt, createdAt, failures?} — 导出任务（对齐 api/v1/platform/export.go 的 ExportTaskItem）
+- `PublicationWork` L692 {id, title, state, author?, contentRating, coverUrl, kind?, videoUrl?, tags, stats, publishedAt}
+- `WorkEditor` L720 {id, state, title, content, contentRating, tags, updatedAt} — 作品编辑器（后端 WorkEditor）：草稿/已发布作品的可编辑字段
+- `WorkSaveInput` L731 {id?, title?, content?, tagIds?, coverAssetId?, contentRating?} — 保存作品草稿入参（对应后端 WorkSaveReq）
+- `PublicationPost` L742 {id, title, state, content, assets, tags, stats, publishedAt}
+- `PublicationComment` L753 {id, targetKind, targetId, content, likes, createdAt}
+- `PlatformTag` L762 {id, key, name, aliases, active, priority}
+- `Invite` L771 {code, invited, completed, pending, earnedCredits, friendCredits, rewardCredits}
+- `EconomyWallet` L781 {credits, balanceCents, nextExpiry}
+- `WalletLedgerItem` L801 {id, asset, amount, kind, expiresAt, createdAt}
+- `Membership` L810 {purchaseId, tier, choice, startedAt, expiresAt}
+- `Purchase` L818 {id, kind, state, priceCents, credits, balanceCents, months, tier, choice, paymentUrl, paidAt, createdAt}
+- `Transaction` L833 {id, type, category, state?, priceCents?, credits?, balanceCents?, tier?, amount?, kind?, expiresAt?, createdAt}
+- `CreatorWork` L848 {id, title, imageUrl}
+- `Creator` L854 {state, eligible, inviteCredits, requiredImages, publishedImages, reward, direction, statement, agreedAt, submittedAt, reviewedAt, reason, works, selectableWorks}
+- `ModelCreator` L871 {state, platform, profileUrl, resourceUrls, agreedAt, submittedAt, reviewedAt, reason}
+- `NotificationItem` L882 {id, kind, message, readAt, createdAt, target}
+- `ModelWeight` L892 {default}
+- `ModelStats` L893 {works}
+- `ModelTag` L894 {key}
+- `ModelSampling` L895 {steps?}
+- `ModelFile` L896 {name}
+- `ModelRuntime` L897 {engine}
+- `ModelListItem` L898 {id, type, name, author, owner?, source?, family, category, tags, excerpt, cover, stats, available, selectable, unavailableReason, safety, triggers, weight, state?, updatedAt, engine}
+- `ModelDetail` L922 {description, compatible, sampling}
+- `ModelFacets` L928 {families, loraCategories}
+- `MineListItem` L933 {id, title, type, family, category, excerpt, safety, state, updatedAt, cover, viewer}
+- `MineModel` L947 {owner, source, sourceUrl, description, triggers, weight, sampling, images, runtime, file, reason}
+- `ModelDraftInput` L961 {source, sourceUrl?, title, type, family, category, description?, triggers?, weight?, sampling?, imageIds?, safety}
+- `ProfileInfo` L977 {id, username, email, nickname, avatar, user_type, status} — 当前登录账号的概要信息（对齐 /account/profile 返回）
 
 ## app/composables/useModelCatalog.ts
 - `ComposerMode` *type* L14 {id, name, mode, channel, cover?, tags, fromPrice, priceUnit, summary?, supportsReference?, available, unavailableReason?}

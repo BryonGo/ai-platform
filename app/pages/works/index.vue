@@ -6,7 +6,7 @@ const session = useAuthSession()
 // 成人内容的可用性只取服务端算好的 canUseAdult，前端不自己推导。
 const gate = useAdultGate()
 const works = ref<(WorkItem & Record<string, unknown>)[]>([])
-const charNames = ref<Record<number, string>>({})
+const charNames = ref<Record<string, string>>({})
 const loading = ref(false)
 const error = ref('')
 const filter = ref<'全部' | '视频' | '图集'>('全部')

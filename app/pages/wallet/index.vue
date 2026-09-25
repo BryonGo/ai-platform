@@ -1,7 +1,14 @@
 <script setup lang="ts">
+import { legacyRedirect, walletPath, walletSectionFromPath } from '~/utils/routes'
+import type { WalletSection } from '~/utils/routes'
+
 const api = useHougongApi()
 const session = useAuthSession()
 const route = useRoute()
+
+// 旧 `?tab=ledger|recharge|orders` 入站重定向到 path 子路由（见 utils/routes 与设计文档 §5）。
+const legacy = legacyRedirect(route.path, route.query)
+if (legacy) await navigateTo(legacy, { redirectCode: 301 })
 
 const loading = ref(true)
 const error = ref('')
@@ -18,7 +25,10 @@ const copied = ref(false)
 const membership = ref<Membership | null>(null)
 // 交易 / 流水
 // key 仍叫 transactions（接口 listTransactions 与模板分支都按它走），只是对用户的叫法是「订单」。
-const tab = ref<'transactions' | 'ledger'>('transactions')
+// **页签即地址**：/wallet = 订单（交易），/wallet/ledger = 金币流水；刷新/分享/后退都停在同一页签。
+const tab = computed<'transactions' | 'ledger'>(() =>
+  walletSectionFromPath(route.path) === 'ledger' ? 'ledger' : 'transactions'
+)
 const transactions = ref<Transaction[]>([])
 const ledger = ref<WalletLedgerItem[]>([])
 // 充值（结算桩）
@@ -26,10 +36,12 @@ const rechargeAmt = ref(100)
 const checkoutBusy = ref(false)
 const checkoutRes = ref<Purchase | null>(null)
 const checkoutErr = ref('')
-// ?tab= 的落地目标：头像菜单点「充值 / 订单」进来时要直接看到对应区域，而不是只换 URL。
-// 用 ref 而不是纯 id + getElementById：和模板绑定在一起，重命名/移除会被类型检查发现。
+// path 子路由的落地目标：/wallet/recharge、/wallet/orders、/wallet/membership 进来时
+// 直接滚到对应区域，而不是只换 URL。用 ref 而不是纯 id + getElementById：和模板绑定在一起，
+// 重命名/移除会被类型检查发现。
 const rechargeRef = ref<HTMLElement | null>(null)
 const ordersRef = ref<HTMLElement | null>(null)
+const membershipRef = ref<HTMLElement | null>(null)
 // 创作者认证
 const creatorInfo = ref<Creator | null>(null)
 const applyCreatorOpen = ref(false)
@@ -55,25 +67,20 @@ function fmtCredits(n: number | undefined) {
 }
 
 /**
- * ?tab= 的解析：只有 recharge / orders 两个合法值。
+ * path 子路由的滚动落点。
  *
- * - recharge：滚到「充值金币」区（充值区没有页签状态，所以只需滚动）；
- * - orders  ：先切回订单 Tab（transactions），再滚到流水区；
- * - 其他/缺省：不动作，保持页面默认（订单 Tab、页面停在顶部）。
- *
- * 非法值静默回退而不是报错：这个参数是入口链接给的，用户手改坏了也只该看到默认页。
+ * - /wallet/recharge   → 「充值金币」区；
+ * - /wallet/orders     → 订单列表区（页签由地址决定，这里只滚动）；
+ * - /wallet/membership → 会员区；
+ * - /wallet、/wallet/ledger → 不滚动（页签已由地址决定）。
  */
-function applyTabFromQuery(raw: unknown) {
-  const value = Array.isArray(raw) ? raw[0] : raw
-  if (value === 'recharge') {
-    void scrollToSection(rechargeRef.value)
-  } else if (value === 'orders') {
-    tab.value = 'transactions'
-    void scrollToSection(ordersRef.value)
-  }
+function applySection(section: WalletSection) {
+  if (section === 'recharge') void scrollToSection(rechargeRef.value)
+  else if (section === 'orders') void scrollToSection(ordersRef.value)
+  else if (section === 'membership') void scrollToSection(membershipRef.value)
 }
 
-/** 等 DOM 更新完再滚，否则刚切 Tab 时目标区可能还没渲染出来。 */
+/** 等 DOM 更新完再滚，否则刚切页签时目标区可能还没渲染出来。 */
 async function scrollToSection(el: HTMLElement | null) {
   if (!el) return
   await nextTick()
@@ -191,11 +198,11 @@ onMounted(async () => {
   }
   load()
   loadCreator()
-  applyTabFromQuery(route.query.tab)
+  applySection(walletSectionFromPath(route.path))
 })
 
-// 已经在 /wallet 时再点头像菜单的「充值 / 订单」只改 query（组件不重建），靠 watch 重新定位。
-watch(() => route.query.tab, applyTabFromQuery)
+// 已经在 /wallet 时再点头像菜单的「充值 / 订单」只换 path（组件复用），靠 watch 重新定位。
+watch(() => route.path, () => applySection(walletSectionFromPath(route.path)))
 </script>
 
 <template>
@@ -328,7 +335,11 @@ watch(() => route.query.tab, applyTabFromQuery)
       </section>
 
       <!-- 会员 -->
-      <section class="panel-block">
+      <section
+        id="wallet-membership"
+        ref="membershipRef"
+        class="panel-block"
+      >
         <h3 class="section-title">
           <span
             class="section-icon"
@@ -513,20 +524,28 @@ watch(() => route.query.tab, applyTabFromQuery)
       class="panel-block"
     >
       <div class="filters">
-        <button
-          v-for="t in ([{ key: 'transactions', label: '订单', icon: 'i-lucide-receipt' }, { key: 'ledger', label: '金币流水', icon: 'i-lucide-list' }] as const)"
-          :key="t.key"
-          type="button"
+        <NuxtLink
           class="filter-btn"
-          :class="{ active: tab === t.key }"
-          @click="tab = t.key"
+          :class="{ active: tab === 'transactions' }"
+          :to="walletPath('transactions')"
         >
           <UIcon
-            :name="t.icon"
+            name="i-lucide-receipt"
             aria-hidden="true"
           />
-          {{ t.label }}
-        </button>
+          订单
+        </NuxtLink>
+        <NuxtLink
+          class="filter-btn"
+          :class="{ active: tab === 'ledger' }"
+          :to="walletPath('ledger')"
+        >
+          <UIcon
+            name="i-lucide-list"
+            aria-hidden="true"
+          />
+          金币流水
+        </NuxtLink>
       </div>
 
       <template v-if="tab === 'transactions'">
@@ -749,9 +768,11 @@ watch(() => route.query.tab, applyTabFromQuery)
   gap: 0.7rem;
   background: var(--w-surface);
 }
-/* ?tab=recharge / ?tab=orders 滚动落点：留一点上边距，标题不贴页面顶端。 */
+/* path 子路由（/wallet/recharge、/wallet/orders、/wallet/membership）的滚动落点：
+   留一点上边距，标题不贴页面顶端。 */
 #wallet-recharge,
-#wallet-orders {
+#wallet-orders,
+#wallet-membership {
   scroll-margin-top: 16px;
 }
 .section-title {
@@ -791,6 +812,7 @@ watch(() => route.query.tab, applyTabFromQuery)
   color: var(--w-muted);
   font-size: 0.8rem;
   font-weight: 600;
+  text-decoration: none;
   transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
 }
 .filter-btn:hover {

@@ -5,6 +5,46 @@
 
 纯函数、常量表与静态数据（没有响应式状态，可直接在任意上下文调用）。
 
+## app/utils/actor.ts
+- `const ACTOR_TAXONOMY_FIELDS = [` L54 — 演员结构化标签的**字段顺序与中文名**（筛选面板、创建表单、索引共用一份）
+- `const ACTOR_TEMPERAMENT_KEY = 'temperament' as const` L72 — 气质：唯一的多选字段，序列化时按重复键下发
+- `const ACTOR_MEDIA_SLOTS = [` L75 — 演员媒体槽位的**展示顺序与中文名**
+- `const ACTOR_SORT_VALUES = ['recommended', 'newest', 'name'] as const` L84 — 合法的排序值（后端 sort 枚举）
+- `serializeActorQuery(q: ActorListQuery = {}): string` L99 — 演员列表筛选 → 查询串
+- `normalizeActorTaxonomy(raw: unknown): ActorTaxonomy` L123 — 结构化标签归一化：未知/空值直接丢弃（界面按「未设置」处理）
+- `normalizeActorMedia(raw: unknown): ActorMedia` L172 — 媒体归一化，两种形态都认： · 数组（后端 actor/character 媒体）：`[{ kind:'portrait', assetId?, url }…
+- `normalizeActorFacets(raw: unknown): ActorFacets` L273 — 分面归一化，兼容三种后端形态： · 值→数量的映射（**当前后端**）：`{ era: { ancient: 2, modern: 1 }, … }` · …
+- `buildFacetLabelMap(facets: ActorFacets | null | undefined): Map<string, ActorFacetLabelMap>` L306 — 由 facets 建「维度 → (value → label)」映射，供卡片/详情把 taxonomy 的原始 code 换成中文展示名（如 `modern…
+- `facetLabel(labels: Map<string, ActorFacetLabelMap> | null | undefined, dimension: string, value: string): string` L323 — 单个维度取值 → 展示名
+- `const ACTOR_CHIP_LIMIT = 4` L334 — `actorTaxonomyChips` 的选项：最多显示几个维度
+- `actorTaxonomyChips(taxonomy: ActorTaxonomy | null | undefined, labels: Map<string, ActorFacetLabelMap> | null | undefined, limit = ACTOR_CHIP_LIMIT): string[]` L343 — 卡片/详情标签：按 `ACTOR_TAXONOMY_FIELDS` 顺序取**前 limit 个有值**的维度， 值是 facets 的 label（取不到…
+- `actorCardMedia(media: ActorMedia | null | undefined, coverUrl?: string): ActorCardMedia` L398 — 挑选卡片媒体
+- `const ACTOR_CARD_ASPECT_RATIO = '4 / 3'` L420 — 卡片固定宽高比 4:3（= 参考站 420×315）
+- `const ACTOR_GEN_ROLES = [` L430 — 生成 role 的**展示顺序与中文名**（与后端 ActorGenRoles 同序）
+- `actorGenRoleLabel(role: string): string` L438 — role 的中文名
+- `actorGenUnsupportedReason(role: string): string` L445 — 不支持的 role → 面向用户的说明（`voice` 是当前唯一的已知项）
+- `actorGenStatusLabel(status: string): string` L451 — run / role 的状态中文名
+- `actorGenIsTerminal(status: string): boolean` L469 — run 是否已到终态（succeeded / partial / failed）
+- `actorGenRoleNeedsRetry(status: string): boolean` L475 — role 是否需要显示「重试」（仅 failed）
+- `shouldContinueActorGenPolling(input: { status: string, stopped?: boolean, attempts: number, maxAttempts: number }): boolean` L485 — 轮询是否还应继续
+- `actorGenSummary(run: { status: string, roles?: { status: string }[], successAssetCount?: number }): string` L497 — run 级进度文案：已完成 role 数 + 成功资产数，全部来自后端真实字段
+- `normalizeActorGenRole(raw: unknown): ActorGenRole` L509 — role 条目归一化（id 一律字符串、assetIds 数组必为数组）
+- `normalizeActorGenRun(raw: unknown): ActorGenRun | null` L525 — run 归一化：ID 全字符串、roles/unsupportedRoles 必为数组、状态有兜底
+- `normalizeActorItem(raw: unknown): ActorItem` L552 — 演员列表条目归一化（id 一律字符串，封面从 media/cover 兜底）
+- `normalizeActorOutfits(raw: unknown): ActorOutfit[]` L578 — 造型归一化（后端字段：id/outfitKey/label/sortOrder
+- `normalizeActorVoice(raw: unknown): ActorVoice | null` L598 — 音色归一化：后端可能给单个对象，也可能给数组（取第一条）
+- `normalizeActorDetail(raw: unknown): ActorDetail` L617 — 演员详情归一化：actor + media + outfits + voice + favorited
+- `actorGenerationLabel(status?: string): string` L656 — 生成状态 → 中文
+- `actorShowsGeneration(actor: { generationStatus?: string }): boolean` L677 — 列表卡片是否要显示生成状态角标
+- `normalizeCharacterItem(raw: unknown): CharacterItem` L688 — 用户角色行归一化
+- `normalizeCharacterVoices(raw: unknown): ActorVoice[]` L710 — 角色音色归一化：后端下发的 `voice` 可能是数组（当前实现）也可能是单个对象， 统一成 `ActorVoice[]`，展示层只管第一条有没有可播 URL
+- `const ACTOR_GALLERY_BLOCKS = [` L732 — 详情画廊三块（对齐参考站：肖像 / 表情 / 转身）
+- `const ACTOR_GALLERY_ASPECT = '356 / 302'` L739 — 画廊整体宽高比（参考站 356×302）
+- `actorGalleryBlocks(media?: ActorMedia | null): ActorGalleryBlock[]` L756 — 一份媒体集合 → 画廊三块（各自回退，互不顶替）
+- `actorMediaForOutfit(detail: { media?: ActorMedia | null, outfits?: ActorOutfit[] | null } | null | undefined, outfitId: string): ActorMedia` L779 — 当前生效的媒体集合
+- `actorVoiceState(voice?: ActorVoice | ActorVoice[] | null): ActorVoiceState` L799 — 音色归一：接受单个对象或数组
+- `actorStripCandidates(items: ActorItem[] | null | undefined, currentId: string, limit = 12): ActorItem[]` L815 — 「切换演员」条的候选：**排除当前演员**，最多 limit 个
+
 ## app/utils/image-ref.ts
 - `const IMAGEREF_ID_PREFIX = 'imageref:'` L22 — chip 快照 id 前缀：`imageref:<index>`（index 从 1 开始，与图条顺序一致）
 - `imageRefWording(index: number, firstFrameRole = false): string` L29 — 给上游看的措辞（集中在这里，改动时同步下面的引用正则）
@@ -115,6 +155,9 @@
 - `const RESOLUTIONS = [` L25
 - `ratioIcon(shape: RatioOption['shape'])` L30
 - `sizeFor(ratio: string, resolution: string): [number, number]` L35 — 画幅 + 分辨率 → 输出尺寸（本地模型用）
+
+## app/data/reference-limit.ts
+- `referenceLimitReason(input: { max: number, modelName?: string, cloud?: boolean }): string` L9 — 参考图被拒 / 超限时的一句话原因
 
 ## app/data/tool-notice.ts
 - `toolNotice(code: string): ToolNotice | undefined` L36 — toolNotice 取某个工具的边界提示

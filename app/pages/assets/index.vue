@@ -12,21 +12,30 @@
 // 选择态是**页面级**的：跨分页、跨筛选都保留，批量动作一次请求打完（后端逐条回报失败），
 // 再统一 reload —— 中途失败不会留下"删了一半看不出来"的状态。
 import { safeHref } from '~/composables/useSafeUrl'
+import { assetPaneFromPath, assetPath, legacyRedirect } from '~/utils/routes'
 
-/** 资产页的四个页签。四个都是「我有什么」的不同侧面，收在一页里翻。 */
+/** 资产页的三个页签。演员已不属于资产（见 /actors）；三者各有独立 URL。 */
 const PANES = [
   { id: 'library', label: '我的资产' },
   { id: 'temp', label: '临时资产' },
-  { id: 'actors', label: '演员库' },
   { id: 'trash', label: '回收站' }
 ] as const
-const pane = ref<'library' | 'temp' | 'actors' | 'trash'>('library')
+type PaneId = typeof PANES[number]['id']
+
+const route = useRoute()
+
+// 旧 `?pane=actors|temp|trash|library` 入站重定向到 path 子路由（见 utils/routes 与设计文档 §5）。
+const legacy = legacyRedirect(route.path, route.query)
+if (legacy) await navigateTo(legacy, { redirectCode: 301 })
+
+// 页签可寻址：/assets、/assets/temp、/assets/trash 各是一个地址，刷新/分享/后退都保持。
+const pane = computed<PaneId>(() => assetPaneFromPath(route.path))
 
 /**
  * 当前页签是否「资产列表」（我的资产 / 临时资产）。
  *
  * 这两个页签共用同一套列表状态与卡片渲染，只有作用域（scope）与几个动作不同；
- * 演员库/回收站是独立组件，不参与这里的列表请求。
+ * 回收站是独立区块，不参与这里的列表请求。
  */
 const isAssetPane = computed(() => pane.value === 'library' || pane.value === 'temp')
 /** 当前页签对应的服务端作用域：临时资产 = temp，其余 = permanent。 */
@@ -187,12 +196,8 @@ watch([kind, origin, sort, showHidden, onlyDuplicates], () => {
   void reload()
 })
 
-// 切换「我的资产 / 临时资产」：作用域变了，必须重拉第 1 页；
-// 切到演员库/回收站则不发列表请求（那两个页签的数据源是别的组件）。
-watch(pane, (next) => {
-  clearPick()
-  if (next === 'library' || next === 'temp') void reload()
-})
+// 切换「我的资产 / 临时资产」是换 path（/assets ↔ /assets/temp），页面组件会重新挂载、
+// 各自 onMounted 拉第 1 页，所以这里不再需要监听页签变化。
 
 // ── 选择 ──
 function isPicked(id: string) {
@@ -722,25 +727,24 @@ useMediaAutoRefresh(() => {
       </div>
     </header>
 
-    <!-- 页内三页签：我的资产 / 演员库 / 回收站。
-         原来这三块是三个**独立页面**（assets / characters / works），跨页跳会丢上下文，
-         而且侧栏已经各有入口；收进一页后「我有什么」在一个地方就能翻完。 -->
+    <!-- 页内三页签：我的资产 / 临时资产 / 回收站。
+         每个页签是一个**地址**（/assets、/assets/temp、/assets/trash），
+         刷新/分享/后退都停在同一分区。演员库已移出资产，见 /actors。 -->
     <div
       class="assets-panes"
       role="tablist"
       aria-label="资产分区"
     >
-      <button
+      <NuxtLink
         v-for="p in PANES"
         :key="p.id"
-        type="button"
         role="tab"
         :aria-selected="pane === p.id"
         :class="{ active: pane === p.id }"
-        @click="pane = p.id"
+        :to="assetPath(p.id)"
       >
         {{ p.label }}
-      </button>
+      </NuxtLink>
     </div>
 
     <p
@@ -758,10 +762,8 @@ useMediaAutoRefresh(() => {
       </template>
     </p>
 
-    <HgActorLibrary v-if="pane === 'actors'" />
-
     <div
-      v-else-if="pane === 'trash'"
+      v-if="pane === 'trash'"
       class="assets-trash"
     >
       <p>回收站是空的</p>
@@ -1327,7 +1329,7 @@ useMediaAutoRefresh(() => {
   font-size: 13.5px;
   line-height: 1.7;
 }
-/* 页内三页签（我的资产 / 演员库 / 回收站）：下划线选中态，
+/* 页内三页签（我的资产 / 临时资产 / 回收站）：下划线选中态，
    和技能页的分类页签同一套视觉，翻到哪一页一眼看得出来。 */
 .assets-panes {
   display: flex;
@@ -1335,21 +1337,18 @@ useMediaAutoRefresh(() => {
   margin: 4px 0 18px;
   border-bottom: 1px solid var(--hg-line);
 }
-.assets-panes button {
+.assets-panes a {
   position: relative;
   padding: 0 0 10px;
-  border: 0;
-  background: transparent;
   color: var(--hg3-muted);
-  font-family: inherit;
   font-size: 14px;
-  cursor: pointer;
+  text-decoration: none;
 }
-.assets-panes button.active {
+.assets-panes a.active {
   color: var(--hg3-ink);
   font-weight: 600;
 }
-.assets-panes button.active::after {
+.assets-panes a.active::after {
   position: absolute;
   right: 0;
   bottom: -1px;

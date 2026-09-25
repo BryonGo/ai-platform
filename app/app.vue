@@ -70,67 +70,8 @@ const navBottom = [
    编出来的条目点进去只会开一个不存在的会话，而且它出现在"最近"这个词下面。 */
 const recentSessions = ref<{ id: string, title: string }[]>([])
 
-/* 侧栏「搜索」（上一轮交互标注 a）：搜工具、会话与页面，纯前端过滤已有数据 */
-const searchOpen = ref(false)
-const searchQuery = ref('')
-/** 工具搜索的数据源：与首页/效果页同一份目录（useState 共享，不会多打接口）。 */
-const toolCatalog = useToolCatalog()
-// 搜索页列表是**平铺的静态清单**：里面没有需要按开关过滤的项（角色资产已收进资产页），
-// 所以不再挂 feature 过滤 —— 挂着一个永远为真的 filter 只会让人以为这里还有什么开关。
-const SEARCH_PAGES = [
-  { label: '创作首页', to: '/' },
-  { label: '工作室', to: '/create' },
-  { label: '技能', to: '/effects' },
-  { label: '资产', to: '/assets' },
-  { label: 'TV 频道', to: '/tv' },
-  { label: '我的发布', to: '/works' },
-  { label: '钱包与账单', to: '/wallet' },
-  { label: '设置', to: '/settings' }
-]
-
-const searchResults = computed(() => {
-  const keyword = searchQuery.value.trim().toLowerCase()
-  if (!keyword) return { tools: [], sessions: [], pages: [] }
-  const hit = (text: string) => text.toLowerCase().includes(keyword)
-  return {
-    // 工具结果走**真实目录**（后台「创作工具」维护），不再搜写死的 HOME_TOOLS 示例清单 ——
-    // 那份清单里的工具本站可能根本没有（名字/入口都是编的），点进去只会被后端拒绝；
-    // 而且它与首页「全部工具」是两个数据源，同一件事两处口径必然对不上。
-    tools: toolCatalog.tools.value
-      .filter(tool => hit(tool.name) || hit(tool.code) || hit(tool.summary || ''))
-      .slice(0, 5)
-      .map(tool => ({
-        id: tool.code,
-        icon: tool.icon || 'i-lucide-sparkles',
-        label: tool.name,
-        to: `/tool/${tool.code}`
-      })),
-    sessions: recentSessions.value.filter(item => hit(item.title)).slice(0, 5),
-    pages: SEARCH_PAGES.filter(page => hit(page.label)).slice(0, 5)
-  }
-})
-
-const searchEmpty = computed(() => {
-  const r = searchResults.value
-  return !r.tools.length && !r.sessions.length && !r.pages.length
-})
-
-function openSearch() {
-  searchQuery.value = ''
-  searchOpen.value = true
-  // 打开搜索时确保目录已拉取：目录是 useState 共享的，已加载过就是空操作。
-  // 少了这一下，在没调用过 ensure() 的页面里搜索会永远搜不到工具。
-  void toolCatalog.ensure()
-}
-
-function goSearch(to: string) {
-  searchOpen.value = false
-  navigateTo(to)
-}
-
-function onSearchKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') searchOpen.value = false
-}
+// 搜索不再是一个浮层：点侧栏「搜索」直接进独立搜索页 /search（结果可刷新/分享/后退）。
+// 页面见 app/pages/search.vue。
 const accountOpen = ref(false)
 const accountWrapRef = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
@@ -192,17 +133,29 @@ const unread = ref(0)
 const PAGE_NAMES: Record<string, string> = {
   '/': '首页',
   '/create': '工作室',
+  '/effects/image': '图片技能',
+  '/effects/video': '视频技能',
   '/effects': '技能',
   // 技能详情页（/tool/<code>）：原来没有任何键命中，面包屑一直回落成「创作」。
   '/tool': '技能',
+  '/explore': '探索',
   '/canvases': '我的画布',
   '/canvas': '画布',
+  '/assets/temp': '临时资产',
+  '/assets/trash': '回收站',
   '/assets': '资产',
-  '/characters': '角色资产',
+  '/actors/mine': '我的演员',
+  '/actors/new': '新建演员',
+  '/actors': '演员库',
   '/tv': 'TV 频道',
   '/works': '我的发布',
+  '/wallet/ledger': '金币流水',
+  '/wallet/recharge': '充值',
+  '/wallet/orders': '订单',
+  '/wallet/membership': '会员',
   '/wallet': '钱包与账单',
   '/notifications': '通知',
+  '/search': '搜索',
   '/stories': '故事',
   '/auth/login': '登录',
   '/auth/register': '注册'
@@ -353,12 +306,12 @@ watch(() => route.fullPath, () => {
               </button>
             </template>
             <!-- 搜索：它是查找入口而不是导航目的地，所以排在一级导航之后，
-                 不跟「首页 / 工作室 / 技能…」混在一起抢位置。 -->
-            <button
-              type="button"
+                 不跟「首页 / 工作室 / 技能…」混在一起抢位置。
+                 点它进独立搜索页 /search（结果可刷新/分享/后退），不再是 shell 内浮层。 -->
+            <NuxtLink
               class="hg-nav-item"
+              to="/search"
               title="搜索"
-              @click="openSearch()"
             >
               <UIcon
                 name="i-lucide-search"
@@ -366,7 +319,7 @@ watch(() => route.fullPath, () => {
                 aria-hidden="true"
               />
               <span class="hg-nav-label">搜索</span>
-            </button>
+            </NuxtLink>
           </nav>
 
           <!-- 没有真实会话（未登录 / 新账号）时整块不出现：一个「最近会话」标题下面
@@ -566,10 +519,10 @@ watch(() => route.fullPath, () => {
                       aria-hidden="true"
                     />我的发布
                   </NuxtLink>
-                  <!-- 充值 / 订单是同一个钱包页的两块：用 ?tab= 让钱包页自己滚到对应区域
-                       （见 pages/wallet.vue 的 applyTabFromQuery）。 -->
+                  <!-- 充值 / 订单各有独立地址（/wallet/recharge、/wallet/orders），
+                       不再是同一个钱包页的 ?tab= 滚动落点。 -->
                   <NuxtLink
-                    :to="{ path: '/wallet', query: { tab: 'recharge' } }"
+                    to="/wallet/recharge"
                     @click="accountOpen = false"
                   >
                     <UIcon
@@ -578,7 +531,7 @@ watch(() => route.fullPath, () => {
                     />充值
                   </NuxtLink>
                   <NuxtLink
-                    :to="{ path: '/wallet', query: { tab: 'orders' } }"
+                    to="/wallet/orders"
                     @click="accountOpen = false"
                   >
                     <UIcon
@@ -623,100 +576,6 @@ watch(() => route.fullPath, () => {
         </main>
       </div>
 
-      <div
-        v-if="searchOpen"
-        class="hg-search-mask"
-        @click.self="searchOpen = false"
-      >
-        <section
-          class="hg-search"
-          role="dialog"
-          aria-modal="true"
-          aria-label="搜索"
-        >
-          <label class="hg-search-field">
-            <UIcon
-              name="i-lucide-search"
-              aria-hidden="true"
-            />
-            <input
-              v-model="searchQuery"
-              type="search"
-              placeholder="搜索工具、会话或页面"
-              aria-label="搜索工具、会话或页面"
-              @keydown="onSearchKeydown"
-            >
-            <button
-              type="button"
-              aria-label="关闭搜索"
-              @click="searchOpen = false"
-            >
-              <UIcon name="i-lucide-x" />
-            </button>
-          </label>
-
-          <p
-            v-if="!searchQuery.trim()"
-            class="hg-search-hint"
-          >
-            输入关键词搜索工具、历史会话或页面入口。
-          </p>
-          <p
-            v-else-if="searchEmpty"
-            class="hg-search-hint"
-          >
-            没有找到「{{ searchQuery }}」相关的结果。
-          </p>
-          <div
-            v-else
-            class="hg-search-results"
-          >
-            <template v-if="searchResults.tools.length">
-              <h3>工具</h3>
-              <button
-                v-for="tool in searchResults.tools"
-                :key="tool.id"
-                type="button"
-                @click="goSearch(tool.to)"
-              >
-                <UIcon
-                  :name="tool.icon"
-                  aria-hidden="true"
-                />{{ tool.label }}
-              </button>
-            </template>
-            <template v-if="searchResults.sessions.length">
-              <h3>历史会话</h3>
-              <button
-                v-for="item in searchResults.sessions"
-                :key="item.id"
-                type="button"
-                @click="goSearch(`/create?session=${encodeURIComponent(item.id)}`)"
-              >
-                <UIcon
-                  name="i-lucide-history"
-                  aria-hidden="true"
-                />{{ item.title }}
-              </button>
-            </template>
-            <template v-if="searchResults.pages.length">
-              <h3>页面</h3>
-              <button
-                v-for="page in searchResults.pages"
-                :key="page.to"
-                type="button"
-                @click="goSearch(page.to)"
-              >
-                <UIcon
-                  name="i-lucide-arrow-up-right"
-                  aria-hidden="true"
-                />{{ page.label }}
-              </button>
-            </template>
-          </div>
-        </section>
-      </div>
-
       <HgAuthDialog v-model:open="authOpen" />
 
       <!-- 站点 18+ 年龄门：服务端说需要过门且本浏览器未过时遮住整页。
@@ -730,91 +589,6 @@ watch(() => route.fullPath, () => {
 </template>
 
 <style scoped>
-.hg-search-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 88;
-  display: grid;
-  place-items: start center;
-  padding: 12vh 20px 20px;
-  background: rgb(6 7 9 / 68%);
-  backdrop-filter: blur(3px);
-}
-.hg-search {
-  width: min(520px, 100%);
-  padding: 14px;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 16px;
-  background: #1c1d21;
-  box-shadow: 0 24px 70px #000a;
-}
-.hg-search-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 42px;
-  padding: 0 12px;
-  border: 1px solid var(--hg3-line-strong, #333);
-  border-radius: 11px;
-  background: #141519;
-  color: var(--hg3-faint, #6f6f6f);
-}
-.hg-search-field input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--hg3-ink, #fafafa);
-  font-family: inherit;
-  font-size: 14px;
-  outline: none;
-}
-.hg-search-field button {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.hg-search-hint {
-  margin: 12px 4px 4px;
-  color: var(--hg3-faint, #6f6f6f);
-  font-size: 12px;
-}
-.hg-search-results {
-  display: grid;
-  gap: 2px;
-  max-height: 52vh;
-  margin-top: 10px;
-  overflow-y: auto;
-}
-.hg-search-results h3 {
-  margin: 8px 6px 4px;
-  color: var(--hg3-faint, #6f6f6f);
-  font-size: 11px;
-  font-weight: 500;
-}
-.hg-search-results button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--hg3-ink, #fafafa);
-  font-family: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.hg-search-results button:hover {
-  background: #1e1e1e;
-}
 .hg-topbar-left {
   display: flex;
   align-items: center;

@@ -14,11 +14,13 @@
 角色卡片：封面取后端返回的 coverUrl（该角色最近一部作品的产物），无作品时用首字占位
 - props: `character` · `index`
 
-### AppCharacterForm — app/components/AppCharacterForm.vue · 353 行
-角色表单（新建 / 编辑共用）
-- props: `initial?` · `submitting?` · `serverError?` · `submitLabel?` · `editMode?`
-- emits: `submit`
-- 本文件声明 10 个: `newTrait` L28 · `localError` L29 · `fill` L31 · `addTrait` L46 · `removeTrait` L56 · `addAppearance` L60 · `removeAppearance` L64 · `addOutfit` L68 · `removeOutfit` L72 · `onSubmit` L76
+### AppCharacterForm — app/components/AppCharacterForm.vue · 841 行
+角色表单（新建 / 编辑共用），**视觉优先**： 第一屏 = 角色源图（必选）+ 角色名 + 成年确认
+- props: `initial?` · `submitting?` · `serverError?` · `submitLabel?` · `editMode?` · `cancelTo?`='/assets?pane=actors'(取消后回到哪里（默认回演员区，不再跳旧的 /characters 列表）)
+- emits: `submit` · 用: `useHougongApi`
+- 本文件声明 28 个: `sourceAssetId` L76 · `sourceUrl` L77 · `sourceBusy` L78 · `sourceError` L79 · `pickerOpen` L80 · `fileInput` L81 · `facets` L84 · `facetsError` L85 · `newTrait` L87 · `localError` L88
+  `singleOptions` L90 · `temperamentOptions` L95 · `optionsFor` L110 · `toggleTemperament` L117 · `loadFacets` L123 · `fill` L133 · `resolveSourceUrl` L161 · `uploadSource` L170 · `onFile` L196
+  `onPickAsset` L204 · `clearSource` L211 · `addTrait` L218 · `removeTrait` L228 · `addAppearance` L232 · `removeAppearance` L236 · `addOutfit` L240 · `removeOutfit` L244 · `onSubmit` L248
 
 ### AppStoryCard — app/components/AppStoryCard.vue · 65 行
 故事卡片：数据全部来自真实接口，角色名与封面由调用方传入
@@ -108,16 +110,27 @@
   `graphs?`(我的图（最近更新在前）)
 - emits: `undo` · `redo` · `zoom-in` · `zoom-out` · `new` · `fit` · `arrange` · `save` · `run-all` · `switch-graph` · `open-graphs`
 
-### HgActorLibrary — app/components/HgActorLibrary.vue · 232 行
-演员库 —— 挂在「资产」页里的一个页签（不单独占侧栏一项，与设计稿一致）
+### HgActorDetail — app/components/HgActorDetail.vue · 690 行
+平台演员详情（只读）
+- props: `id`
+- 用: `useHougongApi`
+- 本文件声明 30 个: `detail` L29 · `loading` L30 · `error` L31 · `notice` L32 · `favoriteBusy` L34 · `cloning` L35 · `facetLabels` L38 · `selectedOutfitId` L41 · `activeMedia` L44 · `gallery` L47
+  `voice` L50 · `voiceEl` L51 · `voicePlaying` L52 · `tags` L55 · `generationLabel` L57 · `stripItems` L60 · `stripRef` L61 · `strip` L63 · `loadStrip` L65 · `nextStrip` L74 · `loadFacetLabels` L81
+  `pauseVoice` L91 · `load` L96 · `pickOutfit` L120 · `outfitThumb` L127 · `downloadName` L135 · `toggleVoice` L139 · `onVoiceError` L151 · `toggleFavorite` L156 · `cloneToMine` L172
+
+### HgActorLibrary — app/components/HgActorLibrary.vue · 1057 行
+演员库 —— 挂在「资产」页里的一个页签（/assets?pane=actors）
 - props: —
 - 用: `useHougongApi`
+- 本文件声明 20 个: `sourceFromQuery` L27 · `source` L33 · `moreOpen` L72 · `favoriteBusy` L73 · `pageCount` L75 · `hasMoreFilters` L77 · `facetOptions` L84 · `showAll` L94 · `showRecent` L99
+  `isAllActive` L105 · `isRecentActive` L116 · `buildQuery` L122 · `loadPlatform` L147 · `toggleTemperament` L186 · `resetFilters` L192 · `toggleFavorite` L202 · `loadMine` L228 · `activate` L246
+  `removeMine` L255 · `cardMedia` L266
 
-### HgAssetPanel — app/components/HgAssetPanel.vue · 450 行
+### HgAssetPanel — app/components/HgAssetPanel.vue · 466 行
 - props: —
 - 用: `useChatStudio` · `useHougongApi`
-- 本文件声明 15 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `savedIds` L26 · `savingIds` L27 · `allSaved` L40 · `saving` L42 · `saveLabel` L43 · `saveAssets` L53 · `close` L78
-  `onKeydown` L82 · `download` L89 · `continueEdit` L104 · `toVideo` L112
+- 本文件声明 15 个: `message` L14 · `assets` L15 · `current` L16 · `infoOpen` L17 · `savedIds` L27 · `savingIds` L28 · `allSaved` L41 · `saving` L43 · `saveLabel` L44 · `saveAssets` L54 · `close` L79
+  `onKeydown` L83 · `download` L90 · `continueEdit` L112 · `toVideo` L128
 
 ### HgAssetPicker — app/components/HgAssetPicker.vue · 548 行
 - props: `open` · `selectedIds?`=() => [](已引用的资产 id（顺序即引用顺序，与 studio.references 一致）) · `canAddMore?`=true(还能不能再加（受 referenceMax 约束）) · `videoMode?`=false(视频模式：提示第 1 张是首帧，避免界面措辞与图位不一致)
