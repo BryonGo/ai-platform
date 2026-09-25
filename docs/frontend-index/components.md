@@ -110,7 +110,7 @@
   `graphs?`(我的图（最近更新在前）)
 - emits: `undo` · `redo` · `zoom-in` · `zoom-out` · `new` · `fit` · `arrange` · `save` · `run-all` · `switch-graph` · `open-graphs`
 
-### HgActorDetail — app/components/HgActorDetail.vue · 712 行
+### HgActorDetail — app/components/HgActorDetail.vue · 728 行
 平台演员详情（只读）
 - props: `id`
 - 用: `useHougongApi`

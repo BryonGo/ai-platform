@@ -705,6 +705,22 @@ onUnmounted(pauseVoice)
   .actor-detail__card { padding: 20px 16px 22px; }
 }
 
+/* 桌面（≥1024）：参考站 PC 版是**单栏铺满**，不是两栏。
+   三块媒体按各自原图比例横排：总宽高比 = 1.333(肖像合成) + 0.75(表情) + 1.778(三视图) = 3.861；
+   容器设这个比例，既有 grow 配比就会自动得到接近原图的比例，宽屏不再留 3/4 空白。 */
+@media (min-width: 1024px) {
+  .actor-detail { max-width: 100%; }
+  .actor-detail__card { padding: 28px 36px 32px; }
+  .gallery { aspect-ratio: 3.861 / 1; }
+  /* 造型/收藏/主按钮回到同一行：铺满后空间足够，主按钮不再被挤出 */
+  .toolbar-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+  .toolbar-outfits { flex: 1 1 auto; min-width: 0; }
+  .toolbar-actions { flex: 0 0 auto; }
+  .toolbar-primary { flex: 0 0 auto; min-width: 192px; }
+  /* 切换演员仍是全宽横条 + 下一组，和参考站下半部分一致 */
+  .strip { margin-top: 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .strip__rail, .toolbar-outfits { scroll-behavior: auto; }
 }

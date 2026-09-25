@@ -30,7 +30,7 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 | 组件契约 props/emits | `docs/frontend-index/components.md` | 278 |
 | 页面与路由 | `docs/frontend-index/pages-routes.md` | 212 |
 | 类型与字段 | `docs/frontend-index/types.md` | 189 |
-| 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 187 |
+| 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 188 |
 
 最大的源文件（整份读最贵，优先查上面的索引再定点读）：
 

@@ -681,16 +681,16 @@ test('actorGalleryBlocks：三块各取自己的槽位', () => {
   assert.deepEqual(blocks.map(b => b.slotLabel), ['立绘', '表情集', '三视图'])
 })
 
-test('actorGalleryBlocks：肖像块优先竖版 headshot，不拿横向 portrait 合成图当肖像', () => {
+test('actorGalleryBlocks：肖像块优先横向 portrait 合成图（PC 宽屏第一块），headshot 只作回退', () => {
   const blocks = actorGalleryBlocks({
     portrait: { url: 'p.jpg' },
     headshot: { url: 'h.jpg' }
   })
-  assert.equal(blocks[0].url, 'h.jpg')
-  assert.equal(blocks[0].slot, 'headshot')
+  assert.equal(blocks[0].url, 'p.jpg')
+  assert.equal(blocks[0].slot, 'portrait')
 })
 
-test('actorGalleryBlocks：各自回退链（肖像→全身；表情→全身/头像；转身→全身）', () => {
+test('actorGalleryBlocks：各自回退链（肖像→头像/全身；表情→全身/头像；转身→全身）', () => {
   const blocks = actorGalleryBlocks({
     headshot: { url: 'h.jpg' },
     fullBody: { url: 'f.jpg' }
@@ -715,14 +715,14 @@ test('actorGalleryBlocks：空 url 不算有图；空/undefined 媒体不崩', (
   assert.equal(actorGalleryBlocks(undefined).length, 3)
 })
 
-test('ACTOR_GALLERY_BLOCKS：候选顺序固定为「竖块放竖图」', () => {
+test('ACTOR_GALLERY_BLOCKS：候选顺序固定（肖像用 portrait 合成图，表情/转身用各自表）', () => {
   // 真实源图横竖比：headshot 0.75、expression_sheet 0.75、full_body 0.563、
   // portrait 1.333（横向双图合成）、three_view 1.778（横向表）。所以：
-  //   · 肖像块放竖图 headshot/full_body，横向 portrait 只能最后兜底；
-  //   · 表情块优先 expression_sheet（它是竖图），而不是 full_body/headshot；
+  //   · 肖像块优先 portrait 合成图（PC 第一块按原比例铺满，移动端 cover 裁成肖像）；
+  //   · 表情块优先 expression_sheet，而不是 full_body/headshot；
   //   · 转身块只认 three_view / full_body —— 横向 portrait 绝不能冒充转身。
   const candidates = Object.fromEntries(ACTOR_GALLERY_BLOCKS.map(b => [b.key, [...b.candidates]]))
-  assert.deepEqual(candidates.portrait, ['headshot', 'fullBody', 'portrait'])
+  assert.deepEqual(candidates.portrait, ['portrait', 'headshot', 'fullBody'])
   assert.deepEqual(candidates.emotive, ['expressionSheet', 'fullBody', 'headshot'])
   assert.deepEqual(candidates.turnaround, ['threeView', 'fullBody'])
   assert.equal(candidates.turnaround.includes('portrait'), false, '转身块不得拿 portrait 合成图顶替')
@@ -736,8 +736,8 @@ test('actorGalleryBlocks：多张候选并存时按候选优先级取第一张�
     expressionSheet: { url: 'e.jpg' },
     threeView: { url: 't.jpg' }
   })
-  assert.deepEqual(blocks.map(b => b.slot), ['headshot', 'expressionSheet', 'threeView'])
-  assert.deepEqual(blocks.map(b => b.url), ['h.jpg', 'e.jpg', 't.jpg'])
+  assert.deepEqual(blocks.map(b => b.slot), ['portrait', 'expressionSheet', 'threeView'])
+  assert.deepEqual(blocks.map(b => b.url), ['p.jpg', 'e.jpg', 't.jpg'])
 })
 
 test('actorGalleryBlocks：表情块 expression_sheet 缺失时才退 full_body，再退 headshot（不借 portrait）', () => {

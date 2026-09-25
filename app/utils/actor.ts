@@ -725,18 +725,23 @@ export function normalizeCharacterVoices(raw: unknown): ActorVoice[] {
  *
  * 每块有自己的**回退链**，且回退只在同一份媒体集合内做。
  *
- * 为什么肖像槽优先 `headshot` 而不是 `portrait`：真实导入数据里 `portrait` 是
- * 1.333 的横向双图合成（2304×1728），塞进 116×300 的竖块会缩成很小一条；
- * `headshot` 是 0.75 的竖图，才对应参考站的肖像位。`full_body`（0.563）是不错的
- * 次选；`portrait` 只作为最后兜底。
+ * 肖像块用 `portrait`（1.333 横向双图合成，2304×1728）：参考站 PC 宽屏的第一块
+ * 就是这张合成图，按原比例铺满；移动端 116×302 的竖块用 `cover` 把它裁成肖像。
+ * `headshot`（0.75）和 `full_body`（0.563）作为缺图时的回退。
  *
  * 跨造型回退会拿别的造型的图冒充，所以回退链由调用方在「该造型自己的 media」上应用。
  */
 export const ACTOR_GALLERY_BLOCKS = [
-  { key: 'portrait', label: '肖像', candidates: ['headshot', 'fullBody', 'portrait'], grow: 116 },
+  { key: 'portrait', label: '肖像', candidates: ['portrait', 'headshot', 'fullBody'], grow: 116 },
   { key: 'emotive', label: '表情', candidates: ['expressionSheet', 'fullBody', 'headshot'], grow: 66 },
   { key: 'turnaround', label: '转身', candidates: ['threeView', 'fullBody'], grow: 158 }
 ] as const
+
+/**
+ * 桌面宽屏下画廊的总宽高比：三块原图比例相加（1.333 + 0.75 + 1.778）。
+ * 用它让三块在 PC 上按原比例横排铺满，而不是被 356/302 拉成竖带。
+ */
+export const ACTOR_GALLERY_WIDE_ASPECT = 3.861
 
 /** 画廊整体宽高比（参考站 356×302）。写成常量供样式与测试对齐。 */
 export const ACTOR_GALLERY_ASPECT = '356 / 302'

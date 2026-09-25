@@ -38,12 +38,13 @@
 - `actorShowsGeneration(actor: { generationStatus?: string }): boolean` L677 — 列表卡片是否要显示生成状态角标
 - `normalizeCharacterItem(raw: unknown): CharacterItem` L688 — 用户角色行归一化
 - `normalizeCharacterVoices(raw: unknown): ActorVoice[]` L710 — 角色音色归一化：后端下发的 `voice` 可能是数组（当前实现）也可能是单个对象， 统一成 `ActorVoice[]`，展示层只管第一条有没有可播 URL
-- `const ACTOR_GALLERY_BLOCKS = [` L735 — 详情画廊三块（对齐参考站：肖像 / 表情 / 转身）
-- `const ACTOR_GALLERY_ASPECT = '356 / 302'` L742 — 画廊整体宽高比（参考站 356×302）
-- `actorGalleryBlocks(media?: ActorMedia | null): ActorGalleryBlock[]` L759 — 一份媒体集合 → 画廊三块（各自回退，互不顶替）
-- `actorMediaForOutfit(detail: { media?: ActorMedia | null, outfits?: ActorOutfit[] | null } | null | undefined, outfitId: string): ActorMedia` L782 — 当前生效的媒体集合
-- `actorVoiceState(voice?: ActorVoice | ActorVoice[] | null): ActorVoiceState` L802 — 音色归一：接受单个对象或数组
-- `actorStripCandidates(items: ActorItem[] | null | undefined, currentId: string, limit = 12): ActorItem[]` L818 — 「切换演员」条的候选：**排除当前演员**，最多 limit 个
+- `const ACTOR_GALLERY_BLOCKS = [` L734 — 详情画廊三块（对齐参考站：肖像 / 表情 / 转身）
+- `const ACTOR_GALLERY_WIDE_ASPECT = 3.861` L744 — 桌面宽屏下画廊的总宽高比：三块原图比例相加（1.333 + 0.75 + 1.778）
+- `const ACTOR_GALLERY_ASPECT = '356 / 302'` L747 — 画廊整体宽高比（参考站 356×302）
+- `actorGalleryBlocks(media?: ActorMedia | null): ActorGalleryBlock[]` L764 — 一份媒体集合 → 画廊三块（各自回退，互不顶替）
+- `actorMediaForOutfit(detail: { media?: ActorMedia | null, outfits?: ActorOutfit[] | null } | null | undefined, outfitId: string): ActorMedia` L787 — 当前生效的媒体集合
+- `actorVoiceState(voice?: ActorVoice | ActorVoice[] | null): ActorVoiceState` L807 — 音色归一：接受单个对象或数组
+- `actorStripCandidates(items: ActorItem[] | null | undefined, currentId: string, limit = 12): ActorItem[]` L823 — 「切换演员」条的候选：**排除当前演员**，最多 limit 个
 
 ## app/utils/image-ref.ts
 - `const IMAGEREF_ID_PREFIX = 'imageref:'` L22 — chip 快照 id 前缀：`imageref:<index>`（index 从 1 开始，与图条顺序一致）
