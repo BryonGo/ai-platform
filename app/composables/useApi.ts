@@ -75,7 +75,22 @@ const errorKeyMessages: Record<string, string> = {
   EXPORT_PLAN_CHANGED: '导出内容已变化，请重新确认',
   IDEMPOTENCY_CONFLICT: '请求与上次重复，请刷新后重试',
   INVALID_PACKAGE: '该套餐不存在或已下架',
-  INTERNAL_ERROR: '服务开小差了，请稍后再试'
+  INTERNAL_ERROR: '服务开小差了，请稍后再试',
+  // ── 账号域（go-sdk/internal/app/account/consts/error.go，键名与之逐字对齐）──
+  // 注意 USER_EMAIL_REGISTERED 对应后端 50004，同时用于邮箱与用户名冲突，文案必须通用。
+  USER_NOT_FOUND: '账号不存在',
+  USER_PASSWORD_WRONG: '账号或密码错误',
+  USER_DISABLED: '账号已被停用',
+  USER_EMAIL_REGISTERED: '该邮箱或用户名已被使用',
+  USER_CODE_ERROR: '验证码错误',
+  USER_CODE_EXPIRED: '验证码已过期，请重新获取',
+  USER_PLATFORM_FAIL: '第三方登录暂不可用',
+  USER_REGISTER_FAIL: '注册失败，请稍后再试',
+  USER_UPLOAD_FAIL: '上传失败，请稍后再试',
+  AGREEMENT_REQUIRED: '请先阅读并同意用户协议',
+  USERNAME_INVALID: '用户名不符合规则',
+  LOGIN_BY_EMAIL_ONLY: '本站仅支持邮箱登录',
+  USER_NOT_GUEST: '会话状态异常，请刷新后重试'
 }
 
 /** friendlyMessage 取用户可读文案：优先用错误键映射，未登记的键回落到后端 message。 */
