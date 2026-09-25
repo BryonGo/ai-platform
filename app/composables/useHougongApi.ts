@@ -1042,7 +1042,15 @@ export function useHougongApi() {
     })
   }
 
-  function logout() {
+  /**
+   * 退出登录。先调后端 /account/auth/logout：把当前 token 移出服务端令牌缓存、
+   * 下发 Set-Cookie 清掉 HttpOnly 凭据 Cookie —— 两件事都完成，刷新页面后的
+   * auto-login 才会真正失败；只清本地的话 Cookie 还活着，下个页面的
+   * session.load() 会把会话恢复回来，退出成「假退出」。请求先于本地清理发出
+   * （token 还在内存，Authorization 才带得上），后端失败也照常清本地。
+   */
+  function logout(): void {
+    void apiRequest<unknown>('/account/auth/logout', { method: 'POST', body: {} }).catch(() => {})
     session.clear()
   }
 

@@ -200,13 +200,13 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 710 行
+- `app/app.vue` · 713 行
   - 本文件声明: `recentSessions` L73 · `accountOpen` L77 · `accountWrapRef` L78 · `railOpen` L79 · `dotTrailRef` L81 · `fadeDotTrails` L86 · `onDotPointerMove` L99 · `railCollapsed` L128
-    `isFullBleed` L131 · `credits` L132 · `unread` L133 · `pageName` L165 · `isActive` L174 · `onAccountToggle` L182 · `onDocClick` L186 · `logout` L192 · `loadShellData` L198
+    `isFullBleed` L131 · `credits` L132 · `unread` L133 · `pageName` L165 · `isActive` L174 · `onAccountToggle` L182 · `onDocClick` L186 · `logout` L192 · `loadShellData` L201
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 710 行
+- `app/App.vue` · 713 行
   - 本文件声明: `recentSessions` L73 · `accountOpen` L77 · `accountWrapRef` L78 · `railOpen` L79 · `dotTrailRef` L81 · `fadeDotTrails` L86 · `onDotPointerMove` L99 · `railCollapsed` L128
-    `isFullBleed` L131 · `credits` L132 · `unread` L133 · `pageName` L165 · `isActive` L174 · `onAccountToggle` L182 · `onDocClick` L186 · `logout` L192 · `loadShellData` L198
+    `isFullBleed` L131 · `credits` L132 · `unread` L133 · `pageName` L165 · `isActive` L174 · `onAccountToggle` L182 · `onDocClick` L186 · `logout` L192 · `loadShellData` L201
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"

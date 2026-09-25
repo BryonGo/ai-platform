@@ -211,122 +211,122 @@
 - `register(input: { email: string, password: string, turnstileToken?: string }): Promise<AuthResult>` · L1013 · `/account/auth/register` — 邮箱注册
 - `getProfile(): Promise<ProfileInfo>` · L1030 · `/account/profile` — 当前账号信息（用户名/邮箱/展示名）
 - `updateUsername(username: string): Promise<{ username: string, nickname: string }>` · L1038 · `/account/profile/edit` — 改用户名
-- `logout()` · L1045
-- `listCharacters(): Promise<CharacterItem[]>` · L1049
-- `getCharacter(id: string | number): Promise<CharacterItem>` · L1054
-- `createCharacter(input: CharacterInput): Promise<CharacterItem>` · L1061 — 角色创建/更新（字段对齐后端 CharacterInputData
-- `updateCharacter(id: number | string, input: CharacterInput): Promise<CharacterItem>` · L1066
-- `setCharacterCover(id: number | string, assetId: number | string): Promise<CharacterItem>` · L1072 — 指定 / 清除角色封面（assetId=0 恢复自动：取最近作品产物），返回更新后的角色
-- `deleteCharacter(id: number | string): Promise<void>` · L1082 · `/hougong/characters/…` — 删除角色：后端软删
+- `logout(): void` · L1052 · `/account/auth/logout` — 退出登录
+- `listCharacters(): Promise<CharacterItem[]>` · L1057
+- `getCharacter(id: string | number): Promise<CharacterItem>` · L1062
+- `createCharacter(input: CharacterInput): Promise<CharacterItem>` · L1069 — 角色创建/更新（字段对齐后端 CharacterInputData
+- `updateCharacter(id: number | string, input: CharacterInput): Promise<CharacterItem>` · L1074
+- `setCharacterCover(id: number | string, assetId: number | string): Promise<CharacterItem>` · L1080 — 指定 / 清除角色封面（assetId=0 恢复自动：取最近作品产物），返回更新后的角色
+- `deleteCharacter(id: number | string): Promise<void>` · L1090 · `/hougong/characters/…` — 删除角色：后端软删
 - **演员库（平台演员，只读；收藏与复制到我的演员）**
-  - `listActors(q: ActorListQuery = {}): Promise<ActorListResult>` · L1097 · `/hougong/actors…` — 平台演员列表
-  - `getActor(id: string | number): Promise<ActorDetail>` · L1112 · `/hougong/actors/…` — 平台演员详情：actor + media + outfits + voice + 当前账号是否收藏
-  - `favoriteActor(id: string | number, favorite = true): Promise<{ favorited: boolean }>` · L1118 · `/hougong/actors/…` — 收藏（POST）/ 取消收藏（DELETE）平台演员，返回操作后的收藏态
-  - `cloneActor(id: string | number): Promise<{ characterId: string }>` · L1127 · `/hougong/actors/…` — 把平台演员复制到「我的演员」，返回新建的角色 id（雪花字符串）
+  - `listActors(q: ActorListQuery = {}): Promise<ActorListResult>` · L1105 · `/hougong/actors…` — 平台演员列表
+  - `getActor(id: string | number): Promise<ActorDetail>` · L1120 · `/hougong/actors/…` — 平台演员详情：actor + media + outfits + voice + 当前账号是否收藏
+  - `favoriteActor(id: string | number, favorite = true): Promise<{ favorited: boolean }>` · L1126 · `/hougong/actors/…` — 收藏（POST）/ 取消收藏（DELETE）平台演员，返回操作后的收藏态
+  - `cloneActor(id: string | number): Promise<{ characterId: string }>` · L1135 · `/hougong/actors/…` — 把平台演员复制到「我的演员」，返回新建的角色 id（雪花字符串）
 - **演员资产生成（actor-generation）**
-  - `startActorGeneration(characterId: string | number, input: ActorGenStartInput): Promise<ActorGenRun>` · L1141 · `/hougong/characters/…` — 发起一次生成运行（会创建 4 个 t2i 任务，可能产生费用）
-  - `getLatestActorGeneration(characterId: string | number): Promise<ActorGenRun | null>` · L1157 · `/hougong/characters/…` — 该角色最近一次运行
-  - `getActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun>` · L1163 · `/hougong/characters/…` — 指定运行的状态（轮询用）
-  - `retryActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun>` · L1171 · `/hougong/characters/…` — 只对失败的 role 重试（逐 role、各自计费）
-  - `listWorks(): Promise<WorkItem[]>` · L1180 · `/hougong/works`
-  - `getHougongWork(id: string | number): Promise<WorkItem>` · L1186 · `/hougong/works/…` — 后宫作品详情/收藏（与 /platform/work 的发布作品区分开）
-  - `favoriteHougongWork(id: string | number, favorite: boolean): Promise<WorkItem>` · L1190 · `/hougong/works/…`
-  - `deleteHougongWork(id: string | number): Promise<void>` · L1194 · `/hougong/works/…`
-  - `listStories(): Promise<StoryItem[]>` · L1198 · `/hougong/stories`
-  - `getHougongStory(id: string | number): Promise<StoryItem>` · L1203 · `/hougong/stories/…`
-  - `updateStoryClips(id: string | number, clips: { workId: number, order: number, note: string }[]): Promise<StoryItem>` · L1208 · `/hougong/stories/…` — 整理片段：全量替换（按数组顺序重排 order
+  - `startActorGeneration(characterId: string | number, input: ActorGenStartInput): Promise<ActorGenRun>` · L1149 · `/hougong/characters/…` — 发起一次生成运行（会创建 4 个 t2i 任务，可能产生费用）
+  - `getLatestActorGeneration(characterId: string | number): Promise<ActorGenRun | null>` · L1165 · `/hougong/characters/…` — 该角色最近一次运行
+  - `getActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun>` · L1171 · `/hougong/characters/…` — 指定运行的状态（轮询用）
+  - `retryActorGeneration(characterId: string | number, runId: string): Promise<ActorGenRun>` · L1179 · `/hougong/characters/…` — 只对失败的 role 重试（逐 role、各自计费）
+  - `listWorks(): Promise<WorkItem[]>` · L1188 · `/hougong/works`
+  - `getHougongWork(id: string | number): Promise<WorkItem>` · L1194 · `/hougong/works/…` — 后宫作品详情/收藏（与 /platform/work 的发布作品区分开）
+  - `favoriteHougongWork(id: string | number, favorite: boolean): Promise<WorkItem>` · L1198 · `/hougong/works/…`
+  - `deleteHougongWork(id: string | number): Promise<void>` · L1202 · `/hougong/works/…`
+  - `listStories(): Promise<StoryItem[]>` · L1206 · `/hougong/stories`
+  - `getHougongStory(id: string | number): Promise<StoryItem>` · L1211 · `/hougong/stories/…`
+  - `updateStoryClips(id: string | number, clips: { workId: number, order: number, note: string }[]): Promise<StoryItem>` · L1216 · `/hougong/stories/…` — 整理片段：全量替换（按数组顺序重排 order
 - **集（画布·集）：画布按 ownerType=episode 挂图，集本身由产品管**
-  - `listEpisodes(storyId: string | number): Promise<EpisodeItem[]>` · L1213 · `/hougong/stories/…`
-  - `createEpisode(storyId: string | number, body: { idx?: number, title?: string } = {}): Promise<EpisodeItem>` · L1219 · `/hougong/stories/…` — 新建一集：`idx` 不传 = 服务端取"这一故事下一个"，`title` 空 = "第 N 集"
-  - `updateEpisode(id: string | number, body: { title?: string, status?: string, budgetCredits?: number }): Promise<EpisodeItem>` · L1224 · `/hougong/episodes/…` — 改一集：只改给到的字段（改名不会把状态退回 todo）
-  - `deleteEpisode(id: string | number): Promise<void>` · L1228 · `/hougong/episodes/…`
-  - `listTasks(): Promise<HougongTask[]>` · L1232 · `/hougong/tasks`
-  - `wallet(): Promise<{ balance: number, holds: number }>` · L1237 · `/account/credits`
-  - `listTools(): Promise<ToolCatalogItem[]>` · L1249 · `/hougong/tools` — 创作工具目录（本站已启用的工具与模板）
-  - `getCatalog(includeUnavailable = false): Promise<Catalog>` · L1254 · `/platform/catalog…`
-  - `optimizePrompt(prompt: string, modelId: string): Promise<string>` · L1259 · `/hougong/prompt/optimize`
-  - `translatePrompt(prompt: string, target = 'en'): Promise<string>` · L1264 · `/hougong/prompt/translate`
-  - `uploadAsset(file: File): Promise<{ assetId: string, width: number, height: number, mimeType: string }>` · L1272 · `/platform/asset` — 上传资产
-  - `createTask(input: { clientKey: string, type: string, prompt: string, negativePrompt?: string, ratio?: string, width?: number, height?: number, count?: number, durationSeconds?: number, seed?: number, sampling?: { steps: number, sampler: string, scheduler: string, cfg: number, denoise?: number }, loras?: { name: string, weight: number }[], modelId?: string, quality?: string, engine?: string, characterId?: string, refAssetIds?: string[], tool?: string, template?: string }): Promise<HougongTask>` · L1281
-  - `getTask(id: number | string): Promise<HougongTask>` · L1307 · `/hougong/tasks/…`
-  - `cancelTask(id: number | string): Promise<{ status: string }>` · L1311 · `/hougong/tasks/…`
-  - `retryTask(id: number | string, clientKey: string): Promise<{ id: number, status: string }>` · L1318 · `/hougong/tasks/…` — 重试任务
-  - `createWork(input: WorkCreateInput): Promise<WorkItem>` · L1322 · `/hougong/works`
-  - `setWorkVisibility(id: number | string, visibility: 'private' | 'unlisted' | 'public', contentRating?: 'sfw' | 'r15' | 'r18'): Promise<WorkItem>` · L1327 · `/hougong/works/…` — 修改作品可见性（可选一并改分级）
+  - `listEpisodes(storyId: string | number): Promise<EpisodeItem[]>` · L1221 · `/hougong/stories/…`
+  - `createEpisode(storyId: string | number, body: { idx?: number, title?: string } = {}): Promise<EpisodeItem>` · L1227 · `/hougong/stories/…` — 新建一集：`idx` 不传 = 服务端取"这一故事下一个"，`title` 空 = "第 N 集"
+  - `updateEpisode(id: string | number, body: { title?: string, status?: string, budgetCredits?: number }): Promise<EpisodeItem>` · L1232 · `/hougong/episodes/…` — 改一集：只改给到的字段（改名不会把状态退回 todo）
+  - `deleteEpisode(id: string | number): Promise<void>` · L1236 · `/hougong/episodes/…`
+  - `listTasks(): Promise<HougongTask[]>` · L1240 · `/hougong/tasks`
+  - `wallet(): Promise<{ balance: number, holds: number }>` · L1245 · `/account/credits`
+  - `listTools(): Promise<ToolCatalogItem[]>` · L1257 · `/hougong/tools` — 创作工具目录（本站已启用的工具与模板）
+  - `getCatalog(includeUnavailable = false): Promise<Catalog>` · L1262 · `/platform/catalog…`
+  - `optimizePrompt(prompt: string, modelId: string): Promise<string>` · L1267 · `/hougong/prompt/optimize`
+  - `translatePrompt(prompt: string, target = 'en'): Promise<string>` · L1272 · `/hougong/prompt/translate`
+  - `uploadAsset(file: File): Promise<{ assetId: string, width: number, height: number, mimeType: string }>` · L1280 · `/platform/asset` — 上传资产
+  - `createTask(input: { clientKey: string, type: string, prompt: string, negativePrompt?: string, ratio?: string, width?: number, height?: number, count?: number, durationSeconds?: number, seed?: number, sampling?: { steps: number, sampler: string, scheduler: string, cfg: number, denoise?: number }, loras?: { name: string, weight: number }[], modelId?: string, quality?: string, engine?: string, characterId?: string, refAssetIds?: string[], tool?: string, template?: string }): Promise<HougongTask>` · L1289
+  - `getTask(id: number | string): Promise<HougongTask>` · L1315 · `/hougong/tasks/…`
+  - `cancelTask(id: number | string): Promise<{ status: string }>` · L1319 · `/hougong/tasks/…`
+  - `retryTask(id: number | string, clientKey: string): Promise<{ id: number, status: string }>` · L1326 · `/hougong/tasks/…` — 重试任务
+  - `createWork(input: WorkCreateInput): Promise<WorkItem>` · L1330 · `/hougong/works`
+  - `setWorkVisibility(id: number | string, visibility: 'private' | 'unlisted' | 'public', contentRating?: 'sfw' | 'r15' | 'r18'): Promise<WorkItem>` · L1335 · `/hougong/works/…` — 修改作品可见性（可选一并改分级）
 - **生成会话（workspace）**
-  - `listSessions(page = 1, pageSize = 20): Promise<SessionItem[]>` · L1339 · `/platform/session?page=…`
-  - `createSession(title?: string): Promise<SessionItem>` · L1343 · `/platform/session`
-  - `getSession(id: string): Promise<SessionItem>` · L1347 · `/platform/session/…`
-  - `renameSession(id: string, title: string): Promise<SessionItem>` · L1350 · `/platform/session/…`
-  - `archiveSession(id: string): Promise<SessionItem>` · L1353 · `/platform/session/…`
-  - `listSessionTasks(id: string, page = 1, pageSize = 20): Promise<HougongTask[]>` · L1356 · `/platform/session/…`
+  - `listSessions(page = 1, pageSize = 20): Promise<SessionItem[]>` · L1347 · `/platform/session?page=…`
+  - `createSession(title?: string): Promise<SessionItem>` · L1351 · `/platform/session`
+  - `getSession(id: string): Promise<SessionItem>` · L1355 · `/platform/session/…`
+  - `renameSession(id: string, title: string): Promise<SessionItem>` · L1358 · `/platform/session/…`
+  - `archiveSession(id: string): Promise<SessionItem>` · L1361 · `/platform/session/…`
+  - `listSessionTasks(id: string, page = 1, pageSize = 20): Promise<HougongTask[]>` · L1364 · `/platform/session/…`
 - **快捷词（snippet）**
-  - `snippetCategories(): Promise<SnippetCategory[]>` · L1362 · `/platform/snippet/categories`
-  - `snippetList(input: { category: string, subcategory?: string, query?: string, cursor?: string, limit?: number }): Promise<{ items: SnippetItem[], nextCursor?: string }>` · L1366 · `/platform/snippet…`
+  - `snippetCategories(): Promise<SnippetCategory[]>` · L1370 · `/platform/snippet/categories`
+  - `snippetList(input: { category: string, subcategory?: string, query?: string, cursor?: string, limit?: number }): Promise<{ items: SnippetItem[], nextCursor?: string }>` · L1374 · `/platform/snippet…`
 - **资产库（asset）**
-  - `listAssets(q: { hidden?: boolean, kind?: string, origin?: string, scope?: 'all' | 'permanent' | 'temp', keyword?: string, sort?: 'new' | 'old' | 'large', duplicates?: boolean, page?: number, pageSize?: number } = {}): Promise<{ items: AssetItem[], total: number }>` · L1384 — 资产库列表
-  - `batchAssets(ids: string[], action: 'delete' | 'hide' | 'unhide'): Promise<{ ok: boolean, affected: number, failed: { id: string, reason: string }[] }>` · L1422 · `/platform/asset/batch` — 批量操作资产（删除/隐藏/恢复）
-  - `dedupeAssets(dryRun = false): Promise<{ groups: number, deleted: number, kept: number, mergedTasks?: number }>` · L1435 — 清理重复素材（同内容多行）
-  - `removeAsset(id: string): Promise<void>` · L1444 · `/platform/asset/…`
-  - `setAssetHidden(id: string, hidden: boolean): Promise<void>` · L1447 · `/platform/asset/…`
-  - `saveAsset(id: string): Promise<AssetItem>` · L1456 · `/platform/asset/…` — saveAsset 把临时生成产物「保存到我的资产」：后端把 scope 置为 permanent（幂等）
-  - `assetSelect(page = 1, pageSize = 20): Promise<AssetChoice[]>` · L1460 · `/platform/asset/select?page=…`
-  - `assetSelectByIds(ids: string[]): Promise<AssetChoice[]>` · L1464 · `/platform/asset/selectByIds`
-  - `assetDownloadUrl(id: string): Promise<{ url: string, expiresAt: string }>` · L1472 · `/platform/asset/…` — assetDownloadUrl 取资产的原图下载地址（签发限时 URL）
+  - `listAssets(q: { hidden?: boolean, kind?: string, origin?: string, scope?: 'all' | 'permanent' | 'temp', keyword?: string, sort?: 'new' | 'old' | 'large', duplicates?: boolean, page?: number, pageSize?: number } = {}): Promise<{ items: AssetItem[], total: number }>` · L1392 — 资产库列表
+  - `batchAssets(ids: string[], action: 'delete' | 'hide' | 'unhide'): Promise<{ ok: boolean, affected: number, failed: { id: string, reason: string }[] }>` · L1430 · `/platform/asset/batch` — 批量操作资产（删除/隐藏/恢复）
+  - `dedupeAssets(dryRun = false): Promise<{ groups: number, deleted: number, kept: number, mergedTasks?: number }>` · L1443 — 清理重复素材（同内容多行）
+  - `removeAsset(id: string): Promise<void>` · L1452 · `/platform/asset/…`
+  - `setAssetHidden(id: string, hidden: boolean): Promise<void>` · L1455 · `/platform/asset/…`
+  - `saveAsset(id: string): Promise<AssetItem>` · L1464 · `/platform/asset/…` — saveAsset 把临时生成产物「保存到我的资产」：后端把 scope 置为 permanent（幂等）
+  - `assetSelect(page = 1, pageSize = 20): Promise<AssetChoice[]>` · L1468 · `/platform/asset/select?page=…`
+  - `assetSelectByIds(ids: string[]): Promise<AssetChoice[]>` · L1472 · `/platform/asset/selectByIds`
+  - `assetDownloadUrl(id: string): Promise<{ url: string, expiresAt: string }>` · L1480 · `/platform/asset/…` — assetDownloadUrl 取资产的原图下载地址（签发限时 URL）
 - **导出（工程包）**
-  - `createExport(items: { assetId: string, relPath?: string }[], sourceKind?: string, sourceId?: string): Promise<{ exportId: string }>` · L1479 · `/platform/export` — 把一组资产按 relPath 打成 ZIP，**异步**执行：创建后轮询 getExport 到 succeeded， 再取 downloadUrl
-  - `getExport(id: string): Promise<{ found: boolean, task?: ExportTask }>` · L1489 · `/platform/export/…`
-  - `listExports(page = 1, pageSize = 20): Promise<ExportTask[]>` · L1492 · `/platform/export?page=…`
+  - `createExport(items: { assetId: string, relPath?: string }[], sourceKind?: string, sourceId?: string): Promise<{ exportId: string }>` · L1487 · `/platform/export` — 把一组资产按 relPath 打成 ZIP，**异步**执行：创建后轮询 getExport 到 succeeded， 再取 downloadUrl
+  - `getExport(id: string): Promise<{ found: boolean, task?: ExportTask }>` · L1497 · `/platform/export/…`
+  - `listExports(page = 1, pageSize = 20): Promise<ExportTask[]>` · L1500 · `/platform/export?page=…`
 - **发布（work/post/comment/tag/report）**
-  - `listWorksFeed(page = 1, pageSize = 20, scope: 'explore' | 'owned' | 'favorites' = 'explore'): Promise<{ items: PublicationWork[], total: number }>` · L1505 · `/platform/work?scope=…` — 作品流（灵感广场）
-  - `getWork(id: string): Promise<PublicationWork>` · L1515 · `/platform/work/…`
-  - `getWorkEditor(id?: string | number): Promise<WorkEditor | null>` · L1525 · `/platform/work/edit…` — 取作品编辑器（缺省 id 取当前草稿，可能为 null）
-  - `saveWorkDraft(input: WorkSaveInput): Promise<WorkEditor | null>` · L1536 · `/platform/work/edit` — 保存作品草稿（不发布）
-  - `publishWork(id?: string | number): Promise<PublicationWork>` · L1552 · `/platform/work/publish` — 发布作品（缺省 id 发布当前草稿），返回发布后的作品详情（含 coverUrl）
-  - `unpublishWork(id: string | number): Promise<void>` · L1558 · `/platform/work/…` — 取消发布（published → unpublished）
-  - `setWorkHidden(id: string | number, hidden: boolean): Promise<void>` · L1563 · `/platform/work/…` — 隐藏/恢复作品（作者本人或管理员）
-  - `deleteWork(id: string | number): Promise<void>` · L1568 · `/platform/work/…` — 删除作品
-  - `listMyPublishedWorks(page = 1, pageSize = 20): Promise<{ items: PublicationWork[], total: number }>` · L1573 — 我发布的作品（scope=owned，含草稿/未发布/隐藏状态）
-  - `listPosts(page = 1, pageSize = 20): Promise<PublicationPost[]>` · L1577 · `/platform/post?page=…`
-  - `listComments(targetKind: string, targetId: string): Promise<PublicationComment[]>` · L1581 · `/platform/comment?targetKind=…`
-  - `createComment(input: { targetKind: string, targetId: string, content: string, parentId?: string }): Promise<PublicationComment>` · L1585 · `/platform/comment`
-  - `react(input: { targetKind: string, targetId: string, kind: string }): Promise<void>` · L1588 · `/platform/interaction/reaction`
-  - `searchTags(query: string): Promise<PlatformTag[]>` · L1591 · `/platform/tag/search?query=…`
-  - `createTag(name: string): Promise<PlatformTag>` · L1595 · `/platform/tag` — 创建标签（POST /platform/tag）
-  - `report(input: { targetKind: string, targetId: string, reason: string, detail?: string }): Promise<void>` · L1598 · `/platform/report`
+  - `listWorksFeed(page = 1, pageSize = 20, scope: 'explore' | 'owned' | 'favorites' = 'explore'): Promise<{ items: PublicationWork[], total: number }>` · L1513 · `/platform/work?scope=…` — 作品流（灵感广场）
+  - `getWork(id: string): Promise<PublicationWork>` · L1523 · `/platform/work/…`
+  - `getWorkEditor(id?: string | number): Promise<WorkEditor | null>` · L1533 · `/platform/work/edit…` — 取作品编辑器（缺省 id 取当前草稿，可能为 null）
+  - `saveWorkDraft(input: WorkSaveInput): Promise<WorkEditor | null>` · L1544 · `/platform/work/edit` — 保存作品草稿（不发布）
+  - `publishWork(id?: string | number): Promise<PublicationWork>` · L1560 · `/platform/work/publish` — 发布作品（缺省 id 发布当前草稿），返回发布后的作品详情（含 coverUrl）
+  - `unpublishWork(id: string | number): Promise<void>` · L1566 · `/platform/work/…` — 取消发布（published → unpublished）
+  - `setWorkHidden(id: string | number, hidden: boolean): Promise<void>` · L1571 · `/platform/work/…` — 隐藏/恢复作品（作者本人或管理员）
+  - `deleteWork(id: string | number): Promise<void>` · L1576 · `/platform/work/…` — 删除作品
+  - `listMyPublishedWorks(page = 1, pageSize = 20): Promise<{ items: PublicationWork[], total: number }>` · L1581 — 我发布的作品（scope=owned，含草稿/未发布/隐藏状态）
+  - `listPosts(page = 1, pageSize = 20): Promise<PublicationPost[]>` · L1585 · `/platform/post?page=…`
+  - `listComments(targetKind: string, targetId: string): Promise<PublicationComment[]>` · L1589 · `/platform/comment?targetKind=…`
+  - `createComment(input: { targetKind: string, targetId: string, content: string, parentId?: string }): Promise<PublicationComment>` · L1593 · `/platform/comment`
+  - `react(input: { targetKind: string, targetId: string, kind: string }): Promise<void>` · L1596 · `/platform/interaction/reaction`
+  - `searchTags(query: string): Promise<PlatformTag[]>` · L1599 · `/platform/tag/search?query=…`
+  - `createTag(name: string): Promise<PlatformTag>` · L1603 · `/platform/tag` — 创建标签（POST /platform/tag）
+  - `report(input: { targetKind: string, targetId: string, reason: string, detail?: string }): Promise<void>` · L1606 · `/platform/report`
 - **经济（wallet/invite/membership/checkout/transaction/creator）**
-  - `walletBalance(): Promise<EconomyWallet>` · L1603 · `/platform/economy/wallet`
-  - `claimDaily(): Promise<EconomyWallet>` · L1606 · `/platform/economy/wallet/claim`
-  - `walletLedger(asset?: string, kind?: string, page = 1, pageSize = 20): Promise<WalletLedgerItem[]>` · L1609 · `/platform/economy/wallet/ledger…`
-  - `invite(): Promise<Invite>` · L1616 · `/platform/economy/invite`
-  - `membership(): Promise<Membership>` · L1619 · `/platform/economy/membership`
-  - `creator(): Promise<Creator>` · L1622 · `/platform/economy/creator`
-  - `submitCreator(input: { direction: string, statement: string, workIds: string[], agreed: boolean }): Promise<Creator>` · L1625 · `/platform/economy/creator/submit`
-  - `modelCreator(): Promise<ModelCreator>` · L1628 · `/platform/economy/model-creator`
-  - `submitModelCreator(input: { platform: string, profileUrl: string, resourceUrls: string[], agreed: boolean }): Promise<ModelCreator>` · L1631 · `/platform/economy/model-creator/submit`
-  - `listTransactions(page = 1, pageSize = 20): Promise<Transaction[]>` · L1634 · `/platform/economy/transaction?page=…`
-  - `checkoutCreate(purchase: { kind: string, yuan?: number, tier?: string, choice?: string }, clientKey = 'web-' + Date.now()): Promise<Purchase>` · L1638 · `/platform/economy/checkout`
-  - `checkoutGet(id: string): Promise<Purchase>` · L1641 · `/platform/economy/checkout/…`
+  - `walletBalance(): Promise<EconomyWallet>` · L1611 · `/platform/economy/wallet`
+  - `claimDaily(): Promise<EconomyWallet>` · L1614 · `/platform/economy/wallet/claim`
+  - `walletLedger(asset?: string, kind?: string, page = 1, pageSize = 20): Promise<WalletLedgerItem[]>` · L1617 · `/platform/economy/wallet/ledger…`
+  - `invite(): Promise<Invite>` · L1624 · `/platform/economy/invite`
+  - `membership(): Promise<Membership>` · L1627 · `/platform/economy/membership`
+  - `creator(): Promise<Creator>` · L1630 · `/platform/economy/creator`
+  - `submitCreator(input: { direction: string, statement: string, workIds: string[], agreed: boolean }): Promise<Creator>` · L1633 · `/platform/economy/creator/submit`
+  - `modelCreator(): Promise<ModelCreator>` · L1636 · `/platform/economy/model-creator`
+  - `submitModelCreator(input: { platform: string, profileUrl: string, resourceUrls: string[], agreed: boolean }): Promise<ModelCreator>` · L1639 · `/platform/economy/model-creator/submit`
+  - `listTransactions(page = 1, pageSize = 20): Promise<Transaction[]>` · L1642 · `/platform/economy/transaction?page=…`
+  - `checkoutCreate(purchase: { kind: string, yuan?: number, tier?: string, choice?: string }, clientKey = 'web-' + Date.now()): Promise<Purchase>` · L1646 · `/platform/economy/checkout`
+  - `checkoutGet(id: string): Promise<Purchase>` · L1649 · `/platform/economy/checkout/…`
 - **通知（notification）**
-  - `unreadNotifications(): Promise<number>` · L1646 · `/platform/notification/unread`
-  - `listNotifications(page = 1, pageSize = 20): Promise<NotificationItem[]>` · L1650 · `/platform/notification/list?page=…`
-  - `markNotificationsRead(notificationIds?: string[], all = false): Promise<void>` · L1654 · `/platform/notification/mark-read`
+  - `unreadNotifications(): Promise<number>` · L1654 · `/platform/notification/unread`
+  - `listNotifications(page = 1, pageSize = 20): Promise<NotificationItem[]>` · L1658 · `/platform/notification/list?page=…`
+  - `markNotificationsRead(notificationIds?: string[], all = false): Promise<void>` · L1662 · `/platform/notification/mark-read`
 - **模型（model：目录 + 我的模型 + 发布）**
-  - `modelList(input: { type?: string, family?: string, category?: string, cursor?: string, limit?: number } = {}): Promise<{ items: ModelListItem[], nextCursor?: string }>` · L1659 · `/platform/model/list…`
-  - `modelGet(id: string): Promise<ModelDetail>` · L1668 · `/platform/model/get?id=…`
-  - `modelFacets(): Promise<ModelFacets>` · L1671 · `/platform/model/facets`
-  - `mineModels(state?: string, cursor?: string, limit = 50): Promise<{ items: MineListItem[], nextCursor?: string }>` · L1674 · `/platform/model/mine/list…`
-  - `mineModel(id: string): Promise<MineModel>` · L1680 · `/platform/model/mine/get?id=…`
-  - `createModel(): Promise<MineModel>` · L1683 · `/platform/model/create`
-  - `saveModel(id: string, draft: ModelDraftInput): Promise<MineModel>` · L1686 · `/platform/model/save`
-  - `submitModel(id: string): Promise<MineModel>` · L1689 · `/platform/model/submit`
-  - `withdrawModel(id: string): Promise<MineModel>` · L1692 · `/platform/model/withdraw`
-  - `setModelHidden(id: string, hidden: boolean): Promise<MineModel>` · L1695 · `/platform/model/setHidden`
-  - `removeModel(id: string): Promise<void>` · L1698 · `/platform/model/remove?id=…`
-  - `modelCatalog(input: { type?: string, family?: string, category?: string } = {}): Promise<{ items: ModelListItem[] }>` · L1702 · `/platform/model/catalog…` — 模型目录（公开，按类型/族/分类过滤）
-  - `prepareModelFile(modelId: string, name: string, bytes: number): Promise<{ id: string, url: string, expiresAt: string }>` · L1713 · `/platform/model/file/prepare` — prepareModelFile 模型文件上传第一步：后端签发限时 PUT 地址
-  - `completeModelFile(modelId: string): Promise<{ ok: boolean }>` · L1717 · `/platform/model/file/complete` — completeModelFile 模型文件上传收尾（后端校验对象确实落地后置 ok）
-  - `subscribeTaskEvents(onEvent: (event: string, data: Record<string, unknown>) => void): ()` · L1730 — subscribeTaskEvents 订阅平台任务事件流（GET /api/v1/platform/events，产品中立 SSE）
+  - `modelList(input: { type?: string, family?: string, category?: string, cursor?: string, limit?: number } = {}): Promise<{ items: ModelListItem[], nextCursor?: string }>` · L1667 · `/platform/model/list…`
+  - `modelGet(id: string): Promise<ModelDetail>` · L1676 · `/platform/model/get?id=…`
+  - `modelFacets(): Promise<ModelFacets>` · L1679 · `/platform/model/facets`
+  - `mineModels(state?: string, cursor?: string, limit = 50): Promise<{ items: MineListItem[], nextCursor?: string }>` · L1682 · `/platform/model/mine/list…`
+  - `mineModel(id: string): Promise<MineModel>` · L1688 · `/platform/model/mine/get?id=…`
+  - `createModel(): Promise<MineModel>` · L1691 · `/platform/model/create`
+  - `saveModel(id: string, draft: ModelDraftInput): Promise<MineModel>` · L1694 · `/platform/model/save`
+  - `submitModel(id: string): Promise<MineModel>` · L1697 · `/platform/model/submit`
+  - `withdrawModel(id: string): Promise<MineModel>` · L1700 · `/platform/model/withdraw`
+  - `setModelHidden(id: string, hidden: boolean): Promise<MineModel>` · L1703 · `/platform/model/setHidden`
+  - `removeModel(id: string): Promise<void>` · L1706 · `/platform/model/remove?id=…`
+  - `modelCatalog(input: { type?: string, family?: string, category?: string } = {}): Promise<{ items: ModelListItem[] }>` · L1710 · `/platform/model/catalog…` — 模型目录（公开，按类型/族/分类过滤）
+  - `prepareModelFile(modelId: string, name: string, bytes: number): Promise<{ id: string, url: string, expiresAt: string }>` · L1721 · `/platform/model/file/prepare` — prepareModelFile 模型文件上传第一步：后端签发限时 PUT 地址
+  - `completeModelFile(modelId: string): Promise<{ ok: boolean }>` · L1725 · `/platform/model/file/complete` — completeModelFile 模型文件上传收尾（后端校验对象确实落地后置 ok）
+  - `subscribeTaskEvents(onEvent: (event: string, data: Record<string, unknown>) => void): ()` · L1738 — subscribeTaskEvents 订阅平台任务事件流（GET /api/v1/platform/events，产品中立 SSE）
 
 ## app/composables/useIsNarrow.ts
 - 导出函数/常量：`useIsNarrow(query = '(max-width: 640px)')` L3 — 窄屏判定：移动端要把模型/参数从 popover 换成底部面板（交互图面板 04）

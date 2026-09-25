@@ -190,7 +190,10 @@ onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 function logout() {
-  session.clear()
+  // hgApi.logout() 会先调后端 /account/auth/logout（移除服务端令牌 + Set-Cookie
+  // 清 HttpOnly Cookie）再清本地；只清本地的话 Cookie 还活着，下个页面的
+  // auto-login 又把登录态恢复回来（退出成「假退出」）。
+  hgApi.logout()
   accountOpen.value = false
   navigateTo('/auth/login')
 }
