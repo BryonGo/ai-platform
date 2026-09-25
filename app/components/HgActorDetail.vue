@@ -697,35 +697,12 @@ onUnmounted(pauseVoice)
 /* 隐藏的原生 audio：不显示 controls，仅作为播放后端 */
 .voice-audio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
-/* 窄屏：面板占满；画廊已可横向滚动，不压成不可读小图 */
+/* 窄屏：面板占满；画廊已可横向滚动，不压成不可读小图。
+   注意：不设“宽屏取消 max-width / 双栏”断点 —— 参考站演员详情始终是
+   单栏 420、媒体区 356×302，宽屏放大只会让竖图变矮、小屏更装不下。 */
 @media (max-width: 480px) {
   .actor-detail { max-width: 100%; }
   .actor-detail__card { padding: 20px 16px 22px; }
-}
-
-/* 平板及以上（≥561px）：不再把面板锁在 420 宽，改用容器宽度。
-   画廊同时从固定比例改为自适应高度 —— 否则宽度一放大，356/302 会把整排撑成超高图带。 */
-@media (min-width: 561px) {
-  .actor-detail { max-width: 100%; }
-  .actor-detail__card { padding: 26px 32px 30px; }
-  .gallery { aspect-ratio: auto; height: clamp(240px, 40vw, 420px); }
-  .toolbar-row { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-  .toolbar-outfits { flex: 1 1 280px; }
-  .toolbar-actions { flex: 0 0 auto; }
-  .toolbar-primary { flex: 0 0 auto; }
-}
-
-/* 桌面（≥1024px）：两栏 —— 左详情、右「切换演员」竖排；用满 .page-body 的宽度。 */
-@media (min-width: 1024px) {
-  .actor-detail { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 24px; align-items: start; }
-  .actor-detail > * { min-width: 0; }
-  .actor-detail__state { grid-column: 1 / -1; }
-  .actor-detail__card { padding: 28px 36px 32px; }
-  .gallery { height: clamp(300px, 24vw, 460px); }
-  .strip { position: sticky; top: 16px; margin-top: 0; }
-  .strip__rail { flex-direction: column; overflow-x: hidden; overflow-y: auto; max-height: min(620px, calc(100vh - 120px)); padding-right: 4px; }
-  .strip__card { width: 100%; height: 152px; }
-  .strip__next { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
