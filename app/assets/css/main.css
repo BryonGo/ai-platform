@@ -2354,6 +2354,28 @@ textarea:focus-visible {
 .cf-turnstile {
   margin-top: 14px;
 }
+.turnstile-help {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  color: #c8c8cf;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.turnstile-retry {
+  border: 1px solid currentcolor;
+  border-radius: 7px;
+  padding: 5px 10px;
+  background: transparent;
+  color: #f38bce;
+  font: inherit;
+  cursor: pointer;
+}
+.turnstile-retry:hover { background: rgb(243 139 206 / 12%); }
+.turnstile-retry:focus-visible { outline: 2px solid #f38bce; outline-offset: 2px; }
+.turnstile-retry:disabled { opacity: .6; cursor: wait; }
 
 .empty-state {
   padding: 90px 20px;

@@ -19,8 +19,10 @@ const {
   token: turnstileToken,
   error: turnstileError,
   siteKey: turnstileSiteKey,
+  retrying: turnstileRetrying,
   init: initTurnstile,
-  reset: resetTurnstile
+  reset: resetTurnstile,
+  retry: retryTurnstile
 } = useTurnstile()
 onMounted(initTurnstile)
 
@@ -138,9 +140,24 @@ async function submit() {
       <p
         v-if="turnstileError"
         class="form-error"
+        role="alert"
       >
         {{ turnstileError }}
       </p>
+      <div
+        v-if="(turnstileRequired && !turnstileToken) || turnstileError"
+        class="turnstile-help"
+      >
+        <span v-if="!turnstileError">验证进行中；若没有看到验证框，请重新加载。</span>
+        <button
+          type="button"
+          class="turnstile-retry"
+          :disabled="turnstileRetrying"
+          @click="retryTurnstile"
+        >
+          {{ turnstileRetrying ? '正在重新加载…' : '重新加载验证' }}
+        </button>
+      </div>
 
       <button
         type="submit"

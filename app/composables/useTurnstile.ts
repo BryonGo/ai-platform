@@ -35,7 +35,7 @@ interface TurnstileApi {
 // 脚本只注入一次：两个页面（登录/注册）各自挂载时不该重复插 <script>。
 let scriptPromise: Promise<void> | null = null
 
-// loadScript 只注入一次 Cloudflare 的 api.js。
+// loadScript 只注入一次 Cloudflare 的 api.js；加载失败时允许用户手动重试。
 //
 // **刻意不带 `?render=explicit`**：后台控制台（aicodcms-vue）线上能正常出题，
 // 它的 index.html 引的就是不带参数的 `api.js`，容器用 `class="cf-turnstile"` +
@@ -60,7 +60,11 @@ function loadScript(): Promise<void> {
         document.head.appendChild(el)
       }
       el.addEventListener('load', () => resolve())
-      el.addEventListener('error', () => reject(new Error('Turnstile 脚本加载失败')))
+      el.addEventListener('error', () => reject(new Error('人机验证脚本加载失败，请检查网络或浏览器拦截设置')))
+    }).catch((error: unknown) => {
+      document.getElementById('cf-turnstile-js')?.remove()
+      scriptPromise = null
+      throw error
     })
   }
   return scriptPromise
@@ -100,8 +104,11 @@ export function useTurnstile() {
   const error = ref('')
   /** siteKey 供模板绑定 `data-sitekey`（与后台同样的声明式写法）。 */
   const siteKey = ref('')
+  /** retrying 避免用户连续点击重复创建 widget。 */
+  const retrying = ref(false)
 
   let widgetId: string | null = null
+  let widgetHost: HTMLElement | null = null
   let watchdog: ReturnType<typeof setTimeout> | null = null
 
   // watchdogMs 是「渲染后多久还没出 iframe 就认为挑战没起来」的阈值。
@@ -119,6 +126,12 @@ export function useTurnstile() {
     const w = window as unknown as { turnstile?: TurnstileApi }
     const el = host.value
     if (!w.turnstile || !el) return
+    // 弹窗关闭再打开时容器会被重建，旧 widget 和 token 都不能沿用。
+    if (widgetId && widgetHost !== el) {
+      w.turnstile.remove(widgetId)
+      widgetId = null
+      token.value = ''
+    }
     // 重复渲染会报错（同一个容器只能挂一个 widget）；已经渲染过就跳过。
     if (el.getAttribute('data-widget-id') || el.querySelector('iframe')) return
     clearWatchdog()
@@ -128,6 +141,7 @@ export function useTurnstile() {
       'callback': (t: string) => {
         clearWatchdog()
         token.value = t
+        error.value = ''
       },
       'expired-callback': () => {
         token.value = ''
@@ -137,12 +151,15 @@ export function useTurnstile() {
         token.value = ''
         // 把 Cloudflare 的错误码翻成人话挂到 `error` 上：出问题时用户/运营能直接看到原因。
         const key = String(code ?? '')
-        const hint = turnstileErrorText[key]
+        const hint = turnstileErrorText[key] || (/^(300|600)\d{3}$/.test(key)
+          ? '挑战未通过，请重试；若持续失败请关闭代理或换浏览器、网络'
+          : '')
         error.value = hint
           ? `人机验证不可用：${hint}（Cloudflare ${key}）`
           : `人机验证不可用（Cloudflare ${key || '未知错误'}）`
       }
     })
+    widgetHost = el
     el.setAttribute('data-widget-id', String(widgetId))
     ready.value = true
     // `ready` 只表示「render 调用过了」，不表示题目真的出来 —— 所以另设看门狗，
@@ -170,8 +187,9 @@ export function useTurnstile() {
       const cfg = await apiRequest<VerificationConfig>('/pub/verification/config')
       const mode = cfg?.mode || 'none'
       siteKey.value = cfg?.turnstile_site_key || ''
-      required.value = (mode === 'turnstile' || mode === 'both') && !!siteKey.value
+      required.value = mode === 'turnstile' || mode === 'both'
       if (!required.value) return
+      if (!siteKey.value) throw new Error('本站未配置人机验证 Site Key，请联系站点管理员')
       await loadScript()
       // 容器由 `v-if="required"` 控制，要等它进 DOM。
       await nextTick()
@@ -190,12 +208,32 @@ export function useTurnstile() {
     if (w.turnstile && widgetId) w.turnstile.reset(widgetId)
   }
 
+  /** retry 重新加载失败的脚本或重建挑战，不能让用户一直对着空白框重试提交。 */
+  async function retry() {
+    if (retrying.value) return
+    retrying.value = true
+    try {
+      clearWatchdog()
+      token.value = ''
+      error.value = ''
+      const w = window as unknown as { turnstile?: TurnstileApi }
+      if (w.turnstile && widgetId) w.turnstile.remove(widgetId)
+      widgetId = null
+      widgetHost = null
+      host.value?.removeAttribute('data-widget-id')
+      await init()
+    } finally {
+      retrying.value = false
+    }
+  }
+
   onBeforeUnmount(() => {
     clearWatchdog()
     const w = window as unknown as { turnstile?: TurnstileApi }
     if (w.turnstile && widgetId) w.turnstile.remove(widgetId)
     widgetId = null
+    widgetHost = null
   })
 
-  return { host, required, ready, token, error, siteKey, init, reset }
+  return { host, required, ready, token, error, siteKey, retrying, init, reset, retry }
 }
