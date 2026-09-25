@@ -38,7 +38,7 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 | --- | --- |
 | `app/pages/canvas.vue` | 2792 |
 | `app/pages/assets.vue` | 2003 |
-| `app/pages/index.vue` | 1591 |
+| `app/pages/index.vue` | 1588 |
 | `app/composables/useHougongApi.ts` | 1514 |
 | `app/composables/useChatStudio.ts` | 1486 |
 | `app/components/HgChatComposer.vue` | 1144 |

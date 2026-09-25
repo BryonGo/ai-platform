@@ -76,13 +76,13 @@
 vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
 - 本文件声明 7 个: `tab` L26 · `tools` L28 · `isOption` L58 · `effects` L62 · `inTab` L100 · `counts` L103 · `shown` L114
 
-### `/` — app/pages/index.vue · 1591 行
+### `/` — app/pages/index.vue · 1588 行
 - 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft`
-- 本文件声明 41 个: `notice` L27 · `toolCards` L66 · `quickTools` L97 · `quickRows` L110 · `hoverTool` L113 · `quickGridEl` L121 · `quickPopEl` L122 · `quickPopStyle` L123 · `placeQuickPop` L138
-  `openQuickPop` L161 · `closeQuickPop` L170 · `onQuickPopResize` L176 · `isQuickToolActive` L181 · `selectedToolCard` L193 · `pickQuickTool` L200 · `runningWorks` L206 · `loggedIn` L216
-  `continueItems` L260 · `continueLoading` L261 · `relativeTime` L263 · `submitLanding` L302 · `loadContinue` L347 · `exploreCategory` L400 · `exploreItems` L401 · `explorePage` L402
-  `exploreLoading` L403 · `exploreDone` L404 · `exploreError` L405 · `exploreReady` L406 · `sentinel` L407 · `loadExplore` L422 · `switchCategory` L472 · `exploreVisible` L477 · `remixWork` L496
-  `previewOpen` L504 · `previewSrc` L505 · `previewTitle` L506 · `previewAuthor` L507 · `previewKind` L509 · `openPreview` L511 · `openContinuePreview` L520
+- 本文件声明 40 个: `notice` L27 · `toolCards` L66 · `quickTools` L97 · `quickRows` L110 · `hoverTool` L113 · `quickGridEl` L121 · `quickPopEl` L122 · `quickPopStyle` L123 · `placeQuickPop` L138
+  `openQuickPop` L161 · `closeQuickPop` L170 · `onQuickPopResize` L176 · `isQuickToolActive` L181 · `selectedToolCard` L193 · `runningWorks` L200 · `loggedIn` L210 · `continueItems` L254
+  `continueLoading` L255 · `relativeTime` L257 · `submitLanding` L296 · `loadContinue` L341 · `exploreCategory` L394 · `exploreItems` L395 · `explorePage` L396 · `exploreLoading` L397
+  `exploreDone` L398 · `exploreError` L399 · `exploreReady` L400 · `sentinel` L401 · `loadExplore` L416 · `switchCategory` L466 · `exploreVisible` L471 · `remixWork` L490 · `previewOpen` L498
+  `previewSrc` L499 · `previewTitle` L500 · `previewAuthor` L501 · `previewKind` L503 · `openPreview` L505 · `openContinuePreview` L514
 
 ### `/notifications` — app/pages/notifications.vue · 203 行
 - 用: `useHougongApi`
