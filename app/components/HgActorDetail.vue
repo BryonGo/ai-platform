@@ -661,7 +661,9 @@ onUnmounted(pauseVoice)
   background: #141416;
   text-decoration: none;
 }
-.strip__card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 切换演员小卡：源图是横向 portrait 合成图，cover 默认居中只露约 70% 的头；
+   从左边取景能完整露出头肩。 */
+.strip__card img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left center; }
 .strip__fallback { display: grid; place-items: center; width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, #26262c 0%, #141416 70%); color: var(--faint); font-size: 28px; }
 .strip__name {
   position: absolute;
