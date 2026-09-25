@@ -14,7 +14,7 @@
 import { safeHref } from '~/composables/useSafeUrl'
 import { assetPaneFromPath, assetPath, legacyRedirect } from '~/utils/routes'
 
-/** 资产页的三个页签。演员已不属于资产（见 /actors）；三者各有独立 URL。 */
+/** 资产页自己的三个页签，各有独立 URL；演员库是同一导航区的独立路由入口（见模板）。 */
 const PANES = [
   { id: 'library', label: '我的资产' },
   { id: 'temp', label: '临时资产' },
@@ -727,9 +727,9 @@ useMediaAutoRefresh(() => {
       </div>
     </header>
 
-    <!-- 页内三页签：我的资产 / 临时资产 / 回收站。
-         每个页签是一个**地址**（/assets、/assets/temp、/assets/trash），
-         刷新/分享/后退都停在同一分区。演员库已移出资产，见 /actors。 -->
+    <!-- 页内页签：我的资产 / 临时资产 / 回收站 / 演员库。
+         每个页签是一个**地址**（/assets、/assets/temp、/assets/trash、/actors），
+         刷新/分享/后退都停在同一分区；演员库虽然入口在这里，但页面本身是独立路由。 -->
     <div
       class="assets-panes"
       role="tablist"
@@ -744,6 +744,14 @@ useMediaAutoRefresh(() => {
         :to="assetPath(p.id)"
       >
         {{ p.label }}
+      </NuxtLink>
+      <NuxtLink
+        to="/actors"
+        role="tab"
+        :aria-selected="route.path.startsWith('/actors')"
+        :class="{ active: route.path.startsWith('/actors') }"
+      >
+        演员库
       </NuxtLink>
     </div>
 

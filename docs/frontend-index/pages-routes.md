@@ -32,7 +32,7 @@
 ### `/actors/new` — app/pages/actors/new.vue · 52 行
 - 用: `useHougongApi`
 
-### `/assets` — app/pages/assets/index.vue · 2002 行
+### `/assets` — app/pages/assets/index.vue · 2010 行
 素材库（/assets）——「我的资产」里的素材分区
 - 用: `useHougongApi`
 - 本文件声明 83 个: `pane` L32 · `isAssetPane` L40 · `paneScope` L42 · `items` L67 · `total` L68 · `pageNo` L69 · `firstLoading` L70 · `loadingMore` L71 · `done` L72 · `error` L73 · `notice` L74
