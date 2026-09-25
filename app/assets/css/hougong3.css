@@ -176,6 +176,12 @@
 
 .hg-nav {
   display: grid;
+  /* 单列轨道必须允许收缩到 0。
+     默认 auto 轨道的下限是条目的 min-content，一条超长会话标题会把轨道撑到上千 px，
+     溢出 .hg-rail-scroll 形成横向滚动条；而且 label 的 ellipsis 永远等不到触发条件
+     （2026-09-24 实测：轨道 1146px、scrollWidth 1156 vs clientWidth 200）。
+     写成 minmax(0, 1fr) 后轨道被限制在栏宽内，label 的 ellipsis 才真正生效。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 .hg-nav-item {
@@ -184,6 +190,9 @@
   align-items: center;
   gap: 10px;
   width: 100%;
+  /* 作为 grid 条目默认 min-width:auto = min-content，同样会把轨道顶宽；
+     置 0 允许条目收缩，配合 .hg-nav-label 的 ellipsis 截断长标题。 */
+  min-width: 0;
   min-height: 40px;
   padding: 0 12px;
   border: 0;

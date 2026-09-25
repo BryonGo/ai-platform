@@ -387,6 +387,7 @@ watch(() => route.fullPath, () => {
                 :key="item.id"
                 class="hg-nav-item sub"
                 :to="`/create?session=${encodeURIComponent(item.id)}`"
+                :title="item.title"
               >
                 <span class="hg-nav-label">{{ item.title }}</span>
               </NuxtLink>

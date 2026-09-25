@@ -11,6 +11,38 @@ function toggleMenu(id: string) {
   menuId.value = menuId.value === id ? '' : id
 }
 
+// 右键打开与「···」同一个菜单；对同一项再次右键则收起。
+function openMenu(id: string) {
+  menuId.value = menuId.value === id ? '' : id
+}
+
+function closeMenu() {
+  menuId.value = ''
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+  // 右键（含触屏长按）的 pointerdown 不参与关闭，避免 contextmenu 打开动作被立刻关掉。
+  if (event.button !== 0) return
+  // 「···」按钮与菜单内部点击各有自身处理（切换 / 重命名 / 归档），不在此抢先关闭。
+  const target = event.target
+  if (target instanceof Element && target.closest('.history-menu, .history-more')) return
+  closeMenu()
+}
+
+function onDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerDown)
+  document.addEventListener('keydown', onDocumentKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
+
 function startRename(id: string, title: string) {
   renamingId.value = id
   renameDraft.value = title
@@ -94,6 +126,7 @@ async function archive(id: string) {
             class="history-open"
             :aria-current="item.id === studio.activeSessionId.value ? 'true' : undefined"
             @click="studio.openSession(item.id)"
+            @contextmenu.prevent="openMenu(item.id)"
           >
             <span class="history-title">{{ item.title || '未命名会话' }}</span>
             <small v-if="item.latestTask">{{ studio.statusLabel(item.latestTask.status as never) }}</small>
@@ -117,6 +150,7 @@ async function archive(id: string) {
             aria-label="会话操作"
             :aria-expanded="menuId === item.id"
             @click.stop="toggleMenu(item.id)"
+            @contextmenu.prevent.stop="openMenu(item.id)"
           >
             <UIcon name="i-lucide-ellipsis" />
           </button>

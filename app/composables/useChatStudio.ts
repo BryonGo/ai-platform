@@ -32,7 +32,8 @@ export interface StudioAsset {
   width?: number
   height?: number
   /**
-   * 作用域：temp=临时生成产物 / permanent=已保存到「我的资产」（缺省视为已保存）。
+   * 作用域：temp=临时生成产物 / permanent=已保存到「我的资产」。缺省时无法确认已保存，
+   * 界面只在明确收到 permanent 时显示已保存。
    * 由 assetSelectByIds 带回，产物面板据此重建「已保存」态，刷新/切会话不丢。
    */
   scope?: 'temp' | 'permanent'

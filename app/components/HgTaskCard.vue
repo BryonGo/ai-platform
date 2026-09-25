@@ -85,6 +85,67 @@ function download(assetId: string) {
     }
   })()
 }
+
+/**
+ * 「保存到我的资产」状态（按产物 id 记），语义与 HgAssetPanel 保持一致：
+ *   · savedIds  —— 已永久（后端返回 permanent，或本次保存成功）；**只置 true 不置 false**；
+ *   · savingIds —— 正在保存（按钮显示"保存中…"）。
+ * 判定"已保存"**只认 scope === 'permanent'**：scope 可能缺省（老数据/接口未下发），
+ * 缺省一律当作**未保存**，否则用户会以为临时产物已经进了资产库。
+ */
+const savedIds = ref<Record<string, boolean>>({})
+const savingIds = ref<Record<string, boolean>>({})
+
+watch(assets, (list) => {
+  for (const asset of list) {
+    if (asset.scope === 'permanent' && !savedIds.value[asset.id]) {
+      savedIds.value = { ...savedIds.value, [asset.id]: true }
+    }
+  }
+}, { immediate: true })
+
+/** 任务成功且确有产物时才提供「保存到我的资产」入口（排队中/失败/无产物不显示）。 */
+const canSave = computed(() => props.message.status === 'succeeded' && assets.value.length > 0)
+/** 本任务全部产物是否都已保存（全部已保存则按钮置灰）。 */
+const allSaved = computed(() => assets.value.length > 0 && assets.value.every(a => savedIds.value[a.id]))
+/** 是否有产物正在保存。 */
+const saving = computed(() => assets.value.some(a => savingIds.value[a.id]))
+const saveLabel = computed(() =>
+  saving.value ? '保存中…' : (allSaved.value ? '已保存到我的资产' : '保存到我的资产')
+)
+
+/**
+ * 保存本任务的**全部**产物到「我的资产」。
+ *
+ * 逐个调用 saveAsset（幂等，只改服务端 scope），**不重新上传、不重新生成**；
+ * 失败的产物保留临时态并提示，用户再点一次只会重试未保存的那些。
+ * 成功后把 scope 回写到 message.assets 上的同一个对象，右侧预览面板（读同一份 assets）
+ * 的「已保存」态会跟着同步。
+ */
+async function saveAssets() {
+  const todo = assets.value.filter(a => !savedIds.value[a.id] && !savingIds.value[a.id])
+  if (!todo.length) return
+  const api = useHougongApi()
+  let failed = 0
+  for (const asset of todo) {
+    savingIds.value = { ...savingIds.value, [asset.id]: true }
+    try {
+      const saved = await api.saveAsset(String(asset.id))
+      // 接口成功即已置 permanent；返回里带 scope 时以它为准
+      asset.scope = saved?.scope ?? 'permanent'
+      savedIds.value = { ...savedIds.value, [asset.id]: asset.scope !== 'temp' }
+    } catch {
+      failed += 1
+    } finally {
+      const next = { ...savingIds.value }
+      delete next[asset.id]
+      savingIds.value = next
+    }
+  }
+  studio.notice.value = failed
+    ? `有 ${failed} 个产物保存失败，可再点一次重试`
+    : '已保存到我的资产'
+}
 </script>
 
 <template>
@@ -213,6 +274,21 @@ function download(assetId: string) {
           name="i-lucide-eye"
           aria-hidden="true"
         />查看产物
+      </button>
+      <button
+        v-if="canSave"
+        type="button"
+        class="save"
+        :class="{ saved: allSaved }"
+        :disabled="saving || allSaved"
+        :aria-busy="saving"
+        @click="saveAssets"
+      >
+        <UIcon
+          :name="allSaved ? 'i-lucide-check' : (saving ? 'i-lucide-loader-circle' : 'i-lucide-bookmark-plus')"
+          aria-hidden="true"
+          :class="{ spin: saving }"
+        />{{ saveLabel }}
       </button>
       <button
         v-if="isRunning && message.taskId"
@@ -406,5 +482,29 @@ function download(assetId: string) {
 .task-actions button:hover {
   border-color: var(--hg3-accent-line);
   color: var(--hg3-accent-hi);
+}
+/* 已保存：粉色描边 + 对勾，和未保存态一眼可分 */
+.task-actions button.save.saved {
+  border-color: var(--hg3-accent-line);
+  color: var(--hg3-accent-hi);
+}
+/* 已保存/保存中的按钮不可点：保留原色、去掉 hover 高亮与手型 */
+.task-actions button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.task-actions button:disabled:hover {
+  border-color: var(--hg3-line-strong);
+  color: var(--hg3-ink);
+}
+.task-actions button.save.saved:disabled:hover {
+  border-color: var(--hg3-accent-line);
+  color: var(--hg3-accent-hi);
+}
+.spin {
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

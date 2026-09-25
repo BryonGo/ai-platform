@@ -3,6 +3,7 @@ import PromptEditor from '~/components/prompt/promptEditor.vue'
 import LoraPicker from '~/components/selection/loraPicker.vue'
 import { imageRefSnapshot } from '~/utils/image-ref'
 import { RATIO_OPTIONS } from '~/data/image-options'
+import type { StudioAsset } from '~/composables/useChatStudio'
 // 对话页输入器：框外模式切换、引用与参考图、模型／画幅／时长／参数、发送与费用。
 // 生成中不锁输入框（交接文档：生成期间允许继续发送普通消息）。
 /** 「自定义」浮窗的展开状态：输入框沉底，面板必须向上弹，否则一展开就跑到屏幕外 */
@@ -69,6 +70,20 @@ function openLora() {
 /** @ 唤出的图片选择器：列出已上传的图，选中即插入 chip（视频标 首帧/参考N） */
 const imageRefOpen = ref(false)
 const promptEditorRef = ref<InstanceType<typeof PromptEditor> | null>(null)
+
+/**
+ * 「+ → 从我的资产选择」浮层。选中即调用 studio.addReferenceFromAsset 直接引用 assetId，
+ * 不上传、不用本地 blob 冒充；能否再加由 studio.canAddReference 约束（与「+」禁用一致）。
+ */
+const assetPickerOpen = ref(false)
+/** 已引用的资产 id（顺序即引用顺序），传给资产浮层做去重与角标。 */
+const selectedReferenceIds = computed(() =>
+  studio.references.value.map(item => item.assetId).filter((id): id is string => !!id)
+)
+
+function onPickAsset(asset: StudioAsset) {
+  studio.addReferenceFromAsset(asset)
+}
 
 function onOpenCategory() {
   imageRefOpen.value = true
@@ -370,6 +385,7 @@ function patchSampling(patch: Record<string, number | string>) {
           :max="studio.referenceMax.value"
           :disabled="!studio.canAddReference.value"
           @files="studio.addReferenceFiles($event)"
+          @pick-asset="assetPickerOpen = true"
         />
 
         <div class="editor">
@@ -550,6 +566,16 @@ function patchSampling(patch: Record<string, number | string>) {
       :selected="studio.selectedLoras.value"
       @update="studio.selectedLoras.value = $event"
       @close="loraOpen = false"
+    />
+
+    <!-- 「+ → 从我的资产选择」：只引用已有 assetId，不重新上传。引用顺序决定首帧/参考图。 -->
+    <HgAssetPicker
+      :open="assetPickerOpen"
+      :selected-ids="selectedReferenceIds"
+      :can-add-more="studio.canAddReference.value"
+      :video-mode="studio.mode.value === 'video'"
+      @select="onPickAsset"
+      @close="assetPickerOpen = false"
     />
 
     <!-- @ 参考图面板挪到 .editor 里了（那里才是它的定位锚点），见模板上部 -->
