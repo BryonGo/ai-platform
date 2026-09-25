@@ -18,7 +18,9 @@ import { vAutoPlayVideo } from '~/composables/useAutoPlayVideo'
 // 封面图、角标、标签也在后台填（没填就用图标兜底，不留空框）。
 useSeoMeta({ title: '技能 · 后宫' })
 
-const catalog = useToolCatalog()
+// SSR 预取公开目录：服务端 render 前取好，首屏 HTML 就带真实技能卡；
+// payload 水合后客户端不再重复请求（见 useToolCatalogSsr）。
+const catalog = await useToolCatalogSsr()
 // 分类页签：全部 / 图片 / 视频。默认「全部」——
 // 原来默认落在图片，第一次进来的人根本不知道视频那半边还有东西。
 const tab = ref<'all' | 'image' | 'video'>('all')

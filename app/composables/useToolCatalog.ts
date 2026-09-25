@@ -62,7 +62,14 @@ export function useToolCatalog() {
   const loading = useState<boolean>('hg:tools:loading', () => false)
   const error = useState<string>('hg:tools:error', () => '')
 
-  /** 拉取目录。失败不清空已有列表：一次网络抖动不该让工具入口整体消失。 */
+  /**
+   * 拉取目录。**成功才置 loaded**：失败只记 error、保持空列表。
+   *
+   * 旧实现在 finally 里无条件置 loaded=true —— 首次加载失败会被当成"已加载"，
+   * ensure() 此后再也不请求，SSR 抖动一次就永久空目录。现在失败保持 loaded=false，
+   * 页面 onMounted 的 ensure() 还有机会重试。
+   * 已有列表不在失败时清空：一次网络抖动不该让工具入口整体消失。
+   */
   async function refresh(): Promise<ToolItem[]> {
     if (loading.value) return tools.value
     loading.value = true
@@ -70,12 +77,11 @@ export function useToolCatalog() {
       const items = await useHougongApi().listTools()
       tools.value = items.map(it => ({ ...it, templates: it.templates || [] }))
       error.value = ''
+      loaded.value = true
     } catch (e) {
       error.value = e instanceof Error ? e.message : '工具目录加载失败'
-      // 首次加载失败时保持空列表（下面 hasTools=false，调用方可以回落兜底数据）
     } finally {
       loading.value = false
-      loaded.value = true
     }
     return tools.value
   }
@@ -117,4 +123,28 @@ export function useToolCatalog() {
     tools, loaded, loading, error,
     refresh, ensure, get, byCategory, search, templatesOf, needsImage
   }
+}
+
+/**
+ * 公开工具目录的 SSR 预取。
+ *
+ * 在页面 `setup` 顶层 `await useToolCatalogSsr()`：服务端会在 render 前把目录取好、
+ * 写进共享 `useState`，随 Nuxt payload 水合到浏览器 —— 首页 / 技能页 / 工具页的首屏
+ * HTML 里就有真实技能卡、工具名与选中的玩法，而不是等客户端脚本再 fetch 一次。
+ *
+ * 目录是**公开**数据：请求不带 Authorization、也不透传浏览器 Cookie（apiRequest 用的是
+ * 裸 fetch），因此不会把某个用户的会话带给另一个用户。
+ *
+ * 服务端抖动只记录 error、保持空目录（不伪造工具，也不抛错让整页 500）；失败时 `loaded`
+ * 保持 false，页面 onMounted 里的 `catalog.ensure()` 仍会重试。SSR 成功时水合直接复用
+ * 这份 state，之后跨页面导航也因 loaded=true 不再重复请求。
+ */
+export async function useToolCatalogSsr(): Promise<ReturnType<typeof useToolCatalog>> {
+  const catalog = useToolCatalog()
+  // 固定 key：同一路由内 Nuxt 会去重；SSR 结果进 payload，水合时不会重跑 handler。
+  await useAsyncData('hg:tools:list', async () => {
+    if (catalog.loaded.value) return catalog.tools.value
+    return catalog.refresh()
+  })
+  return catalog
 }

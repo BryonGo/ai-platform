@@ -104,9 +104,9 @@ APP_ENV=dev GF_GCFG_FILE=config.dev DEV_SITE_CODE=hougong APP_ROLE=all <二进�
 
 ## 部署规则
 
-- 生产构建**必须**带 `--build-arg NUXT_PUBLIC_CANVAS_ENABLED=false`。首页 `/` 在
-  `nuxt.config.ts` 里是 `prerender: true`，它的 HTML 与内嵌 `__NUXT__` 配置**在构建期就定稿**，
-  运行时注入无效 —— 构建期漏传，画布入口就会跟着上生产。
+- 生产构建**必须**带 `--build-arg NUXT_PUBLIC_CANVAS_ENABLED=false`。首页 `/` 已改为
+  **按请求 SSR**，以免构建期预渲染把技能封面的限时签名地址烤进 HTML；画布开关仍须
+  按生产构建约定显式关闭，不能依赖开发默认值。
 - 脚本在 `../infra/scripts/server/`，都在**部署机上跑**（源码/二进制先 scp 过去）：
   - `build-hougong.sh <TAG>`：解 `/root/hougong-src.tgz` → `docker build -t bryongo/hougongweb:<TAG>`
     （带上面的 build-arg）。

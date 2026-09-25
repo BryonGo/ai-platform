@@ -119,39 +119,47 @@
 - 本文件声明 15 个: `message` L13 · `assets` L14 · `current` L15 · `infoOpen` L16 · `savedIds` L26 · `savingIds` L27 · `allSaved` L40 · `saving` L42 · `saveLabel` L43 · `saveAssets` L53 · `close` L78
   `onKeydown` L82 · `download` L89 · `continueEdit` L104 · `toVideo` L112
 
-### HgAuthDialog — app/components/HgAuthDialog.vue · 570 行
+### HgAssetPicker — app/components/HgAssetPicker.vue · 548 行
+- props: `open` · `selectedIds?`=() => [](已引用的资产 id（顺序即引用顺序，与 studio.references 一致）) · `canAddMore?`=true(还能不能再加（受 referenceMax 约束）) · `videoMode?`=false(视频模式：提示第 1 张是首帧，避免界面措辞与图位不一致)
+- emits: `select` · `close` · 用: `useHougongApi`
+- 本文件声明 19 个: `items` L38 · `total` L39 · `pageNo` L40 · `firstLoading` L41 · `loadingMore` L42 · `error` L43 · `done` L44 · `hint` L46 · `isAllowedImage` L51 · `fetchPage` L55 · `reload` L88
+  `retry` L98 · `loadMore` L103 · `isSelected` L108 · `displayName` L112 · `roleLabel` L117 · `pick` L124 · `close` L141 · `onKeydown` L145
+
+### HgAuthDialog — app/components/HgAuthDialog.vue · 587 行
 未登录时的登录弹窗（效果图 homepage-interactions 面板 04）
 - props: —
 - v-model: `open` · 用: `useHougongApi` · `useAuthDialog` · `useTurnstile`
-- 本文件声明 16 个: `tab` L11 · `email` L12 · `password` L13 · `confirmPassword` L15 · `agreed` L16 · `showPassword` L18 · `pending` L19 · `error` L20 · `turnstileBlocked` L39 · `heading` L41 · `close` L44
-  `reset` L48 · `onKeydown` L66 · `afterAuth` L73 · `submitLogin` L79 · `submitRegister` L102
+- 本文件声明 16 个: `tab` L11 · `email` L12 · `password` L13 · `confirmPassword` L15 · `agreed` L16 · `showPassword` L18 · `pending` L19 · `error` L20 · `turnstileBlocked` L41 · `heading` L43 · `close` L46
+  `reset` L50 · `onKeydown` L68 · `afterAuth` L75 · `submitLogin` L81 · `submitRegister` L104
 
 ### HgBottomSheet — app/components/HgBottomSheet.vue · 113 行
 移动端底部面板容器：同一个面板内容在窄屏以 sheet 呈现，可滚动、可关闭、保留选择
 - props: `title?`=''
 - v-model: `open`
 
-### HgChatComposer — app/components/HgChatComposer.vue · 1118 行
+### HgChatComposer — app/components/HgChatComposer.vue · 1144 行
 - props: `variant?`='chat'
 - emits: `submit` · 用: `useChatStudio` · `useIsNarrow` · `useGlowPointer` · `useHougongApi`
-- 本文件声明 25 个: `paramsOpen` L9 · `ratioUnsupported` L22 · `onSend` L38 · `sendLabel` L47 · `blockHint` L52 · `loraOpen` L59 · `openLora` L62 · `imageRefOpen` L70 · `promptEditorRef` L71
-  `onOpenCategory` L73 · `onPickImageRef` L83 · `onCloseImageRef` L89 · `modelSheet` L94 · `paramsSheet` L95 · `mentionOpen` L101 · `mediaAssets` L104 · `loadMediaAssets` L106
-  `ensureMentionData` L121 · `characterName` L125 · `tplOpen` L127 · `focusEditorFromContainer` L137 · `ratioOptions` L156 · `resolutionOptions` L170 · `samplingLimits` L183 · `patchSampling` L202
+- 本文件声明 28 个: `paramsOpen` L10 · `ratioUnsupported` L23 · `onSend` L39 · `sendLabel` L48 · `blockHint` L53 · `loraOpen` L60 · `openLora` L63 · `imageRefOpen` L71 · `promptEditorRef` L72
+  `assetPickerOpen` L78 · `selectedReferenceIds` L80 · `onPickAsset` L84 · `onOpenCategory` L88 · `onPickImageRef` L98 · `onCloseImageRef` L104 · `modelSheet` L109 · `paramsSheet` L110
+  `mentionOpen` L116 · `mediaAssets` L119 · `loadMediaAssets` L121 · `ensureMentionData` L136 · `characterName` L140 · `tplOpen` L142 · `focusEditorFromContainer` L152 · `ratioOptions` L171
+  `resolutionOptions` L185 · `samplingLimits` L198 · `patchSampling` L217
 
-### HgChatHistory — app/components/HgChatHistory.vue · 321 行
+### HgChatHistory — app/components/HgChatHistory.vue · 355 行
 历史会话侧栏：搜索、时间分组、新建、重命名、归档
 - props: —
 - 用: `useChatStudio`
-- 本文件声明 7 个: `menuId` L6 · `renamingId` L7 · `renameDraft` L8 · `toggleMenu` L10 · `startRename` L14 · `commitRename` L20 · `archive` L28
+- 本文件声明 11 个: `menuId` L6 · `renamingId` L7 · `renameDraft` L8 · `toggleMenu` L10 · `openMenu` L15 · `closeMenu` L19 · `onDocumentPointerDown` L23 · `onDocumentKeydown` L32 · `startRename` L46
+  `commitRename` L52 · `archive` L60
 
 ### HgCompareSlider — app/components/HgCompareSlider.vue · 176 行
 原图 / 效果对比滑块
 - props: `before` · `after` · `alt?`='', label: '原图与效果对比', initial: 50, fit: 'cover' · `label?` · `initial?`(初始揭示比例（%），默认从中间开始) · `fit?`
 
-### HgComposerMedia — app/components/HgComposerMedia.vue · 90 行
+### HgComposerMedia — app/components/HgComposerMedia.vue · 226 行
 输入框左侧的「+ 添加图片」方框（首页与创作页共用）
 - props: `max?`=1(该模型能收几张（1 = 只有首帧) · `accept?`='image/png,image/jpeg,image/webp' · `ariaLabel?`='添加参考图' · `title?`='添加图片' · `disabled?`=false
-- emits: `files`
+- emits: `files` · `pickAsset`
 
 ### HgConfirmDialog — app/components/HgConfirmDialog.vue · 274 行
 通用确认弹窗
@@ -211,10 +219,11 @@
 - props: `items?`=() => [] · `max?`=1(该模型能收几张（> 1 时显示 N/上限）) · `roles?`=() => []
 - emits: `remove`
 
-### HgTaskCard — app/components/HgTaskCard.vue · 411 行
+### HgTaskCard — app/components/HgTaskCard.vue · 511 行
 - props: `message`
 - 用: `useChatStudio` · `useHougongApi`
-- 本文件声明 9 个: `now` L13 · `isRunning` L16 · `elapsed` L17 · `assets` L34 · `activeIndex` L40 · `openAsset` L47 · `kindLabel` L50 · `paramsLine` L56 · `download` L77
+- 本文件声明 16 个: `now` L13 · `isRunning` L16 · `elapsed` L17 · `assets` L34 · `activeIndex` L40 · `openAsset` L47 · `kindLabel` L50 · `paramsLine` L56 · `download` L77 · `savedIds` L96 · `savingIds` L97
+  `canSave` L108 · `allSaved` L110 · `saving` L112 · `saveLabel` L113 · `saveAssets` L125
 
 ### HgUpdateBar — app/components/HgUpdateBar.vue · 110 行
 新版本提示条（全局挂在 app.vue）：线上发了新版本时出现

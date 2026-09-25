@@ -16,14 +16,30 @@ useSeoMeta({ title: '创作工具 · 后宫' })
 const route = useRoute()
 const api = useHougongApi()
 const session = useAuthSession()
-const catalog = useToolCatalog()
+// SSR 预取公开目录：服务端 render 前取好，工具名 / 封面 / 玩法都能进首屏 HTML；
+// payload 水合后客户端不再重复请求（见 useToolCatalogSsr）。
+const catalog = await useToolCatalogSsr()
+// 未登录点「登录后创建」时拉起与首页/创作页同一个登录弹窗（见下面 submit 的守卫）。
+const { openDialog } = useAuthDialog()
 
 const code = computed(() => String(route.params.code || ''))
 
 /* ---------------- 工具 ---------------- */
 const tool = computed(() => catalog.get(code.value))
 const templates = computed(() => catalog.templatesOf(code.value))
-const template = ref('')
+
+/**
+ * 当前玩法。深链 `?template` 命中就用它，否则默认取第一个 —— 两者都在 setup 阶段
+ * （SSR 也走）算好：服务端返回的 HTML 里就是选中的玩法，不必等客户端 onMounted 再补。
+ * 目录尚未到达（SSR 抖动）时先留空，由下面 watch(templates) 到达后补默认。
+ */
+function pickTemplate(): string {
+  const wanted = String(route.query.template || '')
+  const list = templates.value
+  if (wanted && list.some(t => t.code === wanted)) return wanted
+  return list[0]?.code || ''
+}
+const template = ref(pickTemplate())
 const toolMissing = computed(() => catalog.loaded.value && !tool.value)
 
 /* ---------------- 输入 ---------------- */
@@ -363,6 +379,14 @@ function swapSlots() {
 
 async function submit() {
   if (!canSubmit.value || !tool.value) return
+  // 未登录：先弹登录/注册，不发上传也不建任务。
+  // 按钮文案这时就是「登录后创建」，这里不拦会导致它走 api.createTask 拿回 401，
+  // 再被 apiRequest 报成「登录已过期」—— 对从没登录过的访客是误导，也会白跑一次请求。
+  if (!session.token.value) {
+    openDialog({ reason: 'generate', resume: 'tool-generate' })
+    notice.value = '登录后即可创建，当前选择会保留在本页。'
+    return
+  }
   busy.value = true
   notice.value = ''
   try {
@@ -491,27 +515,24 @@ function download(url: string) {
 }
 
 onMounted(async () => {
-  await session.load()
+  // 会话恢复与公开目录**解耦**：目录/玩法是公开数据，以前这里先 await session.load()
+  // （内含 auto-login 网络请求）才拿目录，等于让不依赖登录的首屏白等一次网络。
+  // 现在 session.load 不阻塞目录；目录已在 setup 由 useToolCatalogSsr() 预取，
+  // 这里 ensure() 只为 SSR 抖动失败时重试（失败时 loaded 保持 false）。
+  void session.load()
   await catalog.ensure()
-  // 从效果列表点进来时带着玩法（?template=裸体姿势 对应的 code），要预选上；
-  // 否则用户点了"大字型"，进去看到的却是默认玩法。
-  const wanted = String(route.query.template || '')
-  if (wanted && catalog.templatesOf(code.value).some(t => t.code === wanted)) {
-    template.value = wanted
-  }
-  // 角色延展工具需要角色清单：只在这个输入形态下拉取，避免每个工具页都请求一次
+  // 角色延展工具需要角色清单：只在这个输入形态下拉取，避免每个工具页都请求一次。
+  // 必须等目录到达后再判断 isCharacter，否则目录后到时会漏拉。
   if (isCharacter.value) {
     characters.value = await api.listCharacters().catch(() => [])
     if (characters.value.length && !characterId.value) characterId.value = String(characters.value[0]!.id)
   }
-  // 模板默认取第一个：参考产品的模板是"选一个即可"，默认空着会让人以为必须先点
-  const first = templates.value[0]
-  if (first && !template.value) template.value = first.code
 })
 
-// 目录后到（首次进入直接深链）时补一次默认模板
+// 目录后到（SSR 抖动重试 / 直接深链且首屏无目录）时补默认玩法。
+// 用 pickTemplate() 而不是写死第一个：这样 ?template 深链在目录后到时也能生效。
 watch(templates, (list) => {
-  if (!template.value && list.length) template.value = list[0]!.code
+  if (!template.value && list.length) template.value = pickTemplate()
 })
 
 // 图片加载/窗口尺寸变化后，涂抹画布要跟上显示尺寸（否则笔迹会错位）

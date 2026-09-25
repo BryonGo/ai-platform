@@ -93,100 +93,100 @@
 - `clearSlots(): void` · L32 — 换图（新建 / 套模板 / 打开另一张）时清掉：记的是上一张图里某个节点的槽位
 
 ## app/composables/useChatStudio.ts
-- 导出函数/常量：`createChatStudio()` L142 · `provideChatStudio()` L1451 · `splitNegativePrompt(text: string)` L1468 — splitNegativePrompt 把用户写在正向提示词里的「负面词 …」拆出来 · `useChatStudio()` L1480
+- 导出函数/常量：`createChatStudio()` L143 · `provideChatStudio()` L1452 · `splitNegativePrompt(text: string)` L1469 — splitNegativePrompt 把用户写在正向提示词里的「负面词 …」拆出来 · `useChatStudio()` L1481
 - 导出类型 6 个 → 字段见 `types.md`（`StudioStatus` · `StudioAsset` · `RunMeta` · `StudioAttachment` · `StudioMessage` · `ChatStudio`）
 
-### `createChatStudio()` — L142 · 返回 84 个成员
+### `createChatStudio()` — L143 · 返回 84 个成员
 - **输入器状态**
-  - `mode` · L151 · ref `ref<ComposerMode>`
-  - `imageRefFirstFrame` · L160 · computed `computed` — `@` 图引用是否按「首帧 + 参考图」编号（视频模式）
-  - `tools` · L167 · composable `useToolCatalog` — 前端只认 code：提示词预置、LoRA 文件名、工作流名都由后端从库里取并在建任务时 冻结进快照
-  - `activeTool` · L168 · ref `ref<string>`
-  - `activeTemplate` · L169 · ref `ref<string>`
-  - `toolInfo` · L170 · computed `computed`
-  - `toolTemplates` · L171 · computed `computed`
-  - `toolNeedsImage` · L173 · computed `computed` — 该工具是否需要先选图（决定引用区是否显示、以及能否发送）
-  - `setTool(code: string)` · L176 — 切换工具：连带把模式切到工具所属类别，并清掉不适用的模板
-  - `setTemplate(code: string)` · L183
-  - `promptModel` · L188 · ref `ref<Prompt>` — 提示词：结构化 parts（@角色/@服装/@背景/@姿势/@画风 插入 snippet 节点）， 提交任务时用 promptText() 取纯文本（与旧创…
-  - `prompt` · L197 · computed `computed` — 提交用的纯文本
-  - `ratio` · L200 · ref `ref` — 初始画幅：手机竖屏
-  - `count` · L201 · ref `ref`
-  - `resolution` · L203 · ref `ref` — 输出分辨率：1K / 2K（即梦口径）
-  - `seconds` · L204 · ref `ref`
-  - `modelId` · L205 · ref `ref`
-  - `characterId` · L206 · ref `ref`
-  - `references` · L213 · ref `ref<StudioReference[]>`
-  - `catalog` · L214 · ref `ref<Catalog | null>`
-  - `characters` · L215 · ref `ref<CharacterItem[]>`
-  - `notice` · L216 · ref `ref`
-  - `duplicate` · L224 · ref `ref<{ existing: StudioMessage, dims: string[], meta: RunMeta, text: string } | null>` — 重复提交确认（参考图面板 03 / 交接文档 G3 第二层）
-  - `selectedLoras` · L230 · ref `ref<{ id: string, weight: number }[]>` — 已选 LoRA（提交时进 createTask.loras）
-  - `loraOptions` · L231 · computed `computed`
-  - `sampling` · L249 · ref `ref<{ steps: number, sampler: string, scheduler: string, cfg: number } | null>` — 采样参数：只在所选模型真的支持时（catalog.models[].sampling）才有值
-  - `modelOptions` · L251 · computed `computed`
-  - `selectedModel` · L252 · computed `computed`
-  - `supportedQualities` · L266 · computed `computed<string[]>`
-  - `supportedCloudRatios` · L275 · computed `computed<string[]>`
-  - `sizeOptions` · L286 · computed `computed<{ ratio: string, size: string }[]>` — 画幅选项（比例 + 该档位下的像素尺寸）
-  - `sizeLabel` · L314 · computed `computed` — 面板「分辨率」那一行：当前比例（× 清晰度）= 多少像素
-  - `durationList` · L319 · computed `computed`
-  - `selectedCharacter` · L320 · computed `computed`
-  - `countMax` · L348 · computed `computed` — 数量上限：云端模型声明的 capabilities.maxOutputs（后台可配）
-  - `referenceMax` · L426 · computed `computed` — 参考图上限：跟模型能力走
-  - `referenceRoles` · L443 · computed `computed<string[]>` — 这一镜是否有"首帧之外"的角色分配
-  - `referenceAllowed` · L448 · computed `computed`
-  - `referenceCount` · L449 · computed `computed`
-  - `canAddReference` · L450 · computed `computed`
-  - `referenceOverflow` · L459 · computed `computed` — 已选参考图超过当前模型上限
-  - `quote` · L461 · computed `computed`
-  - `costText` · L466 · computed `computed`
-  - `canSend` · L470 · computed `computed` — 超限时不许发：先把"图比模型能收的多"这件事解决掉（换模型或删图）
-  - `sendBlockReason` · L477 · computed `computed` — 不能发时用一句人话说明还缺什么（按钮 title 与输入区提示共用，避免只说"发不了"）
+  - `mode` · L152 · ref `ref<ComposerMode>`
+  - `imageRefFirstFrame` · L161 · computed `computed` — `@` 图引用是否按「首帧 + 参考图」编号（视频模式）
+  - `tools` · L168 · composable `useToolCatalog` — 前端只认 code：提示词预置、LoRA 文件名、工作流名都由后端从库里取并在建任务时 冻结进快照
+  - `activeTool` · L169 · ref `ref<string>`
+  - `activeTemplate` · L170 · ref `ref<string>`
+  - `toolInfo` · L171 · computed `computed`
+  - `toolTemplates` · L172 · computed `computed`
+  - `toolNeedsImage` · L174 · computed `computed` — 该工具是否需要先选图（决定引用区是否显示、以及能否发送）
+  - `setTool(code: string)` · L177 — 切换工具：连带把模式切到工具所属类别，并清掉不适用的模板
+  - `setTemplate(code: string)` · L184
+  - `promptModel` · L189 · ref `ref<Prompt>` — 提示词：结构化 parts（@角色/@服装/@背景/@姿势/@画风 插入 snippet 节点）， 提交任务时用 promptText() 取纯文本（与旧创…
+  - `prompt` · L198 · computed `computed` — 提交用的纯文本
+  - `ratio` · L201 · ref `ref` — 初始画幅：手机竖屏
+  - `count` · L202 · ref `ref`
+  - `resolution` · L204 · ref `ref` — 输出分辨率：1K / 2K（即梦口径）
+  - `seconds` · L205 · ref `ref`
+  - `modelId` · L206 · ref `ref`
+  - `characterId` · L207 · ref `ref`
+  - `references` · L214 · ref `ref<StudioReference[]>`
+  - `catalog` · L215 · ref `ref<Catalog | null>`
+  - `characters` · L216 · ref `ref<CharacterItem[]>`
+  - `notice` · L217 · ref `ref`
+  - `duplicate` · L225 · ref `ref<{ existing: StudioMessage, dims: string[], meta: RunMeta, text: string } | null>` — 重复提交确认（参考图面板 03 / 交接文档 G3 第二层）
+  - `selectedLoras` · L231 · ref `ref<{ id: string, weight: number }[]>` — 已选 LoRA（提交时进 createTask.loras）
+  - `loraOptions` · L232 · computed `computed`
+  - `sampling` · L250 · ref `ref<{ steps: number, sampler: string, scheduler: string, cfg: number } | null>` — 采样参数：只在所选模型真的支持时（catalog.models[].sampling）才有值
+  - `modelOptions` · L252 · computed `computed`
+  - `selectedModel` · L253 · computed `computed`
+  - `supportedQualities` · L267 · computed `computed<string[]>`
+  - `supportedCloudRatios` · L276 · computed `computed<string[]>`
+  - `sizeOptions` · L287 · computed `computed<{ ratio: string, size: string }[]>` — 画幅选项（比例 + 该档位下的像素尺寸）
+  - `sizeLabel` · L315 · computed `computed` — 面板「分辨率」那一行：当前比例（× 清晰度）= 多少像素
+  - `durationList` · L320 · computed `computed`
+  - `selectedCharacter` · L321 · computed `computed`
+  - `countMax` · L349 · computed `computed` — 数量上限：云端模型声明的 capabilities.maxOutputs（后台可配）
+  - `referenceMax` · L427 · computed `computed` — 参考图上限：跟模型能力走
+  - `referenceRoles` · L444 · computed `computed<string[]>` — 这一镜是否有"首帧之外"的角色分配
+  - `referenceAllowed` · L449 · computed `computed`
+  - `referenceCount` · L450 · computed `computed`
+  - `canAddReference` · L451 · computed `computed`
+  - `referenceOverflow` · L460 · computed `computed` — 已选参考图超过当前模型上限
+  - `quote` · L462 · computed `computed`
+  - `costText` · L467 · computed `computed`
+  - `canSend` · L471 · computed `computed` — 超限时不许发：先把"图比模型能收的多"这件事解决掉（换模型或删图）
+  - `sendBlockReason` · L478 · computed `computed` — 不能发时用一句人话说明还缺什么（按钮 title 与输入区提示共用，避免只说"发不了"）
 - **会话与消息**
-  - `sessions` · L488 · ref `ref<SessionItem[]>`
-  - `sessionsLoading` · L489 · ref `ref`
-  - `sessionQuery` · L490 · ref `ref`
-  - `activeSessionId` · L491 · ref `ref<string>`
-  - `historyLoading` · L492 · ref `ref`
-  - `messages` · L493 · ref `ref<StudioMessage[]>`
-  - `ready` · L494 · ref `ref`
-  - `filteredSessions` · L496 · computed `computed`
-  - `groupedSessions` · L503 · computed `computed` — 按「今天 / 昨天 / 更早」分组，供历史侧栏使用
-  - `activeSession` · L520 · computed `computed`
-  - `runningMessages` · L523 · computed `computed` — 当前会话中仍在跑的任务（顶部概况与状态问答都读它）
-  - `runningTask` · L524 · computed `computed`
-  - `previewOpen` · L527 · ref `ref` — 产物面板：默认跟随最后一条有产物的任务
-  - `previewIndex` · L529 · ref `ref`
-  - `previewMessage` · L531 · computed `computed`
-  - `previewAssets` · L536 · computed `computed`
-  - `previewAsset` · L537 · computed `computed`
-  - `openPreview(messageId: string, index = 0)` · L539
+  - `sessions` · L489 · ref `ref<SessionItem[]>`
+  - `sessionsLoading` · L490 · ref `ref`
+  - `sessionQuery` · L491 · ref `ref`
+  - `activeSessionId` · L492 · ref `ref<string>`
+  - `historyLoading` · L493 · ref `ref`
+  - `messages` · L494 · ref `ref<StudioMessage[]>`
+  - `ready` · L495 · ref `ref`
+  - `filteredSessions` · L497 · computed `computed`
+  - `groupedSessions` · L504 · computed `computed` — 按「今天 / 昨天 / 更早」分组，供历史侧栏使用
+  - `activeSession` · L521 · computed `computed`
+  - `runningMessages` · L524 · computed `computed` — 当前会话中仍在跑的任务（顶部概况与状态问答都读它）
+  - `runningTask` · L525 · computed `computed`
+  - `previewOpen` · L528 · ref `ref` — 产物面板：默认跟随最后一条有产物的任务
+  - `previewIndex` · L530 · ref `ref`
+  - `previewMessage` · L532 · computed `computed`
+  - `previewAssets` · L537 · computed `computed`
+  - `previewAsset` · L538 · computed `computed`
+  - `openPreview(messageId: string, index = 0)` · L540
 - **数据加载**
-  - `refreshAssetUrls()` · L619 — 重新解析当前会话里已展示产物的签名地址（预签名过期自愈用）
-  - `openSession(id: string)` · L659 — 打开历史会话：分页读完整任务并重建消息
-  - `newSession()` · L737
-  - `renameSession(id: string, title: string)` · L763
-  - `archiveSession(id: string)` · L770 — 归档语义：后端是归档，不是物理删除（交接文档：不要伪装成删除、不级联删资产）
+  - `refreshAssetUrls()` · L620 — 重新解析当前会话里已展示产物的签名地址（预签名过期自愈用）
+  - `openSession(id: string)` · L660 — 打开历史会话：分页读完整任务并重建消息
+  - `newSession()` · L738
+  - `renameSession(id: string, title: string)` · L764
+  - `archiveSession(id: string)` · L771 — 归档语义：后端是归档，不是物理删除（交接文档：不要伪装成删除、不级联删资产）
 - **生成**
-  - `uploadReference(file: File)` · L788
-  - `addReferenceFiles(files: File[])` · L806 — 追加参考图（多选时一次多张）
-  - `addReferenceFromAsset(asset: StudioAsset, name = '素材')` · L823 — 素材库选图 / 「继续修改」：沿用它的 assetId，不重复上传
-  - `setReferenceFromAsset(asset: StudioAsset)` · L833 — 把已有产物设为下一步的引用对象（「继续修改」/「生成视频」用）—— 单张语义，替换整组
-  - `removeReference(index: number)` · L838
-  - `clearReferences()` · L844
-  - `statusLabel(status?: StudioStatus)` · L867
-  - `confirmDuplicate()` · L992 — 用户确认「仍要再次生成」：用**新的 clientKey** 建任务（确认后再次生成是合法新任务）
-  - `dismissDuplicate()` · L1000 — 取消确认：不建任务、不扣款，描述仍在输入框里
-  - `viewDuplicate()` · L1005 — 「查看已有任务」：直接打开该任务的产物，不做任何新提交
-  - `send()` · L1013
-  - `cancel(message: StudioMessage)` · L1215
-  - `retry(message: StudioMessage)` · L1233
+  - `uploadReference(file: File)` · L789
+  - `addReferenceFiles(files: File[])` · L807 — 追加参考图（多选时一次多张）
+  - `addReferenceFromAsset(asset: StudioAsset, name = '素材')` · L824 — 素材库选图 / 「继续修改」：沿用它的 assetId，不重复上传
+  - `setReferenceFromAsset(asset: StudioAsset)` · L834 — 把已有产物设为下一步的引用对象（「继续修改」/「生成视频」用）—— 单张语义，替换整组
+  - `removeReference(index: number)` · L839
+  - `clearReferences()` · L845
+  - `statusLabel(status?: StudioStatus)` · L868
+  - `confirmDuplicate()` · L993 — 用户确认「仍要再次生成」：用**新的 clientKey** 建任务（确认后再次生成是合法新任务）
+  - `dismissDuplicate()` · L1001 — 取消确认：不建任务、不扣款，描述仍在输入框里
+  - `viewDuplicate()` · L1006 — 「查看已有任务」：直接打开该任务的产物，不做任何新提交
+  - `send()` · L1014
+  - `cancel(message: StudioMessage)` · L1216
+  - `retry(message: StudioMessage)` · L1234
 - **初始化**
-  - `init(opts: { withSessions?: boolean } = {})` · L1362 — @param opts.withSessions=false 只准备输入器（首页用法）：不读会话列表、不重建消息、 也不消费草稿 —— 首页只负责把这次输入…
+  - `init(opts: { withSessions?: boolean } = {})` · L1363 — @param opts.withSessions=false 只准备输入器（首页用法）：不读会话列表、不重建消息、 也不消费草稿 —— 首页只负责把这次输入…
 
-### `useChatStudio()` — L1480 · 返回 1 个成员
-- `studio` · L1481 · value `inject`
+### `useChatStudio()` — L1481 · 返回 1 个成员
+- `studio` · L1482 · value `inject`
 
 ## app/composables/useComposerDraft.ts
 - 导出函数/常量：`useComposerDraft()` L41
@@ -332,7 +332,7 @@
 - 导出函数/常量：`safeHref(url: string | undefined | null): string | undefined` L6
 
 ## app/composables/useToolCatalog.ts
-- 导出函数/常量：`useToolCatalog()` L59
+- 导出函数/常量：`useToolCatalog()` L59 · `useToolCatalogSsr(): Promise<ReturnType<typeof useToolCatalog>>` L142 — 公开工具目录的 SSR 预取
 - 导出类型 2 个 → 字段见 `types.md`（`ToolTemplate` · `ToolItem`）
 
 ### `useToolCatalog()` — L59 · 返回 11 个成员
@@ -340,26 +340,28 @@
 - `loaded` · L61 · ref `useState<boolean>`
 - `loading` · L62 · ref `useState<boolean>`
 - `error` · L63 · ref `useState<string>`
-- `refresh(): Promise<ToolItem[]>` · L66 — 拉取目录
-- `ensure(): Promise<ToolItem[]>` · L84 — 首次进入各页面时调用：已加载过就不重复请求
-- `get(code: string): ToolItem | undefined` · L89
-- `byCategory(category: string): ToolItem[]` · L93
-- `search(keyword: string): ToolItem[]` · L98
-- `templatesOf(code: string): ToolTemplate[]` · L106
-- `needsImage(code: string): boolean` · L111 — 该工具是否需要先选图（后端 input 形态决定输入面板与必填校验）
+- `refresh(): Promise<ToolItem[]>` · L73 — 拉取目录
+- `ensure(): Promise<ToolItem[]>` · L90 — 首次进入各页面时调用：已加载过就不重复请求
+- `get(code: string): ToolItem | undefined` · L95
+- `byCategory(category: string): ToolItem[]` · L99
+- `search(keyword: string): ToolItem[]` · L104
+- `templatesOf(code: string): ToolTemplate[]` · L112
+- `needsImage(code: string): boolean` · L117 — 该工具是否需要先选图（后端 input 形态决定输入面板与必填校验）
 
 ## app/composables/useTurnstile.ts
-- 导出函数/常量：`useTurnstile()` L90
+- 导出函数/常量：`useTurnstile()` L94
 - 导出类型 1 个 → 字段见 `types.md`（`VerificationConfig`）
 
-### `useTurnstile()` — L90 · 返回 8 个成员
-- `required` · L94 · ref `ref` — required=true 表示本站在提交前必须拿到 token
-- `ready` · L96 · ref `ref` — ready=true 表示 widget 已经渲染出来，用户可以点它
-- `token` · L98 · ref `ref` — token 是 Cloudflare 回调给的凭据，提交时放进 cf-turnstile-response
-- `error` · L100 · ref `ref` — error 是非阻塞提示（脚本加载失败等），不挡页面其它内容
-- `siteKey` · L102 · ref `ref` — siteKey 供模板绑定 `data-sitekey`（与后台同样的声明式写法）
-- `init()` · L167 · `/pub/verification/config`
-- `reset()` · L187 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
+### `useTurnstile()` — L94 · 返回 10 个成员
+- `required` · L98 · ref `ref` — required=true 表示本站在提交前必须拿到 token
+- `ready` · L100 · ref `ref` — ready=true 表示 widget 已经渲染出来，用户可以点它
+- `token` · L102 · ref `ref` — token 是 Cloudflare 回调给的凭据，提交时放进 cf-turnstile-response
+- `error` · L104 · ref `ref` — error 是非阻塞提示（脚本加载失败等），不挡页面其它内容
+- `siteKey` · L106 · ref `ref` — siteKey 供模板绑定 `data-sitekey`（与后台同样的声明式写法）
+- `retrying` · L108 · ref `ref` — retrying 避免用户连续点击重复创建 widget
+- `init()` · L184 · `/pub/verification/config`
+- `reset()` · L205 — reset 提交失败后换一张新题（Cloudflare 的 token 一次性）
+- `retry()` · L212 — retry 重新加载失败的脚本或重建挑战，不能让用户一直对着空白框重试提交
 
 ## app/composables/useVersionWatcher.ts
 - 导出函数/常量：`useUpdateBlocker(fn: () => boolean)` L25 · `useVersionWatcher()` L46

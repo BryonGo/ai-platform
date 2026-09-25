@@ -36,10 +36,10 @@
 ## app/composables/useChatStudio.ts
 - `StudioStatus` *type* L26 {id, url, kind, width?, height?, scope?}
 - `StudioAsset` L28 {id, url, kind, width?, height?, scope?}
-- `RunMeta` L41 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
-- `StudioAttachment` L67 {name, url, assetId?, role?}
-- `StudioMessage` L80 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
-- `ChatStudio` *type* L1447 {provide}
+- `RunMeta` L42 {mode, ratio, seconds, count, modelId, modelName, credits, unit, prompt, characterName, toolName?, templateName?, contentRating}
+- `StudioAttachment` L68 {name, url, assetId?, role?}
+- `StudioMessage` L81 {id, role, kind, text, time, attachments?, taskId?, clientKey?, status?, progress?, assets?, error?, meta?, action?}
+- `ChatStudio` *type* L1448 {provide}
 
 ## app/composables/useComposerDraft.ts
 - `ComposerDraft` L4 {prompt, mode, ratio, durationSeconds, uploadName, files, references?, file?, modelId?, modelChannel?, toolCode?, templateCode?}

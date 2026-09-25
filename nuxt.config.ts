@@ -69,7 +69,12 @@ export default defineNuxtConfig({
   },
 
   routeRules: {
-    '/': { prerender: true },
+    // 首页**不做构建期预渲染**：技能卡封面是后端下发的 S3 限时签名地址
+    // （X-Amz-Expires），预渲染会把"构建那一刻"的签名烤进 HTML，上线几个小时后
+    // 全套封面 403。改走按请求 SSR：render 前由 useToolCatalogSsr() 现取目录，
+    // 签名地址随每次请求刷新（见 app/composables/useToolCatalog.ts）。
+    // 这里刻意**不挂 cache**：目录是运营随时会停用/排序的动态数据，缓存会撑长
+    // "后台停用了、前台还在"的窗口。
     '/api/v1/**': { proxy: (process.env.API_PROXY || 'http://127.0.0.1:8201') + '/api/v1/**' }
   },
 

@@ -30,7 +30,9 @@ const notice = ref('')
  *
  * 目录为空就**如实为空**、整块不渲染：以前空目录会回落一屏写死的示例工具，
  * 名字和入口都是编的，点进去后端只会拒绝 —— 那是拿假货撑门面。 */
-const toolCatalog = useToolCatalog()
+// SSR 预取公开目录（见 useToolCatalogSsr）：服务端 render 前取好，首屏 HTML 就带真实
+// 工具卡；payload 水合后客户端不再重复请求。顶层 await 让首页进入 Suspense。
+const toolCatalog = await useToolCatalogSsr()
 
 /** 统一的展示结构：目录项映射成它，模板只认这几个字段。 */
 interface ToolCard {
@@ -193,12 +195,6 @@ const selectedToolCard = computed(() => {
   if (!code) return undefined
   return toolCards.value.find(tool => tool.key === `tool:${code}`)
 })
-
-/** 点快捷片 = 选中该技能；输入框上方随即出现技能胶囊（配了模板的还会有模板）。 */
-function pickQuickTool(tool: ToolCard) {
-  const code = tool.key.replace('tool:', '')
-  studio.setTool(studio.activeTool.value === code ? '' : code)
-}
 
 /** 进行中的任务数（来自真实作品状态） */
 const runningWorks = ref(0)
@@ -570,7 +566,11 @@ useMediaAutoRefresh(() => Promise.all([
            上排 5 个 + 下排 3 个 + 第 9 格一个跳转箭头 → 技能页。
            卡片**按文字自适应宽度**（等宽时短名字右侧空一大截），两行由 quickRows 显式切好。
            鼠标停在哪一格、或键盘聚焦到哪一格，就浮一张「封面 + 名称 + 说明」的卡。
-           为什么不用 grid：grid 做不到「不满的那一行居中」，这里必须 flex。 -->
+           为什么不用 grid：grid 做不到「不满的那一行居中」，这里必须 flex。
+           每一格是**链接**（不是按钮）：点了直接进该工具自己的创作页 /tool/:code ——
+           工具页那条链路才走工具自带的底模与 LoRA，首页只负责导流，不再"选中工具后
+           就地创作"（那条链路见 pickQuickTool 的旧实现：会把首页 composer 的默认底模
+           和工具的 LoRA 拼在一起）。链接还有个顺带好处：中键/右键能新标签打开。 -->
       <div
         v-if="quickTools.length"
         ref="quickGridEl"
@@ -581,16 +581,14 @@ useMediaAutoRefresh(() => Promise.all([
           :key="`quick-row-${rowIndex}`"
           class="quick-row"
         >
-          <button
+          <NuxtLink
             v-for="tool in row"
             :key="tool.key"
-            type="button"
             class="quick-chip"
             :class="{ active: isQuickToolActive(tool) }"
             :style="{ '--tint': tool.tint }"
-            :aria-pressed="isQuickToolActive(tool)"
+            :to="tool.to"
             :aria-describedby="tool.summary ? `quick-summary-${tool.key.replace('tool:', '')}` : undefined"
-            @click="pickQuickTool(tool)"
             @mouseenter="openQuickPop($event, tool)"
             @mouseleave="closeQuickPop"
             @focus="openQuickPop($event, tool)"
@@ -613,7 +611,7 @@ useMediaAutoRefresh(() => Promise.all([
               />
             </span>
             <span class="quick-name">{{ tool.label }}</span>
-          </button>
+          </NuxtLink>
 
           <!-- 跳转格跟最后一排一起居中（不足一排时也居中，正是当初不用 grid 的原因）。 -->
           <NuxtLink

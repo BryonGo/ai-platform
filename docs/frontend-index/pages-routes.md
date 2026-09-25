@@ -18,11 +18,11 @@
   `exporting` L577 · `exportTask` L578 · `exportError` L579 · `extOf` L581 · `relPathOf` L594 · `runExport` L598 · `typeLabel` L632 · `isImage` L635 · `isVideo` L638 · `displayName` L643
   `dateText` L648 · `sizeText` L653 · `dimsOf` L660 · `onImgError` L664 · `onKeydown` L669
 
-### `/auth/login` — app/pages/auth/login.vue · 149 行
+### `/auth/login` — app/pages/auth/login.vue · 167 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
 - 用: `useTurnstile` · `useHougongApi`
 
-### `/auth/register` — app/pages/auth/register.vue · 198 行
+### `/auth/register` — app/pages/auth/register.vue · 216 行
 注册：契约对齐 /api/v1/account/auth/register
 - 用: `useTurnstile` · `useHougongApi`
 
@@ -72,18 +72,17 @@
 对话创作页（/create）
 - 本文件声明 8 个: `streamRef` L8 · `historyOpen` L9 · `pinned` L10 · `sessionTitle` L12 · `resultTotal` L14 · `scrollToBottom` L16 · `onJumpLatest` L25 · `onScroll` L30
 
-### `/effects` — app/pages/effects.vue · 367 行
+### `/effects` — app/pages/effects.vue · 369 行
 vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
-- 用: `useToolCatalog`
-- 本文件声明 7 个: `tab` L24 · `tools` L26 · `isOption` L56 · `effects` L60 · `inTab` L98 · `counts` L101 · `shown` L112
+- 本文件声明 7 个: `tab` L26 · `tools` L28 · `isOption` L58 · `effects` L62 · `inTab` L100 · `counts` L103 · `shown` L114
 
-### `/` — app/pages/index.vue · 1589 行
-- 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft` · `useToolCatalog`
-- 本文件声明 41 个: `notice` L27 · `toolCards` L64 · `quickTools` L95 · `quickRows` L108 · `hoverTool` L111 · `quickGridEl` L119 · `quickPopEl` L120 · `quickPopStyle` L121 · `placeQuickPop` L136
-  `openQuickPop` L159 · `closeQuickPop` L168 · `onQuickPopResize` L174 · `isQuickToolActive` L179 · `selectedToolCard` L191 · `pickQuickTool` L198 · `runningWorks` L204 · `loggedIn` L214
-  `continueItems` L258 · `continueLoading` L259 · `relativeTime` L261 · `submitLanding` L300 · `loadContinue` L345 · `exploreCategory` L398 · `exploreItems` L399 · `explorePage` L400
-  `exploreLoading` L401 · `exploreDone` L402 · `exploreError` L403 · `exploreReady` L404 · `sentinel` L405 · `loadExplore` L420 · `switchCategory` L470 · `exploreVisible` L475 · `remixWork` L494
-  `previewOpen` L502 · `previewSrc` L503 · `previewTitle` L504 · `previewAuthor` L505 · `previewKind` L507 · `openPreview` L509 · `openContinuePreview` L518
+### `/` — app/pages/index.vue · 1591 行
+- 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft`
+- 本文件声明 41 个: `notice` L27 · `toolCards` L66 · `quickTools` L97 · `quickRows` L110 · `hoverTool` L113 · `quickGridEl` L121 · `quickPopEl` L122 · `quickPopStyle` L123 · `placeQuickPop` L138
+  `openQuickPop` L161 · `closeQuickPop` L170 · `onQuickPopResize` L176 · `isQuickToolActive` L181 · `selectedToolCard` L193 · `pickQuickTool` L200 · `runningWorks` L206 · `loggedIn` L216
+  `continueItems` L260 · `continueLoading` L261 · `relativeTime` L263 · `submitLanding` L302 · `loadContinue` L347 · `exploreCategory` L400 · `exploreItems` L401 · `explorePage` L402
+  `exploreLoading` L403 · `exploreDone` L404 · `exploreError` L405 · `exploreReady` L406 · `sentinel` L407 · `loadExplore` L422 · `switchCategory` L472 · `exploreVisible` L477 · `remixWork` L496
+  `previewOpen` L504 · `previewSrc` L505 · `previewTitle` L506 · `previewAuthor` L507 · `previewKind` L509 · `openPreview` L511 · `openContinuePreview` L520
 
 ### `/notifications` — app/pages/notifications.vue · 203 行
 - 用: `useHougongApi`
@@ -104,15 +103,15 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
 ### `/stories` — app/pages/stories/index.vue · 88 行
 - 用: `useHougongApi`
 
-### `/tool/:code` — app/pages/tool/[code].vue · 1118 行
+### `/tool/:code` — app/pages/tool/[code].vue · 1139 行
 单个创作工具页（/tool/:code）
-- 用: `useHougongApi` · `useToolCatalog`
-- 本文件声明 59 个: `code` L21 · `tool` L24 · `templates` L25 · `template` L26 · `toolMissing` L27 · `emptySlot` L36 · `uploading` L40 · `prompt` L41 · `inputKind` L42 · `needsImage` L43 · `isPair` L44
-  `isVideoPair` L46 · `isMask` L48 · `isCharacter` L50 · `characters` L51 · `characterId` L52 · `slotCount` L54 · `filledSlots` L55 · `maskCanvas` L64 · `setMaskCanvas` L66 · `brushSize` L71
-  `hasStroke` L72 · `canSubmit` L76 · `runs` L103 · `busy` L104 · `notice` L105 · `sourceUrl` L107 · `latest` L109 · `savedIds` L120 · `savingIds` L121 · `allOutputsSaved` L124
-  `anyOutputSaving` L128 · `saveOutputs` L138 · `templateCover` L163 · `templateCoverBefore` L165 · `demoVideo` L176 · `demo` L191 · `demoAlt` L200 · `restriction` L206 · `slotLabel` L214
-  `cost` L224 · `onPick` L226 · `setFile` L234 · `clearFile` L243 · `syncMaskCanvas` L256 · `resetMask` L279 · `pointOf` L288 · `strokeTo` L298 · `onMaskDown` L317 · `onMaskMove` L327
-  `onMaskUp` L334 · `exportMask` L340 · `swapSlots` L358 · `submit` L364 · `poll` L429 · `resolveOutputs` L452 · `isVideoUrl` L473 · `outputLabel` L479 · `download` L488
+- 用: `useHougongApi` · `useAuthDialog`
+- 本文件声明 60 个: `code` L25 · `tool` L28 · `templates` L29 · `pickTemplate` L36 · `template` L42 · `toolMissing` L43 · `emptySlot` L52 · `uploading` L56 · `prompt` L57 · `inputKind` L58
+  `needsImage` L59 · `isPair` L60 · `isVideoPair` L62 · `isMask` L64 · `isCharacter` L66 · `characters` L67 · `characterId` L68 · `slotCount` L70 · `filledSlots` L71 · `maskCanvas` L80
+  `setMaskCanvas` L82 · `brushSize` L87 · `hasStroke` L88 · `canSubmit` L92 · `runs` L119 · `busy` L120 · `notice` L121 · `sourceUrl` L123 · `latest` L125 · `savedIds` L136 · `savingIds` L137
+  `allOutputsSaved` L140 · `anyOutputSaving` L144 · `saveOutputs` L154 · `templateCover` L179 · `templateCoverBefore` L181 · `demoVideo` L192 · `demo` L207 · `demoAlt` L216 · `restriction` L222
+  `slotLabel` L230 · `cost` L240 · `onPick` L242 · `setFile` L250 · `clearFile` L259 · `syncMaskCanvas` L272 · `resetMask` L295 · `pointOf` L304 · `strokeTo` L314 · `onMaskDown` L333
+  `onMaskMove` L343 · `onMaskUp` L350 · `exportMask` L356 · `swapSlots` L374 · `submit` L380 · `poll` L453 · `resolveOutputs` L476 · `isVideoUrl` L497 · `outputLabel` L503 · `download` L512
 
 ### `/tv` — app/pages/tv.vue · 255 行
 - 用: `useHougongApi`
@@ -136,12 +135,12 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 915 行
+- `app/app.vue` · 916 行
   - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
     `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
     `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 915 行
+- `app/App.vue` · 916 行
   - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
     `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
     `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
