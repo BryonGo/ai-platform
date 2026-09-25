@@ -341,6 +341,9 @@
 ## app/composables/useSafeUrl.ts
 - 导出函数/常量：`safeHref(url: string | undefined | null): string | undefined` L6
 
+## app/composables/useTaskNotifier.ts
+- 导出函数/常量：`useTaskNotifier()` L133 — 对外：toasts 供渲染层消费，dismissToast 供点掉
+
 ## app/composables/useToolCatalog.ts
 - 导出函数/常量：`useToolCatalog()` L59 · `useToolCatalogSsr(): Promise<ReturnType<typeof useToolCatalog>>` L142 — 公开工具目录的 SSR 预取
 - 导出类型 2 个 → 字段见 `types.md`（`ToolTemplate` · `ToolItem`）

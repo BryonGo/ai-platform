@@ -2385,6 +2385,37 @@ textarea:focus-visible {
 .turnstile-retry:focus-visible { outline: 2px solid #f38bce; outline-offset: 2px; }
 .turnstile-retry:disabled { opacity: .6; cursor: wait; }
 
+/* 生成任务完成/失败的全局轻提示（useTaskNotifier）：右下角胶囊堆栈，点一下即消 */
+.hg-task-toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80; /* 盖过普通内容与弹层底，但低于年龄门/升级横幅 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.hg-task-toast {
+  pointer-events: auto;
+  max-width: min(320px, calc(100vw - 36px));
+  border: 1px solid rgb(232 50 176 / 55%);
+  border-radius: 999px;
+  padding: 9px 16px;
+  background: #1b1520;
+  color: #f0e6ee;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 45%);
+}
+.hg-task-toast.is-fail { border-color: rgb(232 76 76 / 65%); color: #ffd9d9; }
+.hg-task-toast:hover { background: #241a2b; }
+.hg-task-toast:focus-visible { outline: 2px solid #e832b0; outline-offset: 2px; }
+
 .empty-state {
   padding: 90px 20px;
   color: #77787d;

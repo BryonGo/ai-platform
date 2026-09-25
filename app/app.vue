@@ -30,6 +30,8 @@ const {
   load: loadVersions
 } = useAppVersions()
 const { open: authOpen, openDialog } = useAuthDialog()
+/* 生成任务的全局轻提示：完成/失败时右下角弹条（轮询为主 + SSE 加速，详见 useTaskNotifier） */
+const { toasts: taskToasts, dismissToast: dismissTaskToast } = useTaskNotifier()
 
 /* 品牌徽标：从品牌母版裁出的狐狸头像（public/mock/home/emblem.png）。
    用绑定而不是静态 src，避免 Vite 把 public 路径当模块解析。 */
@@ -577,6 +579,24 @@ watch(() => route.fullPath, () => {
       </div>
 
       <HgAuthDialog v-model:open="authOpen" />
+
+      <!-- 生成任务完成/失败的全局轻提示：右下角胶囊堆栈，点一下即消（详见 useTaskNotifier） -->
+      <div
+        v-if="taskToasts.length"
+        class="hg-task-toasts"
+        aria-live="polite"
+      >
+        <button
+          v-for="t in taskToasts"
+          :key="t.id"
+          type="button"
+          class="hg-task-toast"
+          :class="t.kind === 'ok' ? 'is-ok' : 'is-fail'"
+          @click="dismissTaskToast(t.id)"
+        >
+          {{ t.text }}
+        </button>
+      </div>
 
       <!-- 站点 18+ 年龄门：服务端说需要过门且本浏览器未过时遮住整页。
            挂在应用壳最外层，任何页面（含直接深链进入）都拦得住。 -->
