@@ -26,9 +26,9 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 
 | 想看什么 | 文件 | 行数 |
 | --- | --- | --- |
-| 组合式函数方法索引（最重要） | `docs/frontend-index/composables.md` | 389 |
+| 组合式函数方法索引（最重要） | `docs/frontend-index/composables.md` | 391 |
 | 组件契约 props/emits | `docs/frontend-index/components.md` | 278 |
-| 页面与路由 | `docs/frontend-index/pages-routes.md` | 212 |
+| 页面与路由 | `docs/frontend-index/pages-routes.md` | 216 |
 | 类型与字段 | `docs/frontend-index/types.md` | 189 |
 | 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 188 |
 
@@ -38,7 +38,7 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 | --- | --- |
 | `app/pages/canvas/index.vue` | 2796 |
 | `app/pages/assets/index.vue` | 2010 |
-| `app/composables/useHougongApi.ts` | 1870 |
+| `app/composables/useHougongApi.ts` | 1905 |
 | `app/composables/useChatStudio.ts` | 1501 |
 | `app/components/HgChatComposer.vue` | 1144 |
 | `app/pages/index.vue` | 1142 |

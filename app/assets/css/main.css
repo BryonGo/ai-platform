@@ -2342,6 +2342,39 @@ textarea:focus-visible {
   color: #ff8a80;
   font-size: 12px;
 }
+/* 表单内的非错误提示（如「验证码已发送」）：用中性偏绿，避免与错误红混淆 */
+.form-notice {
+  margin-top: 14px;
+  color: #8fd3a0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+/* 链接外观的按钮（如「重新输入邮箱」）：与 .auth-foot a 的配色一致 */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+/* 字段下方靠右的辅助链接（如登录页「忘记密码？」） */
+.field-aside {
+  margin: -4px 0 2px;
+  text-align: right;
+  font-size: 12px;
+}
+.field-aside a {
+  color: var(--amber-soft);
+  text-decoration: none;
+}
+.field-aside a:hover {
+  text-decoration: underline;
+}
 .turnstile-note {
   margin-top: 16px;
   color: #5c5d63;

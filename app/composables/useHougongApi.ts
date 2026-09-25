@@ -1026,6 +1026,39 @@ export function useHougongApi() {
     return data
   }
 
+  // 发送邮箱验证码（找回密码用；字段对齐 /account/auth/code）。
+  //
+  // 契约：POST /account/auth/code，body { email }；站点把验证方式配成 turnstile/both 时
+  // 后端要求带 cf-turnstile-response（见 UserCodeSendReq.TurnstileToken），因此这里与
+  // login/register 同一套：有 token 才带。返回体为空，成功与否看是否抛错。
+  async function sendAuthCode(email: string, turnstileToken?: string): Promise<void> {
+    await apiRequest('/account/auth/code', {
+      method: 'POST',
+      body: {
+        email,
+        ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {})
+      }
+    })
+  }
+
+  // 用邮箱验证码重置密码（字段对齐 /account/auth/reset-pwd）。
+  //
+  // 契约：POST /account/auth/reset-pwd，body { email, code, new_password }；
+  // 后端会校验验证码有效期（Redis 5 分钟）与密码强度（≥8 位含字母与数字），
+  // 校验失败的 errorKey 由 useApi 文案表统一转成中文。
+  async function resetPassword(
+    input: { email: string, code: string, newPassword: string }
+  ): Promise<void> {
+    await apiRequest('/account/auth/reset-pwd', {
+      method: 'POST',
+      body: {
+        email: input.email,
+        code: input.code,
+        new_password: input.newPassword
+      }
+    })
+  }
+
   /** 当前账号信息（用户名/邮箱/展示名）。 */
   async function getProfile(): Promise<ProfileInfo> {
     return apiRequest<ProfileInfo>('/account/profile')
@@ -1758,6 +1791,8 @@ export function useHougongApi() {
   return {
     login,
     register,
+    sendAuthCode,
+    resetPassword,
     getProfile,
     updateUsername,
     logout,

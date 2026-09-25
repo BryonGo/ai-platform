@@ -51,7 +51,11 @@
 ### `/assets/trash` — app/pages/assets/trash.vue · 9 行
 回收站（/assets/trash）—— 与 /assets 同一个资产库组件，页签由地址决定
 
-### `/auth/login` — app/pages/auth/login.vue · 167 行
+### `/auth/forgot` — app/pages/auth/forgot.vue · 292 行
+找回密码：契约对齐 go-sdk /api/v1/account/auth/code（发码）与 /account/auth/reset-pwd（重置）
+- 用: `useTurnstile` · `useHougongApi`
+
+### `/auth/login` — app/pages/auth/login.vue · 171 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
 - 用: `useTurnstile` · `useHougongApi`
 

@@ -97,6 +97,10 @@ async function submit() {
         >
       </label>
 
+      <p class="field-aside">
+        <NuxtLink to="/auth/forgot">忘记密码？</NuxtLink>
+      </p>
+
       <p
         v-if="error"
         class="form-error"
