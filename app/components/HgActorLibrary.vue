@@ -26,6 +26,8 @@ const session = useAuthSession()
  */
 const props = withDefaults(defineProps<{ source?: ActorSource }>(), { source: 'platform' })
 const source = computed(() => props.source)
+/** 平台演员接口需要登录（匿名会 401）：未登录时不发请求，页面给出登录提示。 */
+const loggedIn = computed(() => !!session.token.value)
 
 const PAGE_SIZE = 24
 
@@ -133,6 +135,9 @@ function buildQuery(page: number): ActorListQuery {
 let seq = 0
 
 async function loadPlatform(page = 1) {
+  // 平台演员接口需要登录：匿名直接请求会换回 401（控制台报错）。这里不发。
+  await session.load()
+  if (!loggedIn.value) return
   const mine = ++seq
   platform.loading = true
   platform.error = ''
@@ -642,7 +647,15 @@ useMediaAutoRefresh(() => {
       </div>
 
       <p
-        v-if="platform.error"
+        v-if="!loggedIn"
+        class="actor-state"
+        role="status"
+      >
+        登录后可以浏览平台演员库。
+      </p>
+
+      <p
+        v-else-if="platform.error"
         class="actor-state actor-state--error"
         role="alert"
       >

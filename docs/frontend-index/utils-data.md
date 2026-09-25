@@ -38,12 +38,12 @@
 - `actorShowsGeneration(actor: { generationStatus?: string }): boolean` L677 — 列表卡片是否要显示生成状态角标
 - `normalizeCharacterItem(raw: unknown): CharacterItem` L688 — 用户角色行归一化
 - `normalizeCharacterVoices(raw: unknown): ActorVoice[]` L710 — 角色音色归一化：后端下发的 `voice` 可能是数组（当前实现）也可能是单个对象， 统一成 `ActorVoice[]`，展示层只管第一条有没有可播 URL
-- `const ACTOR_GALLERY_BLOCKS = [` L732 — 详情画廊三块（对齐参考站：肖像 / 表情 / 转身）
-- `const ACTOR_GALLERY_ASPECT = '356 / 302'` L739 — 画廊整体宽高比（参考站 356×302）
-- `actorGalleryBlocks(media?: ActorMedia | null): ActorGalleryBlock[]` L756 — 一份媒体集合 → 画廊三块（各自回退，互不顶替）
-- `actorMediaForOutfit(detail: { media?: ActorMedia | null, outfits?: ActorOutfit[] | null } | null | undefined, outfitId: string): ActorMedia` L779 — 当前生效的媒体集合
-- `actorVoiceState(voice?: ActorVoice | ActorVoice[] | null): ActorVoiceState` L799 — 音色归一：接受单个对象或数组
-- `actorStripCandidates(items: ActorItem[] | null | undefined, currentId: string, limit = 12): ActorItem[]` L815 — 「切换演员」条的候选：**排除当前演员**，最多 limit 个
+- `const ACTOR_GALLERY_BLOCKS = [` L735 — 详情画廊三块（对齐参考站：肖像 / 表情 / 转身）
+- `const ACTOR_GALLERY_ASPECT = '356 / 302'` L742 — 画廊整体宽高比（参考站 356×302）
+- `actorGalleryBlocks(media?: ActorMedia | null): ActorGalleryBlock[]` L759 — 一份媒体集合 → 画廊三块（各自回退，互不顶替）
+- `actorMediaForOutfit(detail: { media?: ActorMedia | null, outfits?: ActorOutfit[] | null } | null | undefined, outfitId: string): ActorMedia` L782 — 当前生效的媒体集合
+- `actorVoiceState(voice?: ActorVoice | ActorVoice[] | null): ActorVoiceState` L802 — 音色归一：接受单个对象或数组
+- `actorStripCandidates(items: ActorItem[] | null | undefined, currentId: string, limit = 12): ActorItem[]` L818 — 「切换演员」条的候选：**排除当前演员**，最多 limit 个
 
 ## app/utils/image-ref.ts
 - `const IMAGEREF_ID_PREFIX = 'imageref:'` L22 — chip 快照 id 前缀：`imageref:<index>`（index 从 1 开始，与图条顺序一致）
@@ -59,6 +59,29 @@
 ## app/utils/password.ts
 - `const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/` L6 — 密码强度基线：与后端同一口径（≥8 位且同时含字母与数字）
 - `const PASSWORD_HINT = '至少 8 位，且需同时包含字母与数字'` L7
+
+## app/utils/routes.ts
+- `normalizePath(path: string): string` L8 — 去掉结尾斜杠（保留根路径），同时剥掉 query / hash
+- `queryValue(value: unknown): string` L16 — query 值统一取字符串（数组取第一个
+- `cleanQuery(query: Record<string, unknown> | undefined): Record<string, string>` L22 — 只保留非空的字符串 query（重定向时把无关/空参数丢掉，链接保持干净）
+- `effectTabFromPath(path: string): EffectTab` L42 — 效果页 path → 页签
+- `effectPath(tab: EffectTab): string` L50 — 页签 → 效果页 path（页签即地址，切页签必须换 URL）
+- `walletSectionFromPath(path: string): WalletSection` L59 — 钱包 path → 区块
+- `walletPath(section: WalletSection): string` L68
+- `assetPaneFromPath(path: string): AssetPane` L79 — 资产 path → 页签（演员不再属于资产，没有 actors 页签）
+- `assetPath(pane: AssetPane): string` L86
+- `actorSourceFromPath(path: string): ActorSource` L95 — 演员库 path → 来源（/actors = 平台，/actors/mine = 我的）
+- `actorSourcePath(source: ActorSource): string` L99
+- `myActorPath(id: string | number): string` L104 — 我的演员详情 / 编辑 / 生成 run 的地址（id 全按字符串，避免雪花 id 精度坑）
+- `myActorEditPath(id: string | number): string` L108
+- `myActorGenerationPath(id: string | number, runId: string | number): string` L112
+- `const EXPLORE_CATEGORY_SLUGS = [` L118
+- `const DEFAULT_EXPLORE_SLUG: ExploreSlug = 'recommend'` L127
+- `exploreSlugOf(label: string): ExploreSlug | ''` L130 — 中文分类标签 → slug
+- `exploreLabelOf(slug: string): string` L136 — slug → 中文标签
+- `isExploreSlug(slug: string): slug is ExploreSlug` L142 — 是否为合法探索 slug
+- `searchPath(keyword: string): string` L149 — 搜索地址：词为空时就是 `/search`（不写空 q=）
+- `legacyRedirect(pathname: string, query?: Record<string, unknown>): RouteTarget | null` L166 — 旧 URL 的新地址
 
 ## app/utils/work-feed.ts
 - `toExploreWork(work: PublicationWork): ExploreWork` L16 — 后端作品 → 前台展示结构

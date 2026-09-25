@@ -18,6 +18,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/minimap/dist/style.css'
+import { legacyRedirect } from '~/utils/routes'
 
 import type {
   CanvasArtifact,
@@ -86,6 +87,13 @@ const router = useRouter()
 const ownerType = computed(() => String(route.query.ownerType || '').trim())
 const ownerId = computed(() => String(route.query.ownerId || '').trim())
 const ownerQuery = computed(() => ({ type: ownerType.value, id: ownerId.value }))
+
+// 旧 `/canvas?id=<id>` 永久重定向到 `/canvas/<id>`（ownerType/ownerId 原样保留）。
+const legacy = legacyRedirect(route.path, route.query)
+if (legacy) await navigateTo(legacy, { redirectCode: 301 })
+
+/** 地址里的图 id（/canvas/:graphId）；`/canvas` 无 id 时沿用「最近编辑的那张」。 */
+const graphIdFromRoute = computed(() => String(route.params.graphId || ''))
 
 const graph = ref<CanvasGraph>(emptyCanvas().graph)
 const savedGraph = ref<CanvasGraph>(JSON.parse(JSON.stringify(graph.value)))
@@ -214,9 +222,10 @@ async function refreshMyGraphs(): Promise<void> {
 
 /** 就地切到另一张图（不整页刷新，避免丢掉画布缩放/滚动这些状态）。 */
 async function switchGraph(id: string): Promise<void> {
-  if (!id || id === String(route.query.id || '')) return
+  if (!id || id === graphIdFromRoute.value) return
   await loadFromServer(id)
-  void router.replace({ query: { ...route.query, id } })
+  // 切图 = 换地址：可刷新/分享/后退回到同一张。
+  void router.replace({ path: `/canvas/${encodeURIComponent(id)}`, query: { ...route.query } })
 }
 
 /** 去「我的画布」列表页（管理全部：搜索/改名/删除）。 */
@@ -1436,13 +1445,8 @@ async function loadFromServer(id?: string): Promise<void> {
     graphTitle.value = view.summary.title || '未命名图'
     replaceCanvas({ graph: view.graph, artifacts: view.artifacts, runs: view.runs })
     await refreshPlan(view.graph)
-    // 把"在看哪张图"写回 URL：刷新、发给别人、回退都落到同一张
-    // （不然刷新一下又回到"最近那张"，看起来就像图丢了）
-    const currentID = String(route.query.id || '')
-    if (currentID !== graphId.value) {
-      const query = { ...route.query, id: graphId.value }
-      history.replaceState(history.state, '', `${route.path}?${new URLSearchParams(query as Record<string, string>).toString()}`)
-    }
+    // 「在看哪张图」由 /canvas/:graphId 这个地址表达；`/canvas` 保留"最近一张"的入口语义，
+    // 不在这里改地址（避免整页组件重挂，打断正在跑的任务流）。
     showToast(`已载入「${graphTitle.value}」`)
   } catch (err) {
     loadError.value = `载入失败：${errText(err)}`
@@ -2292,9 +2296,9 @@ onMounted(async () => {
   window.setTimeout(() => fitView({ padding: 0.16, maxZoom: 0.86, minZoom: 0.4 }), 700)
   // 载入服务端最近编辑的那张图（没有就留空白图）。
   // 未登录时接口会失败，前端只提示一次、把画布留空 —— 不拿示例数据兜底。
-  // URL 上带了 ?id= 就打开那一张（旧图、别人发来的图都要能打开）——
+  // 地址带 /canvas/:graphId 就打开那一张（旧 ?id= 已在 setup 里 301 到 path）——
   // 以前只认"最近编辑的那张"，于是"我另一张图看不到、也没入口打开"（用户 2026-09-19）。
-  void loadFromServer(typeof route.query.id === 'string' ? route.query.id : undefined)
+  void loadFromServer(graphIdFromRoute.value || undefined)
   // 任务完成/失败由事件流推送 → 刷新整图（异步产物只有这样才会自己冒出来）。
   void watchEvents()
   // 模板先拉一次：等用户点「新建」时才拉会白等一个来回。

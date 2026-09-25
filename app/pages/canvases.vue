@@ -75,7 +75,7 @@ function goPage(delta: number): void {
 }
 
 function open(id: string): void {
-  void navigateTo(`/canvas?id=${encodeURIComponent(id)}`)
+  void navigateTo(`/canvas/${encodeURIComponent(id)}`)
 }
 
 function startRename(row: Row): void {
@@ -104,7 +104,7 @@ async function duplicate(row: Row): Promise<void> {
   try {
     const { graph } = await canvasApi.duplicateGraph(row.id)
     await load()
-    if (graph?.id) void navigateTo(`/canvas?id=${encodeURIComponent(String(graph.id))}`)
+    if (graph?.id) void navigateTo(`/canvas/${encodeURIComponent(String(graph.id))}`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '复制失败'
   } finally {

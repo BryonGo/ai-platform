@@ -2,12 +2,12 @@
 import { FEATURES } from '~/config/features'
 
 const route = useRoute()
-// 分区导航。角色资产按 FEATURES.characterAssets 决定是否出现：入口撤下、功能保留
-// （直接访问 /characters 仍可用，详见 config/features.ts）。
+// 分区导航。演员库按 FEATURES.characterAssets 决定是否出现：入口撤下、功能保留
+// （旧 /characters 会 301 到 /actors/mine，详见 config/features.ts 与路由设计文档）。
 // 第三个分区统一叫「我的发布」—— 侧栏、面包屑、这里原先是三套叫法（作品/探索/我的发布）。
 const sections = [
   { to: '/assets', label: '素材', icon: 'i-lucide-images' },
-  { to: '/characters', label: '角色资产', icon: 'i-lucide-user-round', feature: 'characterAssets' as const },
+  { to: '/actors', label: '演员库', icon: 'i-lucide-user-round', feature: 'characterAssets' as const },
   { to: '/works', label: '我的发布', icon: 'i-lucide-film' }
 ].filter(item => !item.feature || FEATURES[item.feature])
 </script>

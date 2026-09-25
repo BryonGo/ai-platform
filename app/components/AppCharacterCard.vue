@@ -20,7 +20,7 @@ const cover = computed(() => props.character.coverUrl || props.character.image |
 
 <template>
   <NuxtLink
-    :to="`/characters/${character.id}`"
+    :to="`/actors/mine/${character.id}`"
     class="story-card character-card"
   >
     <template v-if="cover">

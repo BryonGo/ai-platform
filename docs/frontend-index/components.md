@@ -16,7 +16,7 @@
 
 ### AppCharacterForm — app/components/AppCharacterForm.vue · 841 行
 角色表单（新建 / 编辑共用），**视觉优先**： 第一屏 = 角色源图（必选）+ 角色名 + 成年确认
-- props: `initial?` · `submitting?` · `serverError?` · `submitLabel?` · `editMode?` · `cancelTo?`='/assets?pane=actors'(取消后回到哪里（默认回演员区，不再跳旧的 /characters 列表）)
+- props: `initial?` · `submitting?` · `serverError?` · `submitLabel?` · `editMode?` · `cancelTo?`='/actors'(取消后回到哪里（默认回平台演员库，不再跳旧的 /characters / ?pane=actors）)
 - emits: `submit` · 用: `useHougongApi`
 - 本文件声明 28 个: `sourceAssetId` L76 · `sourceUrl` L77 · `sourceBusy` L78 · `sourceError` L79 · `pickerOpen` L80 · `fileInput` L81 · `facets` L84 · `facetsError` L85 · `newTrait` L87 · `localError` L88
   `singleOptions` L90 · `temperamentOptions` L95 · `optionsFor` L110 · `toggleTemperament` L117 · `loadFacets` L123 · `fill` L133 · `resolveSourceUrl` L161 · `uploadSource` L170 · `onFile` L196
@@ -110,7 +110,7 @@
   `graphs?`(我的图（最近更新在前）)
 - emits: `undo` · `redo` · `zoom-in` · `zoom-out` · `new` · `fit` · `arrange` · `save` · `run-all` · `switch-graph` · `open-graphs`
 
-### HgActorDetail — app/components/HgActorDetail.vue · 690 行
+### HgActorDetail — app/components/HgActorDetail.vue · 710 行
 平台演员详情（只读）
 - props: `id`
 - 用: `useHougongApi`
@@ -118,13 +118,13 @@
   `voice` L50 · `voiceEl` L51 · `voicePlaying` L52 · `tags` L55 · `generationLabel` L57 · `stripItems` L60 · `stripRef` L61 · `strip` L63 · `loadStrip` L65 · `nextStrip` L74 · `loadFacetLabels` L81
   `pauseVoice` L91 · `load` L96 · `pickOutfit` L120 · `outfitThumb` L127 · `downloadName` L135 · `toggleVoice` L139 · `onVoiceError` L151 · `toggleFavorite` L156 · `cloneToMine` L172
 
-### HgActorLibrary — app/components/HgActorLibrary.vue · 1057 行
-演员库 —— 挂在「资产」页里的一个页签（/assets?pane=actors）
-- props: —
+### HgActorLibrary — app/components/HgActorLibrary.vue · 1055 行
+演员库 —— 平台演员（/actors）与我的演员（/actors/mine）共用的组件，来源由路由决定
+- props: `source?`='platform'
 - 用: `useHougongApi`
-- 本文件声明 20 个: `sourceFromQuery` L27 · `source` L33 · `moreOpen` L72 · `favoriteBusy` L73 · `pageCount` L75 · `hasMoreFilters` L77 · `facetOptions` L84 · `showAll` L94 · `showRecent` L99
-  `isAllActive` L105 · `isRecentActive` L116 · `buildQuery` L122 · `loadPlatform` L147 · `toggleTemperament` L186 · `resetFilters` L192 · `toggleFavorite` L202 · `loadMine` L228 · `activate` L246
-  `removeMine` L255 · `cardMedia` L266
+- 本文件声明 20 个: `source` L28 · `loggedIn` L30 · `moreOpen` L62 · `favoriteBusy` L63 · `pageCount` L65 · `hasMoreFilters` L67 · `facetOptions` L74 · `showAll` L84 · `showRecent` L89 · `isAllActive` L95
+  `isRecentActive` L106 · `buildQuery` L112 · `loadPlatform` L137 · `toggleTemperament` L179 · `resetFilters` L185 · `toggleFavorite` L195 · `loadMine` L221 · `activate` L240 · `removeMine` L245
+  `cardMedia` L256
 
 ### HgAssetPanel — app/components/HgAssetPanel.vue · 466 行
 - props: —
@@ -183,6 +183,13 @@
 重复提交确认（参考图面板 03 / 交接文档 G3 第二层）
 - props: —
 - 用: `useChatStudio`
+
+### HgExploreFeed — app/components/HgExploreFeed.vue · 469 行
+探索灵感流 —— 首页区块（/）与独立探索页（/explore、/explore/:category）共用
+- props: `category?`='推荐', guestHint: false(当前分类（中文标签）) · `guestHint?`(未登录时是否显示登录提示（探索页 true)
+- 用: `useHougongApi`
+- 本文件声明 17 个: `loggedIn` L22 · `items` L24 · `page` L25 · `loading` L26 · `done` L27 · `error` L28 · `ready` L29 · `sentinel` L30 · `load` L37 · `visible` L81 · `remixWork` L89 · `previewOpen` L94
+  `previewSrc` L95 · `previewTitle` L96 · `previewAuthor` L97 · `previewKind` L98 · `openPreview` L100
 
 ### HgGenParams — app/components/HgGenParams.vue · 171 行
 生成参数面板（不含容器）：比例 / 清晰度 / 分辨率 / **模型支持的参数**

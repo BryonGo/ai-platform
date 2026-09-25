@@ -27,27 +27,27 @@ node scripts/gen-frontend-index.mjs --file HgImageRefPicker.vue
 | 想看什么 | 文件 | 行数 |
 | --- | --- | --- |
 | 组合式函数方法索引（最重要） | `docs/frontend-index/composables.md` | 386 |
-| 组件契约 props/emits | `docs/frontend-index/components.md` | 271 |
-| 页面与路由 | `docs/frontend-index/pages-routes.md` | 158 |
+| 组件契约 props/emits | `docs/frontend-index/components.md` | 278 |
+| 页面与路由 | `docs/frontend-index/pages-routes.md` | 212 |
 | 类型与字段 | `docs/frontend-index/types.md` | 189 |
-| 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 164 |
+| 工具函数与静态数据 | `docs/frontend-index/utils-data.md` | 187 |
 
 最大的源文件（整份读最贵，优先查上面的索引再定点读）：
 
 | 文件 | 行数 |
 | --- | --- |
-| `app/pages/canvas.vue` | 2792 |
-| `app/pages/assets.vue` | 2031 |
+| `app/pages/canvas/index.vue` | 2796 |
+| `app/pages/assets/index.vue` | 2002 |
 | `app/composables/useHougongApi.ts` | 1862 |
-| `app/pages/index.vue` | 1583 |
 | `app/composables/useChatStudio.ts` | 1501 |
 | `app/components/HgChatComposer.vue` | 1144 |
+| `app/pages/index.vue` | 1142 |
 | `app/pages/tool/[code].vue` | 1139 |
-| `app/components/HgActorLibrary.vue` | 1057 |
-| `app/pages/characters/[id].vue` | 1043 |
-| `app/pages/wallet.vue` | 999 |
-| `app/app.vue` | 916 |
+| `app/pages/actors/mine/[id]/index.vue` | 1061 |
+| `app/components/HgActorLibrary.vue` | 1055 |
+| `app/pages/wallet/index.vue` | 1021 |
 | `app/components/canvas/DetailPanel.vue` | 891 |
+| `app/components/AppCharacterForm.vue` | 841 |
 
 <!-- END GENERATED:hub -->
 

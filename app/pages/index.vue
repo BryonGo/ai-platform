@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import {
-  EXPLORE_CATEGORIES,
-  type ToolKind,
-  type ContinueItem,
-  type ExploreCategory,
-  type ExploreWork
-} from '~/data/hougong-home'
+import type { ToolKind, ContinueItem } from '~/data/hougong-home'
 import type { HougongTask, WorkItem } from '~/composables/useHougongApi'
 import { vAutoPlayVideo, videoFirstFrameSrc } from '~/composables/useAutoPlayVideo'
-import { toExploreWork } from '~/utils/work-feed'
 
 const hgApi = useHougongApi()
 const session = useAuthSession()
@@ -217,7 +210,6 @@ onMounted(() => {
   void studio.init({ withSessions: false }) // withSessions:false —— 首页不读会话/消息
   void toolCatalog.ensure()
   void loadContinue()
-  void loadExplore(true)
   window.addEventListener('resize', onQuickPopResize, { passive: true })
 })
 
@@ -235,17 +227,12 @@ watch(loggedIn, (value) => {
     continueItems.value = []
     runningWorks.value = 0
     continueLoading.value = false
-    exploreItems.value = []
-    exploreError.value = ''
-    exploreDone.value = true
     return
   }
   void loadContinue()
-  void loadExplore(true)
 })
 
 onBeforeUnmount(() => {
-  observer?.disconnect()
   window.removeEventListener('resize', onQuickPopResize)
 })
 
@@ -387,111 +374,6 @@ async function loadContinue() {
   }
 }
 
-/* ---------------- 探索灵感（无限滚动） ---------------- */
-
-// 探索作品**只有真实数据**：取数走后端 `listWorksFeed(scope=explore)`（全站已发布），
-// 没有 mock 条目、也不和示例作品混排 —— 取不到就整块不渲染（模板的 v-if 兜着）。
-const exploreCategory = ref<ExploreCategory>('推荐')
-const exploreItems = ref<ExploreWork[]>([])
-const explorePage = ref(1)
-const exploreLoading = ref(false)
-const exploreDone = ref(false)
-const exploreError = ref('')
-const exploreReady = ref(false)
-const sentinel = ref<HTMLElement | null>(null)
-let observer: IntersectionObserver | null = null
-// 请求令牌：切分类 / 重试会让在途请求作废，避免旧批次覆盖新列表
-let requestId = 0
-
-const PAGE_SIZE = 4
-
-/**
- * 后端作品 → 首页展示结构。
- *
- * 角标是**推导**出来的，不是后端字段：有互动量算「热门」，否则七天内的作品算「最新」，
- * 都没有就不打角标 —— 不打无意义的角标比硬凑一个诚实。
- * 时长角标这里给不出（作品摘要没有时长字段），留给真正带视频元数据的接口。
- */
-
-async function loadExplore(reset = false) {
-  // 未登录：整块不出现，也不发请求 —— 没有凭据的探索流只会换回 401，再被渲染成
-  // 「加载失败，请重试。」，对访客来说那是一句没有意义也没法照做的报错。
-  if (!loggedIn.value) return
-  if (reset) {
-    requestId += 1
-  } else if (exploreLoading.value || exploreDone.value || !exploreReady.value) {
-    return
-  }
-  const token = requestId
-  const targetPage = reset ? 1 : explorePage.value + 1
-  exploreLoading.value = true
-  exploreError.value = ''
-  if (reset) {
-    explorePage.value = 1
-    exploreDone.value = false
-    exploreItems.value = []
-  }
-  try {
-    const { items, total } = await hgApi.listWorksFeed(targetPage, PAGE_SIZE, 'explore')
-    if (token !== requestId) return
-    const batch = items.map(toExploreWork)
-    exploreItems.value = targetPage === 1 ? batch : [...exploreItems.value, ...batch]
-    explorePage.value = targetPage
-    // 「到底了」按接口给的 total 判断（只按 items.length 判断会在整页边界漏判）
-    if (!batch.length || exploreItems.value.length >= total || exploreItems.value.length >= PAGE_SIZE * 8) {
-      exploreDone.value = true
-    }
-    // 全站还没有已发布作品（或首次请求失败）时**如实为空**，不再塞 EXPLORE_FIRST_BATCH。
-    // 示例条目会让"探索流是空的"看起来像"有内容"，而这恰恰是运营最该看到的信号。
-    exploreDone.value = true
-  } catch {
-    if (token === requestId) {
-      exploreError.value = '加载失败，请重试。'
-      exploreItems.value = []
-      exploreDone.value = true
-    }
-  } finally {
-    if (token === requestId) {
-      exploreLoading.value = false
-      exploreReady.value = true
-    }
-  }
-}
-
-/**
- * 分类切换：**只筛已加载的内容，不重新取数**。
- * 后端 explore 流只支持 scope/page/pageSize，没有分类/标签参数，重新请求拿到的还是同一批；
- * 假装"服务端按分类过滤"只会让用户以为筛过了。真正的服务端筛选需要后端给 feed 加 tag 参数。
- */
-function switchCategory(category: ExploreCategory) {
-  exploreCategory.value = category
-}
-
-/** 展示用列表：分类按标签名匹配（「推荐」= 全部）。 */
-const exploreVisible = computed(() => {
-  if (exploreCategory.value === '推荐') return exploreItems.value
-  const target = exploreCategory.value
-  return exploreItems.value.filter(item =>
-    item.category === target || item.tags?.some(tag => tag === target)
-  )
-})
-
-onMounted(() => {
-  if (!sentinel.value) return
-  observer = new IntersectionObserver((entries) => {
-    // 首屏加载完成前不触发追加，避免空列表时哨兵可见导致第一批被跳过
-    if (entries.some(entry => entry.isIntersecting) && exploreReady.value && !exploreDone.value && !exploreError.value) {
-      void loadExplore()
-    }
-  }, { rootMargin: '240px' })
-  observer.observe(sentinel.value)
-})
-
-function remixWork(work: ExploreWork) {
-  // 作品流里已经没有 mock 条目（一律来自后端「全站已发布」），不必再分叉提示。
-  navigateTo(`/create?remix=${encodeURIComponent(work.id)}`)
-}
-
 /* ---------------- 完整预览 ---------------- */
 
 // 单击结果只预览，不改变下一步对象（设计说明 §4 对话页与 §6.2 完整预览）
@@ -501,15 +383,6 @@ const previewTitle = ref('')
 const previewAuthor = ref('')
 /** 预览的媒体类型：视频要用 <video> 播（HgMediaPreview 的 kind 分支）。 */
 const previewKind = ref<'image' | 'video'>('image')
-
-function openPreview(work: ExploreWork) {
-  // 视频作品没有封面图，要播的是 videoUrl —— 拿 cover 去预览只会是空白
-  previewKind.value = work.kind === 'video' ? 'video' : 'image'
-  previewSrc.value = work.kind === 'video' ? (work.videoUrl || '') : work.cover
-  previewTitle.value = work.title
-  previewAuthor.value = work.author
-  previewOpen.value = true
-}
 
 function openContinuePreview(item: ContinueItem) {
   previewKind.value = item.kind === 'video' ? 'video' : 'image'
@@ -527,7 +400,6 @@ function openContinuePreview(item: ContinueItem) {
  */
 useMediaAutoRefresh(() => Promise.all([
   loadContinue(),
-  loadExplore(true),
   toolCatalog.refresh()
 ]))
 </script>
@@ -807,163 +679,8 @@ useMediaAutoRefresh(() => Promise.all([
       </div>
     </section>
 
-    <!-- 探索灵感 -->
-    <section
-      v-if="loggedIn && (exploreItems.length || exploreError)"
-      id="explore"
-      class="section"
-      aria-labelledby="explore-title"
-    >
-      <header class="hg-section-head">
-        <h2 id="explore-title">
-          探索灵感
-        </h2>
-        <button
-          type="button"
-          class="hg-more"
-          :disabled="exploreLoading || exploreDone"
-          @click="loadExplore()"
-        >
-          {{ exploreDone ? '已经到底了' : (exploreLoading ? '加载中…' : '加载更多') }}
-          <UIcon
-            name="i-lucide-arrow-down"
-            aria-hidden="true"
-          />
-        </button>
-      </header>
-
-      <div
-        class="explore-tabs"
-        role="tablist"
-        aria-label="作品分类"
-      >
-        <button
-          v-for="category in EXPLORE_CATEGORIES"
-          :key="category"
-          type="button"
-          role="tab"
-          :aria-selected="exploreCategory === category"
-          :class="{ active: exploreCategory === category }"
-          @click="switchCategory(category)"
-        >
-          {{ category }}
-        </button>
-      </div>
-
-      <div class="explore-grid">
-        <article
-          v-for="work in exploreVisible"
-          :key="work.id"
-          class="hg-card explore-card"
-        >
-          <div class="hg-media r3x4">
-            <!-- 视频作品：进视口静音循环播（后端 kind=video 时才有 videoUrl）。
-                 首帧用 #t=0.1 垫着，自动播放被拒/还没进视口时也不是黑框。 -->
-            <video
-              v-if="work.kind === 'video' && work.videoUrl"
-              v-auto-play-video
-              class="media-fg"
-              :src="videoFirstFrameSrc(work.videoUrl)"
-              muted
-              loop
-              playsinline
-              preload="metadata"
-            />
-            <img
-              v-else-if="work.cover"
-              class="media-fg"
-              :src="work.cover"
-              :alt="work.title"
-              loading="lazy"
-            >
-            <span
-              v-if="work.badge && !work.badgeBaked"
-              class="hg-badge"
-            >{{ work.badge }}</span>
-            <span
-              v-if="work.duration"
-              class="duration-badge"
-            >{{ work.duration }}</span>
-            <!-- 悬停操作蒙版渐显（交互图面板 01）；触摸端常显，不能只靠 hover 才能发现 -->
-            <div class="hg-actions">
-              <button
-                type="button"
-                class="action"
-                @click="openPreview(work)"
-              >
-                <UIcon
-                  name="i-lucide-eye"
-                  aria-hidden="true"
-                />预览
-              </button>
-              <button
-                type="button"
-                class="action"
-                @click="remixWork(work)"
-              >
-                <UIcon
-                  name="i-lucide-copy"
-                  aria-hidden="true"
-                />创作同款
-              </button>
-            </div>
-          </div>
-          <div class="card-foot column">
-            <strong class="explore-title">{{ work.title }}</strong>
-            <p
-              v-if="work.author"
-              class="explore-author"
-            >
-              <span
-                v-if="work.avatar"
-                class="author-avatar"
-              >
-                <img
-                  :src="work.avatar"
-                  alt=""
-                >
-              </span>
-              {{ work.author }}
-            </p>
-            <button
-              type="button"
-              class="remix-button"
-              @click="remixWork(work)"
-            >
-              <UIcon
-                name="i-lucide-copy"
-                aria-hidden="true"
-              />创作同款
-            </button>
-          </div>
-        </article>
-      </div>
-
-      <div
-        ref="sentinel"
-        class="explore-status"
-        role="status"
-      >
-        <span v-if="exploreLoading">正在加载更多作品…</span>
-        <button
-          v-else-if="exploreError"
-          type="button"
-          class="hg-more"
-          @click="loadExplore()"
-        >
-          {{ exploreError }} 点击重试
-        </button>
-        <span v-else-if="exploreDone">已经到底了。</span>
-        <button
-          v-else
-          type="button"
-          class="hg-more"
-          @click="loadExplore()"
-        >
-          加载更多
-        </button>
-      </div>
-    </section>
+    <!-- 探索灵感：抽成组件，首页与 /explore 共用一份取数；分类点击跳独立地址。 -->
+    <HgExploreFeed category="推荐" />
 
     <HgMediaPreview
       v-model:open="previewOpen"
@@ -1281,18 +998,7 @@ useMediaAutoRefresh(() => Promise.all([
   background: rgb(10 11 13 / 68%);
   color: #fff;
   font-size: 12px;
-}
-.duration-badge {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: rgb(10 11 13 / 72%);
-  color: #fff;
-  font-size: 10px;
-}
-.head-right {
+}.head-right {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1401,172 +1107,26 @@ useMediaAutoRefresh(() => Promise.all([
   color: var(--hg3-run);
 }
 
-.explore-tabs {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--hg3-line);
-}
-.explore-tabs button {
-  position: relative;
-  padding: 0 0 12px;
-  border: 0;
-  background: transparent;
-  color: var(--hg3-muted);
-  font-family: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-.explore-tabs button.active {
-  color: var(--hg3-ink);
-  font-weight: 600;
-}
-.explore-tabs button.active::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--hg3-accent);
-  content: '';
-}
-
-.explore-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-/* 悬停操作蒙版：渐显、不改变卡片外框（交互图面板 01）。
-   手机没有 hover，用 (hover: none) 常显，避免关键入口只能靠悬停发现。 */
-.hg-actions {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  padding: 26px 10px 12px;
-  background: linear-gradient(180deg, transparent, rgb(8 9 11 / 78%));
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-.hg-card:hover .hg-actions,
-.hg-card:focus-within .hg-actions {
-  opacity: 1;
-  transform: none;
-}
-@media (hover: none) {
-  .hg-actions {
-    opacity: 1;
-    transform: none;
-  }
-  .media-zoom {
-    opacity: 1;
-  }
-}
-.hg-actions .action {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 999px;
-  background: rgb(18 19 22 / 88%);
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.hg-actions .action:hover {
-  border-color: var(--hg3-accent-line);
-  color: var(--hg3-accent-hi);
-}
-.explore-title {
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.explore-author {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  color: var(--hg3-muted);
-  font-size: 12px;
-}
-.author-avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  overflow: hidden;
-}
-.author-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.remix-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 36px;
-  margin-top: 4px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--hg3-card-soft);
-  color: var(--hg3-ink);
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.remix-button:hover {
-  background: var(--hg3-tile);
-}
-
-.explore-status {
-  padding: 22px 0 6px;
-  color: var(--hg3-faint);
-  font-size: 12px;
-  text-align: center;
-}
-
+/* 一行 6 个的继续创作卡片：桌面端密度与探索流（4 列）拉开差异。 */
 @media (max-width: 900px) {
-  .explore-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
   .continue-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (max-width: 640px) {
   .home { padding-top: 95px; }
-  /* 手机端两列竖版封面 */
-  .explore-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .continue-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* 触屏：粗指针下没有 hover 也没有精确落点，28px / 24px 的角标按钮按不准
+/* 触屏：粗指针下没有 hover 也没有精确落点，28px 的预览入口按不准
    （WCAG 2.5.8 要求点击目标 ≥24px，Apple HIG 建议 44px）。这里放大到 34px，
-   图标本身不缩放，视觉重量不变；页签同时加高内边距，让整条更好按。 */
+   图标本身不缩放，视觉重量不变。 */
 @media (pointer: coarse) {
   .media-zoom {
     width: 34px;
     height: 34px;
-  }
-  .explore-tabs button {
-    padding: 6px 0 12px;
   }
 }
 
@@ -1574,8 +1134,7 @@ useMediaAutoRefresh(() => Promise.all([
 @media (prefers-reduced-motion: reduce) {
   .quick-chip,
   .quick-jump,
-  .media-zoom,
-  .hg-actions {
+  .media-zoom {
     transition: none;
   }
 }

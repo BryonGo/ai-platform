@@ -259,7 +259,7 @@ useMediaAutoRefresh(() => load())
         </h1>
         <NuxtLink
           v-if="owner"
-          :to="`/characters/${owner.id}`"
+          :to="`/actors/mine/${owner.id}`"
           class="detail-sub"
           style="text-decoration: none"
         >

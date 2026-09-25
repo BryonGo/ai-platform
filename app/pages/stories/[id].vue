@@ -481,7 +481,7 @@ useMediaAutoRefresh(() => load())
               <NuxtLink
                 v-for="cid in story.characterIds"
                 :key="cid"
-                :to="`/characters/${cid}`"
+                :to="`/actors/mine/${cid}`"
                 :title="charName(cid)"
               >
                 <span class="avatar-fallback">{{ charName(cid).slice(0, 1) }}</span>

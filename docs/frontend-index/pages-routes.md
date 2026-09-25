@@ -8,18 +8,48 @@
 ### `/actors/:id` — app/pages/actors/[id].vue · 18 行
 平台演员详情页（/actors/:id）
 
-### `/assets` — app/pages/assets.vue · 2031 行
+### `/actors` — app/pages/actors/index.vue · 22 行
+平台演员库（/actors）—— 独立的演员页面，不再是「资产」页里的一个页签
+
+### `/actors/mine/:id/edit` — app/pages/actors/mine/[id]/edit.vue · 135 行
+- 用: `useHougongApi`
+
+### `/actors/mine/:id/generation/:runId` — app/pages/actors/mine/[id]/generation/[runId].vue · 11 行
+生成 run 详情（/actors/mine/:id/generation/:runId）—— 与我的演员详情同一个页面组件， 只是详情页会优先按地址里的 …
+
+### `/actors/mine/:id` — app/pages/actors/mine/[id]/index.vue · 1061 行
+- 用: `useHougongApi`
+- 本文件声明 49 个: `character` L28 · `works` L29 · `loading` L30 · `error` L31 · `characterId` L33 · `runIdParam` L38 · `facetLabels` L41 · `loadFacetLabels` L43 · `taxonomyTags` L53 · `mediaSlots` L69
+  `voices` L75 · `voiceWithoutUrl` L77 · `showGeneration` L81 · `generationLabel` L82 · `toCard` L83 · `load` L87 · `coverBusy` L120 · `coverNote` L121 · `resetCover` L123 · `generationGate` L158
+  `isOwnCharacter` L168 · `sourceAssetId` L170 · `hasTaxonomy` L176 · `catalog` L179 · `catalogError` L180 · `imageModels` L183 · `selectedModelId` L186 · `selectedModel` L188 · `qualityOptions` L190
+  `selectedQuality` L191 · `priceLabel` L193 · `loadCatalog` L201 · `syncQuality` L217 · `run` L230 · `runBusy` L231 · `runError` L232 · `runNotice` L233 · `retryBusy` L234 · `stopPolling` L244
+  `schedulePoll` L252 · `poll` L263 · `shouldContinuePolling` L286 · `reloadCharacterData` L298 · `loadLatestRun` L308 · `startGeneration` L325 · `retryRole` L354 · `runRoles` L375
+  `unsupportedRoles` L392 · `isRunActive` L401
+
+### `/actors/mine` — app/pages/actors/mine/index.vue · 22 行
+我的演员（/actors/mine）—— 自建与从平台复制的演员，独立地址，刷新/分享/后退都保持
+
+### `/actors/new` — app/pages/actors/new.vue · 52 行
+- 用: `useHougongApi`
+
+### `/assets` — app/pages/assets/index.vue · 2002 行
 素材库（/assets）——「我的资产」里的素材分区
 - 用: `useHougongApi`
-- 本文件声明 85 个: `paneFromQuery` L29 · `pane` L35 · `syncPaneQuery` L38 · `isAssetPane` L52 · `paneScope` L54 · `items` L79 · `total` L80 · `pageNo` L81 · `firstLoading` L82 · `loadingMore` L83
-  `done` L84 · `error` L85 · `notice` L86 · `brokenIds` L88 · `kind` L90 · `origin` L91 · `sort` L92 · `keyword` L93 · `showHidden` L94 · `onlyDuplicates` L101 · `manageMode` L108 · `picked` L110
-  `hasFilter` L113 · `pickedVisible` L118 · `pickedHidden` L121 · `fetchPage` L129 · `reload` L162 · `loadMore` L173 · `sentinel` L181 · `stopObserver` L184 · `isPicked` L226 · `togglePick` L231
-  `pickAllLoaded` L250 · `clearPick` L258 · `onPressStart` L267 · `onPressEnd` L275 · `onMediaClick` L281 · `preview` L291 · `previewOpen` L292 · `openPreview` L294 · `closePreview` L300
-  `busyId` L305 · `toggleHiddenOne` L307 · `downloadingId` L325 · `savingIds` L328 · `saveToLibrary` L336 · `download` L353 · `batchBusy` L372 · `confirmOpen` L373 · `confirmTitle` L374
-  `confirmMessage` L375 · `pendingSingle` L376 · `batchProgress` L378 · `chunkSizeFor` L389 · `batchPercent` L394 · `batchInChunks` L401 · `askDelete` L416 · `doDelete` L428 · `runBatch` L459
-  `dedupeOpen` L505 · `dedupeBusy` L506 · `dedupePlan` L507 · `dedupeMessage` L508 · `askDedupe` L518 · `doDedupe` L533 · `publishOpen` L557 · `publishPending` L558 · `publishCover` L560
-  `askPublish` L562 · `submitPublish` L575 · `exporting` L605 · `exportTask` L606 · `exportError` L607 · `extOf` L609 · `relPathOf` L622 · `runExport` L626 · `typeLabel` L660 · `isImage` L663
-  `isVideo` L666 · `displayName` L671 · `dateText` L676 · `sizeText` L681 · `dimsOf` L688 · `onImgError` L692 · `onKeydown` L697
+- 本文件声明 83 个: `pane` L32 · `isAssetPane` L40 · `paneScope` L42 · `items` L67 · `total` L68 · `pageNo` L69 · `firstLoading` L70 · `loadingMore` L71 · `done` L72 · `error` L73 · `notice` L74
+  `brokenIds` L76 · `kind` L78 · `origin` L79 · `sort` L80 · `keyword` L81 · `showHidden` L82 · `onlyDuplicates` L89 · `manageMode` L96 · `picked` L98 · `hasFilter` L101 · `pickedVisible` L106
+  `pickedHidden` L109 · `fetchPage` L117 · `reload` L150 · `loadMore` L161 · `sentinel` L169 · `stopObserver` L172 · `isPicked` L203 · `togglePick` L208 · `pickAllLoaded` L227 · `clearPick` L235
+  `onPressStart` L244 · `onPressEnd` L252 · `onMediaClick` L258 · `preview` L268 · `previewOpen` L269 · `openPreview` L271 · `closePreview` L277 · `busyId` L282 · `toggleHiddenOne` L284
+  `downloadingId` L302 · `savingIds` L305 · `saveToLibrary` L313 · `download` L330 · `batchBusy` L349 · `confirmOpen` L350 · `confirmTitle` L351 · `confirmMessage` L352 · `pendingSingle` L353
+  `batchProgress` L355 · `chunkSizeFor` L366 · `batchPercent` L371 · `batchInChunks` L378 · `askDelete` L393 · `doDelete` L405 · `runBatch` L436 · `dedupeOpen` L482 · `dedupeBusy` L483
+  `dedupePlan` L484 · `dedupeMessage` L485 · `askDedupe` L495 · `doDedupe` L510 · `publishOpen` L534 · `publishPending` L535 · `publishCover` L537 · `askPublish` L539 · `submitPublish` L552
+  `exporting` L582 · `exportTask` L583 · `exportError` L584 · `extOf` L586 · `relPathOf` L599 · `runExport` L603 · `typeLabel` L637 · `isImage` L640 · `isVideo` L643 · `displayName` L648
+  `dateText` L653 · `sizeText` L658 · `dimsOf` L665 · `onImgError` L669 · `onKeydown` L674
+
+### `/assets/temp` — app/pages/assets/temp.vue · 9 行
+临时资产（/assets/temp）—— 与 /assets 同一个资产库组件，页签由地址决定
+
+### `/assets/trash` — app/pages/assets/trash.vue · 9 行
+回收站（/assets/trash）—— 与 /assets 同一个资产库组件，页签由地址决定
 
 ### `/auth/login` — app/pages/auth/login.vue · 167 行
 登录原型：契约对齐 go-sdk /api/v1/account/auth/login（邮箱/用户名 + 密码 + Turnstile）
@@ -29,29 +59,33 @@
 注册：契约对齐 /api/v1/account/auth/register
 - 用: `useTurnstile` · `useHougongApi`
 
-### `/canvas` — app/pages/canvas.vue · 2792 行
+### `/canvas/:graphId` — app/pages/canvas/[graphId].vue · 10 行
+画布图（/canvas/:graphId）—— 与 /canvas 同一个画布组件，图 id 由地址决定
+
+### `/canvas` — app/pages/canvas/index.vue · 2796 行
 画布（织幕）—— 节点工作台，前端先行版
 - 用: `useCanvasApi` · `useCanvasHistory` · `useHougongApi` · `useCanvasSlots` · `useCanvasRows`
-- 本文件声明 177 个: `ownerType` L86 · `ownerId` L87 · `ownerQuery` L88 · `graph` L90 · `savedGraph` L91 · `syncConflict` L92 · `operationError` L93 · `dirtyBaseline` L95 · `mutationBusy` L96
-  `textDrafts` L97 · `setTextDraft` L98 · `graphDirty` L108 · `dirtyOf` L109 · `refreshPlan` L113 · `artifacts` L124 · `runs` L125 · `graphId` L128 · `graphRevision` L130 · `pendingNodeDeletes` L139
-  `pendingEdgeDeletes` L140 · `graphTitle` L142 · `busy` L144 · `loading` L145 · `loadError` L146 · `batchBusy` L147 · `textSaving` L148 · `templateLoading` L149 · `templateError` L150
-  `selectedId` L151 · `toast` L152 · `detailOpen` L153 · `railCollapsed` L160 · `previewOpen` L162 · `previewMedia` L163 · `runningIds` L164 · `streaming` L166 · `followUpDrafts` L168
-  `followUp` L169 · `menu` L171 · `startPanel` L175 · `templates` L176 · `siteTemplates` L184 · `myGraphs` L191 · `refreshSiteTemplates` L193 · `refreshMyGraphs` L206 · `switchGraph` L216
-  `openGraphList` L223 · `openStart` L227 · `replaceCanvas` L239 · `newBlank` L264 · `useTemplate` L276 · `saveAsTemplate` L313 · `dropTemplate` L319 · `connectFromSnapshot` L351 · `clipboard` L354
-  `modelOptions` L356 · `videoModels` L359 · `videoModelResolutions` L362 · `baselineOptions` L372 · `upstreamSlotOf` L409 · `charactersOf` L434 · `characterPrompt` L446 · `scenesOf` L457
-  `scenePrompt` L469 · `shotsOf` L482 · `dynamicOptionsOf` L493 · `videoModelResolutionsOf` L525 · `convergeVideoFormat` L537 · `selectedCount` L569 · `selectAll` L571 · `clearSelection` L575
-  `selectedNodeIds` L581 · `selected` L585 · `selectedSpec` L586 · `openSlot` L596 · `focusCanvas` L604 · `onPaneClick` L609 · `onNodeOpen` L615 · `pending` L620 · `totalCost` L621
-  `runningCount` L622 · `readyCount` L623 · `dirtyCount` L632 · `showToast` L642 · `linkHighlighted` L650 · `stateOf` L665 · `modelLabelOf` L673 · `arranging` L683 · `canArrange` L687
-  `flowNodes` L689 · `flowEdges` L713 · `isValidConnection` L743 · `onConnectStart` L763 · `onConnectEnd` L775 · `onConnect` L784 · `onNodeDragStop` L802 · `hoveredEdge` L811 · `edgeBtnHover` L813
-  `onEdgeHover` L816 · `onEdgeLeave` L821 · `edgeButtonPos` L835 · `removeEdge` L850 · `onEdgesChange` L856 · `pointOf` L865 · `openNodeMenu` L871 · `openSelectionMenu` L877 · `openPaneMenu` L881
-  `openEdgeMenu` L885 · `closeMenu` L890 · `addNodeItems` L895 · `nodeMenuItems` L909 · `paneMenuItems` L930 · `connectMenuItems` L952 · `selectionMenuItems` L979 · `edgeMenuItems` L987
-  `copyNode` L992 · `pasteNode` L999 · `connectNewNode` L1016 · `detachNode` L1046 · `onMenuPick` L1053 · `deleteSelected` L1120 · `runSelected` L1137 · `renameInline` L1155 · `onKeydown` L1166
-  `freeSpot` L1219 · `add` L1226 · `onDrop` L1234 · `duplicate` L1241 · `rename` L1250 · `drop` L1255 · `hydrateInputs` L1270 · `autoWireShotInputs` L1301 · `expand` L1355 · `loadFromServer` L1414
-  `saveToServer` L1470 · `persistGraph` L1476 · `mergeArtifacts` L1521 · `watchEvents` L1535 · `scheduleReload` L1561 · `errText` L1570 · `runNode` L1582 · `continueFrom` L1706 · `upsertRun` L1725
-  `rerunNode` L1739 · `runAll` L1750 · `reloadGraph` L1796 · `resolveConflict` L1828 · `pick` L1854 · `pickItem` L1877 · `review` L1901 · `saveRows` L1922 · `saveText` L1931 · `commitArtifact` L1944
-  `removeArtifact` L1970 · `openArtifact` L1985 · `openPreview` L1992 · `sourcePortLabel` L2020 · `selectedUpstreamAdvice` L2033 · `followNewerUpstream` L2069 · `selectedReferences` L2094
-  `selectedSourcePreview` L2121 · `approveUpstream` L2159 · `fragments` L2166 · `moveFragment` L2176 · `estimateOf` L2189 · `estimatedBatch` L2194 · `selectedTableRows` L2205 · `setParam` L2228
-  `shotRowsOf` L2256 · `wideScreen` L2272 · `syncWide` L2274 · `hasUnsavedWork` L2278 · `beforeUnload` L2280 · `arrangeCanvas` L2354 · `fit` L2409 · `reloadFromServer` L2414 · `zoomPercent` L2420
+- 本文件声明 178 个: `ownerType` L87 · `ownerId` L88 · `ownerQuery` L89 · `graphIdFromRoute` L96 · `graph` L98 · `savedGraph` L99 · `syncConflict` L100 · `operationError` L101 · `dirtyBaseline` L103
+  `mutationBusy` L104 · `textDrafts` L105 · `setTextDraft` L106 · `graphDirty` L116 · `dirtyOf` L117 · `refreshPlan` L121 · `artifacts` L132 · `runs` L133 · `graphId` L136 · `graphRevision` L138
+  `pendingNodeDeletes` L147 · `pendingEdgeDeletes` L148 · `graphTitle` L150 · `busy` L152 · `loading` L153 · `loadError` L154 · `batchBusy` L155 · `textSaving` L156 · `templateLoading` L157
+  `templateError` L158 · `selectedId` L159 · `toast` L160 · `detailOpen` L161 · `railCollapsed` L168 · `previewOpen` L170 · `previewMedia` L171 · `runningIds` L172 · `streaming` L174
+  `followUpDrafts` L176 · `followUp` L177 · `menu` L179 · `startPanel` L183 · `templates` L184 · `siteTemplates` L192 · `myGraphs` L199 · `refreshSiteTemplates` L201 · `refreshMyGraphs` L214
+  `switchGraph` L224 · `openGraphList` L232 · `openStart` L236 · `replaceCanvas` L248 · `newBlank` L273 · `useTemplate` L285 · `saveAsTemplate` L322 · `dropTemplate` L328 · `connectFromSnapshot` L360
+  `clipboard` L363 · `modelOptions` L365 · `videoModels` L368 · `videoModelResolutions` L371 · `baselineOptions` L381 · `upstreamSlotOf` L418 · `charactersOf` L443 · `characterPrompt` L455
+  `scenesOf` L466 · `scenePrompt` L478 · `shotsOf` L491 · `dynamicOptionsOf` L502 · `videoModelResolutionsOf` L534 · `convergeVideoFormat` L546 · `selectedCount` L578 · `selectAll` L580
+  `clearSelection` L584 · `selectedNodeIds` L590 · `selected` L594 · `selectedSpec` L595 · `openSlot` L605 · `focusCanvas` L613 · `onPaneClick` L618 · `onNodeOpen` L624 · `pending` L629
+  `totalCost` L630 · `runningCount` L631 · `readyCount` L632 · `dirtyCount` L641 · `showToast` L651 · `linkHighlighted` L659 · `stateOf` L674 · `modelLabelOf` L682 · `arranging` L692
+  `canArrange` L696 · `flowNodes` L698 · `flowEdges` L722 · `isValidConnection` L752 · `onConnectStart` L772 · `onConnectEnd` L784 · `onConnect` L793 · `onNodeDragStop` L811 · `hoveredEdge` L820
+  `edgeBtnHover` L822 · `onEdgeHover` L825 · `onEdgeLeave` L830 · `edgeButtonPos` L844 · `removeEdge` L859 · `onEdgesChange` L865 · `pointOf` L874 · `openNodeMenu` L880 · `openSelectionMenu` L886
+  `openPaneMenu` L890 · `openEdgeMenu` L894 · `closeMenu` L899 · `addNodeItems` L904 · `nodeMenuItems` L918 · `paneMenuItems` L939 · `connectMenuItems` L961 · `selectionMenuItems` L988
+  `edgeMenuItems` L996 · `copyNode` L1001 · `pasteNode` L1008 · `connectNewNode` L1025 · `detachNode` L1055 · `onMenuPick` L1062 · `deleteSelected` L1129 · `runSelected` L1146 · `renameInline` L1164
+  `onKeydown` L1175 · `freeSpot` L1228 · `add` L1235 · `onDrop` L1243 · `duplicate` L1250 · `rename` L1259 · `drop` L1264 · `hydrateInputs` L1279 · `autoWireShotInputs` L1310 · `expand` L1364
+  `loadFromServer` L1423 · `saveToServer` L1474 · `persistGraph` L1480 · `mergeArtifacts` L1525 · `watchEvents` L1539 · `scheduleReload` L1565 · `errText` L1574 · `runNode` L1586
+  `continueFrom` L1710 · `upsertRun` L1729 · `rerunNode` L1743 · `runAll` L1754 · `reloadGraph` L1800 · `resolveConflict` L1832 · `pick` L1858 · `pickItem` L1881 · `review` L1905 · `saveRows` L1926
+  `saveText` L1935 · `commitArtifact` L1948 · `removeArtifact` L1974 · `openArtifact` L1989 · `openPreview` L1996 · `sourcePortLabel` L2024 · `selectedUpstreamAdvice` L2037
+  `followNewerUpstream` L2073 · `selectedReferences` L2098 · `selectedSourcePreview` L2125 · `approveUpstream` L2163 · `fragments` L2170 · `moveFragment` L2180 · `estimateOf` L2193
+  `estimatedBatch` L2198 · `selectedTableRows` L2209 · `setParam` L2232 · `shotRowsOf` L2260 · `wideScreen` L2276 · `syncWide` L2278 · `hasUnsavedWork` L2282 · `beforeUnload` L2284
+  `arrangeCanvas` L2358 · `fit` L2413 · `reloadFromServer` L2418 · `zoomPercent` L2424
 
 ### `/canvases` — app/pages/canvases.vue · 458 行
 我的画布 —— 创作者找回自己建过的画布
@@ -59,42 +93,52 @@
 - 本文件声明 22 个: `rows` L17 · `total` L18 · `page` L19 · `keyword` L21 · `keywordApplied` L22 · `sort` L24 · `ownerFilter` L25 · `loading` L32 · `error` L33 · `editingId` L35 · `draft` L36 · `busy` L37
   `pageCount` L39 · `load` L41 · `search` L64 · `goPage` L70 · `open` L77 · `startRename` L81 · `commitRename` L86 · `duplicate` L102 · `remove` L115 · `ago` L130
 
-### `/characters/:id/edit` — app/pages/characters/[id]/edit.vue · 134 行
-- 用: `useHougongApi`
+### `/characters/:id/edit` — app/pages/characters/[id]/edit.vue · 10 行
+旧「我的角色编辑」已迁移到 /actors/mine/:id/edit
 
-### `/characters/:id` — app/pages/characters/[id].vue · 1043 行
-- 用: `useHougongApi`
-- 本文件声明 48 个: `character` L26 · `works` L27 · `loading` L28 · `error` L29 · `characterId` L31 · `facetLabels` L34 · `loadFacetLabels` L36 · `taxonomyTags` L46 · `mediaSlots` L62 · `voices` L68
-  `voiceWithoutUrl` L70 · `showGeneration` L74 · `generationLabel` L75 · `toCard` L76 · `load` L80 · `coverBusy` L113 · `coverNote` L114 · `resetCover` L116 · `generationGate` L147
-  `isOwnCharacter` L157 · `sourceAssetId` L159 · `hasTaxonomy` L165 · `catalog` L168 · `catalogError` L169 · `imageModels` L172 · `selectedModelId` L175 · `selectedModel` L177 · `qualityOptions` L179
-  `selectedQuality` L180 · `priceLabel` L182 · `loadCatalog` L190 · `syncQuality` L206 · `run` L219 · `runBusy` L220 · `runError` L221 · `runNotice` L222 · `retryBusy` L223 · `stopPolling` L233
-  `schedulePoll` L241 · `poll` L252 · `shouldContinuePolling` L275 · `reloadCharacterData` L287 · `loadLatestRun` L297 · `startGeneration` L311 · `retryRole` L336 · `runRoles` L357
-  `unsupportedRoles` L374 · `isRunActive` L383
+### `/characters/:id` — app/pages/characters/[id]/index.vue · 10 行
+旧「我的角色详情」已迁移到 /actors/mine/:id
 
-### `/characters` — app/pages/characters/index.vue · 72 行
-- 用: `useHougongApi`
+### `/characters` — app/pages/characters/index.vue · 9 行
+旧「角色资产」列表已迁移到 /actors/mine（演员新命名空间）
 
-### `/characters/new` — app/pages/characters/new.vue · 52 行
-- 用: `useHougongApi`
+### `/characters/new` — app/pages/characters/new.vue · 9 行
+旧「新建角色」已迁移到 /actors/new
 
 ### `/create` — app/pages/create.vue · 465 行
 对话创作页（/create）
 - 本文件声明 8 个: `streamRef` L8 · `historyOpen` L9 · `pinned` L10 · `sessionTitle` L12 · `resultTotal` L14 · `scrollToBottom` L16 · `onJumpLatest` L25 · `onScroll` L30
 
-### `/effects` — app/pages/effects.vue · 369 行
-vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
-- 本文件声明 7 个: `tab` L26 · `tools` L28 · `isOption` L58 · `effects` L62 · `inTab` L100 · `counts` L103 · `shown` L114
+### `/effects/image` — app/pages/effects/image.vue · 10 行
+图片效果（/effects/image）—— 与 /effects 同一个页面组件，只是分类由地址决定
 
-### `/` — app/pages/index.vue · 1583 行
+### `/effects` — app/pages/effects/index.vue · 370 行
+vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `<script setup>` 只把**本文…
+- 本文件声明 7 个: `tab` L34 · `tools` L36 · `isOption` L66 · `effects` L70 · `inTab` L108 · `counts` L111 · `shown` L118
+
+### `/effects/video` — app/pages/effects/video.vue · 9 行
+视频效果（/effects/video）—— 与 /effects 同一个页面组件，只是分类由地址决定
+
+### `/explore/:category` — app/pages/explore/[category].vue · 35 行
+探索流分类（/explore/:category）—— 分类即地址，刷新 / 分享 / 后退都保持
+
+### `/explore` — app/pages/explore/index.vue · 23 行
+探索流（/explore）—— 默认「推荐」
+
+### `/` — app/pages/index.vue · 1142 行
 - 用: `useHougongApi` · `useAuthDialog` · `useComposerDraft`
-- 本文件声明 40 个: `notice` L27 · `toolCards` L66 · `quickTools` L97 · `quickRows` L110 · `hoverTool` L113 · `quickGridEl` L121 · `quickPopEl` L122 · `quickPopStyle` L123 · `placeQuickPop` L138
-  `openQuickPop` L161 · `closeQuickPop` L170 · `onQuickPopResize` L176 · `isQuickToolActive` L181 · `selectedToolCard` L193 · `runningWorks` L200 · `loggedIn` L210 · `continueItems` L254
-  `continueLoading` L255 · `relativeTime` L257 · `submitLanding` L296 · `loadContinue` L341 · `exploreCategory` L394 · `exploreItems` L395 · `explorePage` L396 · `exploreLoading` L397
-  `exploreDone` L398 · `exploreError` L399 · `exploreReady` L400 · `sentinel` L401 · `loadExplore` L416 · `switchCategory` L466 · `exploreVisible` L471 · `remixWork` L490 · `previewOpen` L498
-  `previewSrc` L499 · `previewTitle` L500 · `previewAuthor` L501 · `previewKind` L503 · `openPreview` L505 · `openContinuePreview` L514
+- 本文件声明 27 个: `notice` L20 · `toolCards` L59 · `quickTools` L90 · `quickRows` L103 · `hoverTool` L106 · `quickGridEl` L114 · `quickPopEl` L115 · `quickPopStyle` L116 · `placeQuickPop` L131
+  `openQuickPop` L154 · `closeQuickPop` L163 · `onQuickPopResize` L169 · `isQuickToolActive` L174 · `selectedToolCard` L186 · `runningWorks` L193 · `loggedIn` L203 · `continueItems` L241
+  `continueLoading` L242 · `relativeTime` L244 · `submitLanding` L283 · `loadContinue` L328 · `previewOpen` L380 · `previewSrc` L381 · `previewTitle` L382 · `previewAuthor` L383 · `previewKind` L385
+  `openContinuePreview` L387
 
 ### `/notifications` — app/pages/notifications.vue · 203 行
 - 用: `useHougongApi`
+
+### `/search` — app/pages/search.vue · 331 行
+站内搜索（/search?q=）—— 从应用外壳的搜索浮层变成**独立页面**：结果可刷新、可分享、可后退
+- 用: `useHougongApi` · `useToolCatalog`
+- 本文件声明 8 个: `keyword` L42 · `sessions` L44 · `query` L46 · `searchResults` L48 · `hasQuery` L67 · `searchEmpty` L68 · `clearKeyword` L90 · `loadSessions` L95
 
 ### `/settings` — app/pages/settings.vue · 458 行
 设置页：账号（用户名）与成人内容偏好
@@ -125,12 +169,24 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
 ### `/tv` — app/pages/tv.vue · 255 行
 - 用: `useHougongApi`
 
-### `/wallet` — app/pages/wallet.vue · 999 行
+### `/wallet` — app/pages/wallet/index.vue · 1021 行
 - 用: `useHougongApi`
-- 本文件声明 36 个: `loading` L6 · `error` L7 · `wallet` L11 · `claiming` L12 · `claimNotice` L13 · `invite` L15 · `copied` L16 · `membership` L18 · `tab` L21 · `transactions` L22 · `ledger` L23
-  `rechargeAmt` L25 · `checkoutBusy` L26 · `checkoutRes` L27 · `checkoutErr` L28 · `rechargeRef` L31 · `ordersRef` L32 · `creatorInfo` L34 · `applyCreatorOpen` L35 · `mcInfo` L36 · `applyMcOpen` L37
-  `applyErr` L38 · `applyBusy` L39 · `creatorForm` L40 · `mcForm` L41 · `fmtCredits` L53 · `applyTabFromQuery` L66 · `scrollToSection` L77 · `load` L83 · `claim` L106 · `copyInvite` L119
-  `doCheckout` L130 · `loadCreator` L146 · `submitCreator` L154 · `submitModelCreator` L167 · `addResourceUrl` L180
+- 本文件声明 37 个: `loading` L13 · `error` L14 · `wallet` L18 · `claiming` L19 · `claimNotice` L20 · `invite` L22 · `copied` L23 · `membership` L25 · `tab` L29 · `transactions` L32 · `ledger` L33
+  `rechargeAmt` L35 · `checkoutBusy` L36 · `checkoutRes` L37 · `checkoutErr` L38 · `rechargeRef` L42 · `ordersRef` L43 · `membershipRef` L44 · `creatorInfo` L46 · `applyCreatorOpen` L47 · `mcInfo` L48
+  `applyMcOpen` L49 · `applyErr` L50 · `applyBusy` L51 · `creatorForm` L52 · `mcForm` L53 · `fmtCredits` L65 · `applySection` L77 · `scrollToSection` L84 · `load` L90 · `claim` L113
+  `copyInvite` L126 · `doCheckout` L137 · `loadCreator` L153 · `submitCreator` L161 · `submitModelCreator` L174 · `addResourceUrl` L187
+
+### `/wallet/ledger` — app/pages/wallet/ledger.vue · 9 行
+金币流水（/wallet/ledger）—— 与 /wallet 同一个页面组件，当前区块由地址决定
+
+### `/wallet/membership` — app/pages/wallet/membership.vue · 9 行
+会员（/wallet/membership）—— 与 /wallet 同一个页面组件，进入后滚到会员区
+
+### `/wallet/orders` — app/pages/wallet/orders.vue · 9 行
+订单（/wallet/orders）—— 与 /wallet 同一个页面组件，进入后滚到订单列表区
+
+### `/wallet/recharge` — app/pages/wallet/recharge.vue · 9 行
+充值（/wallet/recharge）—— 与 /wallet 同一个页面组件，进入后滚到「充值金币」区
 
 ### `/works/:id` — app/pages/works/[id].vue · 541 行
 - 用: `useHougongApi` · `useAdultGate`
@@ -144,15 +200,13 @@ vAutoPlayVideo 必须显式 import：模板里用了 `v-auto-play-video`，而 `
   `loadPublished` L23 · `openPublish` L39 · `submitPublish` L44 · `togglePublishState` L78 · `removePublished` L89 · `filtered` L101 · `maskedIds` L107 · `loadWorks` L114
 
 ## 应用外壳与服务端路由
-- `app/app.vue` · 916 行
-  - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
-    `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
-    `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
+- `app/app.vue` · 690 行
+  - 本文件声明: `recentSessions` L71 · `accountOpen` L75 · `accountWrapRef` L76 · `railOpen` L77 · `dotTrailRef` L79 · `fadeDotTrails` L84 · `onDotPointerMove` L97 · `railCollapsed` L126
+    `isFullBleed` L129 · `credits` L130 · `unread` L131 · `pageName` L163 · `isActive` L172 · `onAccountToggle` L180 · `onDocClick` L184 · `logout` L190 · `loadShellData` L196
 - `app/app.config.ts` · 9 行
-- `app/App.vue` · 916 行
-  - 本文件声明: `recentSessions` L71 · `searchOpen` L74 · `searchQuery` L75 · `searchResults` L91 · `searchEmpty` L113 · `openSearch` L118 · `goSearch` L126 · `onSearchKeydown` L131 · `accountOpen` L134
-    `accountWrapRef` L135 · `railOpen` L136 · `dotTrailRef` L138 · `fadeDotTrails` L143 · `onDotPointerMove` L156 · `railCollapsed` L185 · `isFullBleed` L188 · `credits` L189 · `unread` L190
-    `pageName` L210 · `isActive` L219 · `onAccountToggle` L227 · `onDocClick` L231 · `logout` L237 · `loadShellData` L243
+- `app/App.vue` · 690 行
+  - 本文件声明: `recentSessions` L71 · `accountOpen` L75 · `accountWrapRef` L76 · `railOpen` L77 · `dotTrailRef` L79 · `fadeDotTrails` L84 · `onDotPointerMove` L97 · `railCollapsed` L126
+    `isFullBleed` L129 · `credits` L130 · `unread` L131 · `pageName` L163 · `isActive` L172 · `onAccountToggle` L180 · `onDocClick` L184 · `logout` L190 · `loadShellData` L196
 - `server/api/backend-version.get.ts` — 后端（Go API）当前**正在跑**的版本，供设置页展示
 - `server/api/version.get.ts` — 当前**正在运行**的前端版本（用户浏览器里缓存的那份可能是旧的）
 - `server/api/version.head.ts` — HEAD /api/version —— 只为探活/监控存在，回答"这个端点在不在这里"

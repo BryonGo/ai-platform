@@ -311,64 +311,74 @@ onUnmounted(pauseVoice)
           </figure>
         </div>
 
-        <!-- ③ 造型 + 收藏 + 主按钮：横向可滚，不换行挤压 -->
+        <!-- ③ 造型一行横滚；收藏 + 主按钮单独一行常驻。
+             参考站把三者放同一行，但在 356px 内容宽里主按钮会被挤出可视区；
+             小屏用户看不到「复制到我的演员」比像素级对齐更严重。 -->
         <div
           class="toolbar-row"
           role="group"
           aria-label="造型与操作"
         >
-          <button
-            v-for="outfit in detail.outfits"
-            :key="outfit.id"
-            type="button"
-            class="outfit-pill"
-            :class="{ active: selectedOutfitId === outfit.id }"
-            :aria-pressed="selectedOutfitId === outfit.id"
-            :aria-label="`造型 ${outfit.name}`"
-            @click="pickOutfit(outfit.id)"
+          <div
+            class="toolbar-outfits"
+            role="group"
+            aria-label="造型"
           >
-            <img
-              v-if="outfitThumb(outfit)"
-              class="outfit-pill__thumb"
-              :src="outfitThumb(outfit)"
-              alt=""
-              aria-hidden="true"
+            <button
+              v-for="outfit in detail.outfits"
+              :key="outfit.id"
+              type="button"
+              class="outfit-pill"
+              :class="{ active: selectedOutfitId === outfit.id }"
+              :aria-pressed="selectedOutfitId === outfit.id"
+              :aria-label="`造型 ${outfit.name}`"
+              @click="pickOutfit(outfit.id)"
             >
-            <span
-              v-else
-              class="outfit-pill__thumb outfit-pill__fallback"
-              aria-hidden="true"
-            >{{ outfit.name.slice(0, 1) }}</span>
-            <span class="outfit-pill__label">{{ outfit.name }}</span>
-          </button>
+              <img
+                v-if="outfitThumb(outfit)"
+                class="outfit-pill__thumb"
+                :src="outfitThumb(outfit)"
+                alt=""
+                aria-hidden="true"
+              >
+              <span
+                v-else
+                class="outfit-pill__thumb outfit-pill__fallback"
+                aria-hidden="true"
+              >{{ outfit.name.slice(0, 1) }}</span>
+              <span class="outfit-pill__label">{{ outfit.name }}</span>
+            </button>
+          </div>
 
-          <button
-            type="button"
-            class="toolbar-fav"
-            :class="{ active: detail.favorited }"
-            :aria-pressed="detail.favorited"
-            :aria-label="detail.favorited ? '取消收藏' : '收藏'"
-            :disabled="favoriteBusy"
-            @click="toggleFavorite"
-          >
-            <UIcon
-              name="i-lucide-heart"
-              aria-hidden="true"
-            />
-          </button>
+          <div class="toolbar-actions">
+            <button
+              type="button"
+              class="toolbar-fav"
+              :class="{ active: detail.favorited }"
+              :aria-pressed="detail.favorited"
+              :aria-label="detail.favorited ? '取消收藏' : '收藏'"
+              :disabled="favoriteBusy"
+              @click="toggleFavorite"
+            >
+              <UIcon
+                name="i-lucide-heart"
+                aria-hidden="true"
+              />
+            </button>
 
-          <button
-            type="button"
-            class="toolbar-primary"
-            :disabled="cloning"
-            @click="cloneToMine"
-          >
-            <UIcon
-              name="i-lucide-copy"
-              aria-hidden="true"
-            />
-            {{ cloning ? '复制中…' : '复制到我的演员' }}
-          </button>
+            <button
+              type="button"
+              class="toolbar-primary"
+              :disabled="cloning"
+              @click="cloneToMine"
+            >
+              <UIcon
+                name="i-lucide-copy"
+                aria-hidden="true"
+              />
+              {{ cloning ? '复制中…' : '复制到我的演员' }}
+            </button>
+          </div>
         </div>
 
         <p
@@ -558,18 +568,23 @@ onUnmounted(pauseVoice)
 .voice-panel__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .voice-panel__text.is-empty { color: rgb(255 255 255 / 65%); }
 
-/* ③ toolbar 行：高 40，横向可滚 */
+/* ③ 造型一行横滚；操作一行常驻（小屏不让主按钮被挤出可视区）。 */
 .toolbar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.toolbar-outfits {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
-  margin-top: 12px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
-.toolbar-row::-webkit-scrollbar { display: none; }
+.toolbar-outfits::-webkit-scrollbar { display: none; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; }
 .outfit-pill {
   display: inline-flex;
   flex: 0 0 auto;
@@ -610,11 +625,11 @@ onUnmounted(pauseVoice)
 
 .toolbar-primary {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 192px;
+  min-width: 0;
   height: 40px;
   padding: 0 18px;
   border: 1px solid var(--hg-accent);
@@ -688,7 +703,32 @@ onUnmounted(pauseVoice)
   .actor-detail__card { padding: 20px 16px 22px; }
 }
 
+/* 平板及以上（≥561px）：不再把面板锁在 420 宽，改用容器宽度。
+   画廊同时从固定比例改为自适应高度 —— 否则宽度一放大，356/302 会把整排撑成超高图带。 */
+@media (min-width: 561px) {
+  .actor-detail { max-width: 100%; }
+  .actor-detail__card { padding: 26px 32px 30px; }
+  .gallery { aspect-ratio: auto; height: clamp(240px, 40vw, 420px); }
+  .toolbar-row { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .toolbar-outfits { flex: 1 1 280px; }
+  .toolbar-actions { flex: 0 0 auto; }
+  .toolbar-primary { flex: 0 0 auto; }
+}
+
+/* 桌面（≥1024px）：两栏 —— 左详情、右「切换演员」竖排；用满 .page-body 的宽度。 */
+@media (min-width: 1024px) {
+  .actor-detail { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 24px; align-items: start; }
+  .actor-detail > * { min-width: 0; }
+  .actor-detail__state { grid-column: 1 / -1; }
+  .actor-detail__card { padding: 28px 36px 32px; }
+  .gallery { height: clamp(300px, 24vw, 460px); }
+  .strip { position: sticky; top: 16px; margin-top: 0; }
+  .strip__rail { flex-direction: column; overflow-x: hidden; overflow-y: auto; max-height: min(620px, calc(100vh - 120px)); padding-right: 4px; }
+  .strip__card { width: 100%; height: 152px; }
+  .strip__next { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .strip__rail, .toolbar-row { scroll-behavior: auto; }
+  .strip__rail, .toolbar-outfits { scroll-behavior: auto; }
 }
 </style>
